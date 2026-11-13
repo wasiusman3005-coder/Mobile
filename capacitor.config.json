@@ -1,0 +1,30 @@
+{
+  "appId": "com.qnexus.jarvis",
+  "appName": "Q-NEXUS Jarvis",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "capacitor"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "allowsLinkPreview": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#02050f",
+      "showSpinner": true,
+      "spinnerColor": "#06b6d4"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#02050f"
+    }
+  }
+}
