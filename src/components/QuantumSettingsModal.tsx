@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Settings, X, Palette, Volume2, Mic, MicOff, Image, Shield, Clock, Upload, Check, RefreshCw, Sparkles, Sliders, Globe, Radio, Play, Zap, Fingerprint, ScanFace, Lock, Trash2 } from "lucide-react";
+import { Settings, X, Palette, Volume2, AudioWaveform, Image, Shield, Clock, Upload, Check, RefreshCw, Sparkles, Sliders, Globe, Radio, Play, Zap, Fingerprint, ScanFace, Lock, Trash2 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
 import { storageService, defaultAvatarConfig, defaultSecurityConfig } from "../services/storage";
@@ -10,9 +10,8 @@ import {
   saveStoredSecurityConfig,
 } from "../services/biometricAuth";
 import { triggerHaptic } from "../services/mobileDeviceActions";
-import { DashboardCustomization, CustomVoiceProfile, AccentTheme, LanguageCode, VoiceGender, MobileSecurityConfig } from "../types";
-import { ALL_JARVIS_THEMES } from "./themes/themesData";
-import { ELEVENLABS_VOICE_PRESETS, PERSONALITY_MODES, WAKE_WORDS_100_PLUS } from "../data/jarvisCatalog";
+import { DashboardCustomization, CustomVoiceProfile, AccentTheme, LanguageCode, MobileSecurityConfig } from "../types";
+import { ELEVENLABS_VOICE_PRESETS, getCharacterDisplayName } from "../data/jarvisCatalog";
 
 interface QuantumSettingsModalProps {
   isOpen: boolean;
@@ -41,13 +40,17 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<"appearance" | "voice" | "security" | "screensaver" | "health" | "data">("appearance");
 
-  // Custom Voice Recording State
+  // Custom Voice Recording, Upload & Browser Voice List State
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [recordedAudioBase64, setRecordedAudioBase64] = useState<string | null>(null);
   const [newVoiceName, setNewVoiceName] = useState("");
   const [newVoiceGender, setNewVoiceGender] = useState<"male" | "female">("female");
-  const [newVoicePitch, setNewVoicePitch] = useState(1.15);
-  const [newVoiceRate, setNewVoiceRate] = useState(1.0);
+  const [newVoicePitch, setNewVoicePitch] = useState(1.03);
+  const [newVoiceRate, setNewVoiceRate] = useState(0.98);
+  const [newVoiceBrowserURI, setNewVoiceBrowserURI] = useState("");
+  const [newVoiceAssignTo, setNewVoiceAssignTo] = useState<"custom" | "male" | "female">("custom");
+  const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [micBannerError, setMicBannerError] = useState<string | null>(null);
   const [elevenServerConfigured, setElevenServerConfigured] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -69,6 +72,9 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
 
   const avatarCfg = customization.avatarConfig || defaultAvatarConfig;
   const securityCfg: MobileSecurityConfig = customization.securityConfig || defaultSecurityConfig;
+  const femaleCharName = getCharacterDisplayName(avatarCfg, "female");
+  const maleCharName = getCharacterDisplayName(avatarCfg, "male");
+  const activeCharName = getCharacterDisplayName(avatarCfg);
 
   const stopFaceCamera = () => {
     if (faceStreamRef.current) {
@@ -84,6 +90,7 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
       return;
     }
     checkBiometricCapabilities().then(setBioCaps);
+    setBrowserVoices(speechService.getAvailableBrowserVoices());
     fetch("/api/tts/elevenlabs/status")
       .then((r) => r.json())
       .then((d) => setElevenServerConfigured(Boolean(d.configured)))
@@ -158,8 +165,15 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
 
       recorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const url = URL.createObjectURL(audioBlob);
-        setRecordedAudioUrl(url);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = String(reader.result || "");
+          if (dataUrl) {
+            setRecordedAudioBase64(dataUrl);
+            setRecordedAudioUrl(dataUrl);
+          }
+        };
+        reader.readAsDataURL(audioBlob);
         stream.getTracks().forEach((track) => track.stop());
       };
 
@@ -167,7 +181,7 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
       setMicBannerError(null);
       setIsRecordingVoice(true);
     } catch {
-      setMicBannerError("Microphone permission denied or unavailable. Pitch & rate sliders still work cleanly.");
+      setMicBannerError("Microphone permission denied or unavailable. Pitch & rate sliders or Audio File Upload still work cleanly.");
     }
   };
 
@@ -179,7 +193,30 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
     }
   };
 
-  // Save new custom voice profile
+  const handleUploadCustomVoiceFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      setMicBannerError("Audio file 4MB se chhoti rakhein taa-ke phone storage mein save ho sake.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = String(ev.target?.result || "");
+      if (dataUrl) {
+        setMicBannerError(null);
+        setRecordedAudioBase64(dataUrl);
+        setRecordedAudioUrl(dataUrl);
+        if (!newVoiceName.trim()) {
+          setNewVoiceName(file.name.replace(/\.[^.]+$/, ""));
+        }
+        soundEffects.playBeepConfirm();
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Save new custom voice profile (Persistent Base64 + Slot Assignment)
   const handleSaveCustomVoice = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVoiceName.trim()) return;
@@ -192,48 +229,72 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
       gender: newVoiceGender,
       pitch: Number(newVoicePitch),
       rate: Number(newVoiceRate),
-      audioBlobUrl: recordedAudioUrl || undefined,
+      audioBase64: recordedAudioBase64 || undefined,
+      browserVoiceURI: newVoiceBrowserURI || undefined,
+      assignedTo: newVoiceAssignTo === "male" || newVoiceAssignTo === "female" ? newVoiceAssignTo : "both",
       description: `Custom ${newVoiceGender} voice profile customized by Commander Wasi`,
       dateAdded: new Date().toLocaleDateString(),
     };
 
     const updatedVoices = [...customization.customVoices, newProfile];
+    const nextAvatar = { ...avatarCfg };
+    if (newVoiceAssignTo === "male") {
+      nextAvatar.maleVoiceSettings = {
+        pitch: newProfile.pitch,
+        rate: newProfile.rate,
+        preferredBrowserVoiceURI: newProfile.browserVoiceURI,
+        activeCustomVoiceId: newProfile.id,
+      };
+      nextAvatar.characterGender = "male";
+      nextAvatar.personalityId = "wasu_male";
+    } else if (newVoiceAssignTo === "female") {
+      nextAvatar.femaleVoiceSettings = {
+        pitch: newProfile.pitch,
+        rate: newProfile.rate,
+        preferredBrowserVoiceURI: newProfile.browserVoiceURI,
+        activeCustomVoiceId: newProfile.id,
+      };
+      nextAvatar.characterGender = "female";
+      nextAvatar.personalityId = "wasi_ki_jan_female";
+    }
+
     onUpdateCustomization({
       ...customization,
       customVoices: updatedVoices,
-      activeVoiceMode: "custom",
+      avatarConfig: nextAvatar,
+      activeVoiceMode: newVoiceAssignTo === "male" ? "male" : newVoiceAssignTo === "female" ? "female" : "custom",
       activeCustomVoiceId: newProfile.id,
     });
 
     setNewVoiceName("");
     setRecordedAudioUrl(null);
-
-    // Speak demo in new voice
-    const demo =
-      language === "pa"
-        ? `Nava voice profile "${newProfile.name}" add ho gaya Wasi paji! Main hun is awaaz ch gal karaan ga.`
-        : `Wasi Sahab, naya voice profile "${newProfile.name}" activate kar diya gaya hai. Main ab is voice mein baat karoonga.`;
-
-    speechService.speak(demo, {
-      lang: language,
-      gender: newVoiceGender,
-      pitch: newVoicePitch,
-      rate: newVoiceRate,
-    });
+    setRecordedAudioBase64(null);
   };
 
-  const handleTestVoice = (pitch: number, rate: number, gender: "male" | "female") => {
+  const handleTestVoice = (
+    pitch: number,
+    rate: number,
+    gender: "male" | "female",
+    preferredBrowserVoiceURI?: string
+  ) => {
     soundEffects.playClick();
+    const charLabel = gender === "male" ? maleCharName : femaleCharName;
     const demo =
       language === "pa"
-        ? "Sat Sri Akal Wasi paji! Eh tuhada custom voice test sample ae."
-        : "Khush Amdeed Wasi Sahab! Yeh aapka custom voice sample test hai.";
+        ? `Sat Sri Akal Wasi paji! Main ${charLabel} haan, eh tuhada 100 percent Pakistani custom voice test sample ae.`
+        : language === "en"
+        ? `Greetings Commander Wasi! This is ${charLabel} testing your customized voice frequency and speed.`
+        : gender === "male"
+        ? `Assalam o Alaikum Wasi Sahab! Main ${charLabel} hoon, ab main bilkul 100 percent Pakistani Urdu lehje mein baat kar raha hoon.`
+        : `Assalam o Alaikum Wasi Sahab! Main ${charLabel} hoon, ab main bilkul 100 percent Pakistani Urdu lehje mein baat kar rahi hoon.`;
 
     speechService.speak(demo, {
       lang: language,
       gender,
       pitch,
       rate,
+      preferredBrowserVoiceURI,
+      forceCustomTest: true,
     });
   };
 
@@ -291,7 +352,7 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <Mic className="w-3.5 h-3.5" />
+            <AudioWaveform className="w-3.5 h-3.5" />
             <span>Voice & Custom Cloning</span>
           </button>
 
@@ -361,69 +422,29 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
           {/* 1. APPEARANCE & THEME */}
           {activeTab === "appearance" && (
             <div className="space-y-6">
-              {/* SCI-FI HUD INTERFACES (ALL 7 USER DESIGNS MATCHING EXACT IMAGES) */}
+              {/* SINGLE LOCKED THEME: COCKPIT FIELD TACHYON */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-orbitron font-bold text-sm text-cyan-300 uppercase flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-cyan-400" />
-                    <span>Sci-Fi Cockpit & HUD Interfaces (7 Iconic Themes)</span>
+                    <span>Active Cockpit Interface Theme</span>
                   </h3>
                   <span className="text-[10px] text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40">
-                    7 THEMES LOADED
+                    LOCKED TO COCKPIT TACHYON
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {ALL_JARVIS_THEMES.map((theme) => {
-                    const isSelected = (customization.activeInterfaceTheme || "quantum_cockpit") === theme.id;
-                    return (
-                      <div
-                        key={theme.id}
-                        onClick={() => {
-                          soundEffects.playBeepConfirm();
-                          onUpdateCustomization({
-                            ...customization,
-                            activeInterfaceTheme: theme.id,
-                            customAccentHex: theme.accentHex,
-                          });
-                        }}
-                        className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group overflow-hidden relative ${
-                          isSelected
-                            ? "bg-slate-900 border-2 border-cyan-400 shadow-xl shadow-cyan-950/80 ring-2 ring-cyan-500/40"
-                            : "bg-slate-950/90 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60"
-                        }`}
-                      >
-                        {/* Thumbnail image matching user attachment */}
-                        <div className="relative w-full h-32 rounded-xl overflow-hidden mb-2 border border-slate-800 group-hover:border-cyan-500/40 transition">
-                          <img
-                            src={theme.imagePath}
-                            alt={theme.name}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          />
-                          <span className="absolute top-2 left-2 text-[9px] font-mono px-2 py-0.5 rounded bg-black/80 text-cyan-300 border border-cyan-500/30">
-                            {theme.category}
-                          </span>
-                          {isSelected && (
-                            <span className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded-full bg-cyan-400 text-black font-bold shadow-lg">
-                              <Check className="w-3 h-3" /> ACTIVE
-                            </span>
-                          )}
-                        </div>
-
-                        <div>
-                          <div className="font-orbitron font-bold text-xs text-white flex items-center justify-between">
-                            <span>{theme.name}</span>
-                            <span
-                              className="w-2.5 h-2.5 rounded-full"
-                              style={{ backgroundColor: theme.accentHex, boxShadow: `0 0 8px ${theme.accentHex}` }}
-                            />
-                          </div>
-                          <p className="text-[10px] text-slate-400 line-clamp-2 mt-1 font-mono">
-                            {theme.tagline}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="p-4 rounded-2xl border-2 border-cyan-400 bg-slate-900 shadow-xl shadow-cyan-950/70 flex items-center justify-between gap-4">
+                  <div>
+                    <div className="font-orbitron font-bold text-sm text-white">
+                      Cockpit Field Tachyon Theme
+                    </div>
+                    <p className="text-[11px] text-slate-300 mt-1 font-mono">
+                      Primary spatial tachyon cockpit interface with 3D morphing core and live mobile HUD telemetry.
+                    </p>
+                  </div>
+                  <span className="flex items-center gap-1 text-[10px] font-mono px-3 py-1 rounded-full bg-cyan-400 text-black font-bold shrink-0">
+                    <Check className="w-3.5 h-3.5" /> ACTIVE
+                  </span>
                 </div>
               </div>
 
@@ -596,10 +617,10 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                 <div className="flex items-center justify-between pt-3 border-t border-slate-800">
                   <div>
                     <div className="font-semibold text-slate-200 text-xs">
-                      116+ Wake Words Engine ("Hi Nexus", "Hey Jarvis", "Oye Zoya"...)
+                      &quot;Hi Jarvis&quot; &amp; &quot;Hi {activeCharName}&quot; Wake-Only Mic Engine
                     </div>
                     <div className="text-[10px] text-slate-400">
-                      {WAKE_WORDS_100_PLUS.length + avatarCfg.customWakeWords.length} active wake triggers loaded across Urdu, Punjabi, English & Companion
+                      Mic remains OFF by default and activates when you say &quot;Hi Jarvis&quot; or &quot;Hi {activeCharName}&quot;
                     </div>
                   </div>
                   <input
@@ -611,12 +632,585 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* ElevenLabs + Fast Talking + Personality Selector */}
+              {/* Custom 2-Voice Personas (Strictly 1 Male "Wasu" + 1 Female "Wasi ki Jan") */}
+              {(() => {
+                const maleSlot = avatarCfg.maleVoiceSettings || { pitch: 0.94, rate: 0.98 };
+                const femaleSlot = avatarCfg.femaleVoiceSettings || { pitch: 1.03, rate: 0.97 };
+                const voiceSched = avatarCfg.voiceSchedule || {
+                  enabled: false,
+                  mode: "manual" as const,
+                  dayStartHour: 6,
+                  nightStartHour: 19,
+                  dayVoice: "female" as const,
+                  nightVoice: "male" as const,
+                  urduVoice: "female" as const,
+                  englishVoice: "male" as const,
+                };
+                const sortedVoices = [...browserVoices].sort((a, b) => {
+                  const score = (v: SpeechSynthesisVoice) =>
+                    v.lang.toLowerCase().includes("ur-pk") ? 3 : v.lang.toLowerCase().startsWith("ur") ? 2 : 0;
+                  return score(b) - score(a);
+                });
+
+                return (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-slate-900/75 border border-cyan-500/40 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-orbitron font-bold text-sm text-cyan-300 uppercase flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-cyan-400" />
+                            <span>Dual Voice Roster (Only 2 Voices: {maleCharName} &amp; {femaleCharName})</span>
+                          </h3>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                            100% Pakistani Urdu accent ke saath dono characters ki pitch, speed, naam aur custom awaz customize karein.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const sampleGender = avatarCfg.characterGender === "male" ? "male" : "female";
+                            const activeSlot = sampleGender === "male" ? maleSlot : femaleSlot;
+                            handleTestVoice(
+                              activeSlot.pitch,
+                              activeSlot.rate,
+                              sampleGender,
+                              activeSlot.preferredBrowserVoiceURI
+                            );
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-950 hover:bg-emerald-900 border border-emerald-400/60 text-emerald-200 text-[11px] font-mono flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>Test 100% Pakistani Urdu ({activeCharName})</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* MALE CHARACTER: WASU */}
+                        <div
+                          className={`p-4 rounded-2xl border space-y-3 transition ${
+                            avatarCfg.characterGender === "male" && customization.activeVoiceMode !== "custom"
+                              ? "bg-sky-950/35 border-sky-400 shadow-lg shadow-sky-950/40"
+                              : "bg-slate-950 border-slate-800"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <div className="font-orbitron font-bold text-xs text-sky-300">
+                                MALE VOICE • {maleCharName.toUpperCase()}
+                              </div>
+                              <div className="text-[10px] text-slate-400">ur-PK-AsadNeural / Charon Pakistani Urdu</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const matchedVoice = ELEVENLABS_VOICE_PRESETS.find((v) => v.gender === "male");
+                                onUpdateCustomization({
+                                  ...customization,
+                                  activeVoiceMode: "male",
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    characterGender: "male",
+                                    personalityId: "wasu_male",
+                                    elevenLabsVoiceId: matchedVoice?.id || avatarCfg.elevenLabsVoiceId,
+                                  },
+                                });
+                                soundEffects.playBeepConfirm();
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${
+                                avatarCfg.characterGender === "male"
+                                  ? "bg-sky-400 text-slate-950"
+                                  : "bg-slate-900 border border-slate-700 text-slate-300 hover:text-white"
+                              }`}
+                            >
+                              {avatarCfg.characterGender === "male" ? "ACTIVE" : "ACTIVATE"}
+                            </button>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-sky-300 mb-1">Male Character Name</label>
+                            <input
+                              type="text"
+                              value={avatarCfg.customMaleName ?? "Wasu"}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: { ...avatarCfg, customMaleName: e.target.value },
+                                })
+                              }
+                              maxLength={24}
+                              placeholder="Wasu"
+                              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 focus:border-sky-400 rounded-xl text-slate-100 text-xs focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                              <span>Pitch</span>
+                              <span className="text-sky-300 font-bold">{maleSlot.pitch.toFixed(2)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.65"
+                              max="1.5"
+                              step="0.02"
+                              value={maleSlot.pitch}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    maleVoiceSettings: { ...maleSlot, pitch: parseFloat(e.target.value) },
+                                  },
+                                })
+                              }
+                              className="w-full accent-sky-400 cursor-pointer"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                              <span>Speed</span>
+                              <span className="text-sky-300 font-bold">{maleSlot.rate.toFixed(2)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.75"
+                              max="1.35"
+                              step="0.02"
+                              value={maleSlot.rate}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    maleVoiceSettings: { ...maleSlot, rate: parseFloat(e.target.value) },
+                                  },
+                                })
+                              }
+                              className="w-full accent-sky-400 cursor-pointer"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">System Voice Engine (Optional)</label>
+                            <select
+                              value={maleSlot.preferredBrowserVoiceURI || ""}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    maleVoiceSettings: {
+                                      ...maleSlot,
+                                      preferredBrowserVoiceURI: e.target.value || undefined,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 text-[11px]"
+                            >
+                              <option value="">Auto Pakistani Urdu ({maleCharName})</option>
+                              {sortedVoices.map((bv) => (
+                                <option key={bv.voiceURI} value={bv.voiceURI}>
+                                  {bv.name} ({bv.lang})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleTestVoice(maleSlot.pitch, maleSlot.rate, "male", maleSlot.preferredBrowserVoiceURI)
+                            }
+                            className="w-full py-1.5 rounded-xl bg-sky-950 hover:bg-sky-900 border border-sky-400/50 text-sky-200 text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Play className="w-3 h-3" />
+                            <span>Test {maleCharName} Voice</span>
+                          </button>
+                        </div>
+
+                        {/* FEMALE CHARACTER: WASI KI JAN */}
+                        <div
+                          className={`p-4 rounded-2xl border space-y-3 transition ${
+                            avatarCfg.characterGender === "female" && customization.activeVoiceMode !== "custom"
+                              ? "bg-cyan-950/35 border-cyan-400 shadow-lg shadow-cyan-950/40"
+                              : "bg-slate-950 border-slate-800"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <div className="font-orbitron font-bold text-xs text-cyan-300">
+                                FEMALE VOICE • {femaleCharName.toUpperCase()}
+                              </div>
+                              <div className="text-[10px] text-slate-400">ur-PK-UzmaNeural / Kore Pakistani Urdu</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const matchedVoice = ELEVENLABS_VOICE_PRESETS.find((v) => v.gender === "female");
+                                onUpdateCustomization({
+                                  ...customization,
+                                  activeVoiceMode: "female",
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    characterGender: "female",
+                                    personalityId: "wasi_ki_jan_female",
+                                    elevenLabsVoiceId: matchedVoice?.id || avatarCfg.elevenLabsVoiceId,
+                                  },
+                                });
+                                soundEffects.playBeepConfirm();
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer ${
+                                avatarCfg.characterGender === "female"
+                                  ? "bg-cyan-400 text-slate-950"
+                                  : "bg-slate-900 border border-slate-700 text-slate-300 hover:text-white"
+                              }`}
+                            >
+                              {avatarCfg.characterGender === "female" ? "ACTIVE" : "ACTIVATE"}
+                            </button>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-cyan-300 mb-1">Female Character Name</label>
+                            <input
+                              type="text"
+                              value={avatarCfg.customFemaleName ?? "Wasi ki Jan"}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const activeId = avatarCfg.activeCharacterId || "wasi_ki_jan";
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    customFemaleName: val,
+                                    customNicknames: {
+                                      ...(avatarCfg.customNicknames || {}),
+                                      [activeId]: val,
+                                    },
+                                  },
+                                });
+                              }}
+                              maxLength={24}
+                              placeholder="Wasi ki Jan"
+                              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 focus:border-cyan-400 rounded-xl text-slate-100 text-xs focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                              <span>Pitch</span>
+                              <span className="text-cyan-300 font-bold">{femaleSlot.pitch.toFixed(2)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.65"
+                              max="1.5"
+                              step="0.02"
+                              value={femaleSlot.pitch}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    femaleVoiceSettings: { ...femaleSlot, pitch: parseFloat(e.target.value) },
+                                  },
+                                })
+                              }
+                              className="w-full accent-cyan-400 cursor-pointer"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                              <span>Speed</span>
+                              <span className="text-cyan-300 font-bold">{femaleSlot.rate.toFixed(2)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.75"
+                              max="1.35"
+                              step="0.02"
+                              value={femaleSlot.rate}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    femaleVoiceSettings: { ...femaleSlot, rate: parseFloat(e.target.value) },
+                                  },
+                                })
+                              }
+                              className="w-full accent-cyan-400 cursor-pointer"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">System Voice Engine (Optional)</label>
+                            <select
+                              value={femaleSlot.preferredBrowserVoiceURI || ""}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    femaleVoiceSettings: {
+                                      ...femaleSlot,
+                                      preferredBrowserVoiceURI: e.target.value || undefined,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 text-[11px]"
+                            >
+                              <option value="">Auto Pakistani Urdu ({femaleCharName})</option>
+                              {sortedVoices.map((bv) => (
+                                <option key={bv.voiceURI} value={bv.voiceURI}>
+                                  {bv.name} ({bv.lang})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleTestVoice(
+                                femaleSlot.pitch,
+                                femaleSlot.rate,
+                                "female",
+                                femaleSlot.preferredBrowserVoiceURI
+                              )
+                            }
+                            className="w-full py-1.5 rounded-xl bg-cyan-950 hover:bg-cyan-900 border border-cyan-400/50 text-cyan-200 text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Play className="w-3 h-3" />
+                            <span>Test {femaleCharName} Voice</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* WHEN TO PLAY WHICH VOICE (SCHEDULE & AUTO-SWITCH) */}
+                    <div className="p-4 rounded-2xl bg-slate-900/70 border border-emerald-500/35 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-orbitron font-bold text-sm text-emerald-300 uppercase flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-emerald-400" />
+                            <span>Voice Schedule (Kab Kaunsi Awaz Chalani Hai)</span>
+                          </h3>
+                          <p className="text-[10px] text-slate-400 font-mono">
+                            Manual switch rakhein ya waqt (Din/Raat) / zaban (Urdu/English) ke mutabiq automatic awaz badlein.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateCustomization({
+                              ...customization,
+                              activeVoiceMode: "custom",
+                            })
+                          }
+                          className={`px-3 py-1 rounded-xl border text-[10px] font-bold cursor-pointer ${
+                            customization.activeVoiceMode === "custom"
+                              ? "bg-purple-600 border-purple-400 text-white"
+                              : "bg-slate-950 border-slate-700 text-slate-300 hover:border-purple-400"
+                          }`}
+                        >
+                          {customization.activeVoiceMode === "custom" ? "CUSTOM CLONE ACTIVE" : "USE CUSTOM CLONE"}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {[
+                          { id: "manual" as const, title: "Manual Control", desc: `Hamesha ${activeCharName} bolegi/bolega` },
+                          { id: "day_night" as const, title: "Day / Night Schedule", desc: "Din aur raat mein alag awaz" },
+                          { id: "language_split" as const, title: "Language Auto-Switch", desc: "Urdu vs English pe khud badle" },
+                        ].map((opt) => {
+                          const isSelected = (!voiceSched.enabled && opt.id === "manual") || (voiceSched.enabled && voiceSched.mode === opt.id);
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                soundEffects.playClick();
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    voiceSchedule: {
+                                      ...voiceSched,
+                                      enabled: opt.id !== "manual",
+                                      mode: opt.id,
+                                    },
+                                  },
+                                });
+                              }}
+                              className={`p-3 rounded-xl border text-left cursor-pointer transition ${
+                                isSelected
+                                  ? "bg-emerald-950/60 border-emerald-400 text-emerald-200"
+                                  : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
+                              }`}
+                            >
+                              <div className="font-bold text-xs">{opt.title}</div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">{opt.desc}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {voiceSched.enabled && voiceSched.mode === "day_night" && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-800 text-[11px]">
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">Day Starts (Hour)</label>
+                            <select
+                              value={voiceSched.dayStartHour}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    voiceSchedule: { ...voiceSched, dayStartHour: Number(e.target.value) },
+                                  },
+                                })
+                              }
+                              className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200"
+                            >
+                              {[5, 6, 7, 8, 9, 10].map((hr) => (
+                                <option key={hr} value={hr}>
+                                  {hr}:00 AM
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">Daytime Voice</label>
+                            <select
+                              value={voiceSched.dayVoice}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    voiceSchedule: {
+                                      ...voiceSched,
+                                      dayVoice: e.target.value === "male" ? "male" : "female",
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200"
+                            >
+                              <option value="female">{femaleCharName} (Female)</option>
+                              <option value="male">{maleCharName} (Male)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">Night Starts (Hour)</label>
+                            <select
+                              value={voiceSched.nightStartHour}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    voiceSchedule: { ...voiceSched, nightStartHour: Number(e.target.value) },
+                                  },
+                                })
+                              }
+                              className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200"
+                            >
+                              {[17, 18, 19, 20, 21, 22].map((hr) => (
+                                <option key={hr} value={hr}>
+                                  {hr - 12}:00 PM
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">Nighttime Voice</label>
+                            <select
+                              value={voiceSched.nightVoice}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    voiceSchedule: {
+                                      ...voiceSched,
+                                      nightVoice: e.target.value === "male" ? "male" : "female",
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200"
+                            >
+                              <option value="male">{maleCharName} (Male)</option>
+                              <option value="female">{femaleCharName} (Female)</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
+
+                      {voiceSched.enabled && voiceSched.mode === "language_split" && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800 text-[11px]">
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">When Speaking Urdu / Punjabi</label>
+                            <select
+                              value={voiceSched.urduVoice}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    voiceSchedule: {
+                                      ...voiceSched,
+                                      urduVoice: e.target.value === "male" ? "male" : "female",
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200"
+                            >
+                              <option value="female">{femaleCharName} (Female)</option>
+                              <option value="male">{maleCharName} (Male)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-1">When Speaking English</label>
+                            <select
+                              value={voiceSched.englishVoice}
+                              onChange={(e) =>
+                                onUpdateCustomization({
+                                  ...customization,
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    voiceSchedule: {
+                                      ...voiceSched,
+                                      englishVoice: e.target.value === "male" ? "male" : "female",
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200"
+                            >
+                              <option value="male">{maleCharName} (Male)</option>
+                              <option value="female">{femaleCharName} (Female)</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ElevenLabs + Fast Talking Settings */}
               <div className="p-4 rounded-2xl bg-slate-900/60 border border-cyan-500/30 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-orbitron font-bold text-sm text-cyan-300 uppercase flex items-center gap-2">
                     <Zap className="w-4 h-4 text-amber-400" />
-                    <span>ElevenLabs Neural Voice & Fast Talk</span>
+                    <span>ElevenLabs Neural Voice &amp; Fast Talk</span>
                   </h3>
                   <span
                     className={`px-2 py-0.5 rounded text-[10px] ${
@@ -625,7 +1219,7 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                         : "bg-slate-950 text-slate-400 border border-slate-700"
                     }`}
                   >
-                    {elevenServerConfigured ? "ELEVENLABS ONLINE" : "NEURAL FALLBACK READY"}
+                    {elevenServerConfigured ? "ELEVENLABS ONLINE" : "100% PAKISTANI URDU HD"}
                   </span>
                 </div>
 
@@ -657,7 +1251,7 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                   <label className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between cursor-pointer">
                     <div>
                       <div className="font-bold text-slate-200">Real-Time Fast Talking</div>
-                      <div className="text-[10px] text-slate-400">Instant low-latency response & speech</div>
+                      <div className="text-[10px] text-slate-400">Instant low-latency response &amp; speech</div>
                     </div>
                     <input
                       type="checkbox"
@@ -673,145 +1267,79 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                   </label>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-1">ElevenLabs Voice Preset</label>
-                    <select
-                      value={avatarCfg.elevenLabsVoiceId}
-                      onChange={(e) =>
-                        onUpdateCustomization({
-                          ...customization,
-                          avatarConfig: { ...avatarCfg, elevenLabsVoiceId: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-200"
-                    >
-                      {ELEVENLABS_VOICE_PRESETS.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.name} ({v.style})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-1">AI Personality (24 Modes)</label>
-                    <select
-                      value={avatarCfg.personalityId}
-                      onChange={(e) =>
-                        onUpdateCustomization({
-                          ...customization,
-                          avatarConfig: { ...avatarCfg, personalityId: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-200"
-                    >
-                      {PERSONALITY_MODES.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.emoji} {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">ElevenLabs Voice Preset</label>
+                  <select
+                    value={avatarCfg.elevenLabsVoiceId}
+                    onChange={(e) =>
+                      onUpdateCustomization({
+                        ...customization,
+                        avatarConfig: { ...avatarCfg, elevenLabsVoiceId: e.target.value },
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-200"
+                  >
+                    {ELEVENLABS_VOICE_PRESETS.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} ({v.style})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              {/* Active Voice Persona */}
-              <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
-                <h3 className="font-orbitron font-bold text-sm text-purple-300 uppercase flex items-center gap-2">
-                  <Volume2 className="w-4 h-4 text-purple-400" />
-                  <span>Voice Persona Selection</span>
-                </h3>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <button
-                    onClick={() => {
-                      soundEffects.playClick();
-                      onUpdateCustomization({ ...customization, activeVoiceMode: "male" });
-                      speechService.speak("Male quantum voice profile selected.", { lang: language, gender: "male" });
-                    }}
-                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                      customization.activeVoiceMode === "male"
-                        ? "bg-purple-950 border-purple-400 text-purple-300"
-                        : "bg-slate-950 border-slate-800 text-slate-400"
-                    }`}
-                  >
-                    <div className="font-bold text-xs">MALE PERSONA</div>
-                    <div className="text-[10px] text-slate-500">Deep Resonant AI Jarvis</div>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      soundEffects.playClick();
-                      onUpdateCustomization({ ...customization, activeVoiceMode: "female" });
-                      speechService.speak("Female quantum voice profile selected.", { lang: language, gender: "female" });
-                    }}
-                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                      customization.activeVoiceMode === "female"
-                        ? "bg-purple-950 border-purple-400 text-purple-300"
-                        : "bg-slate-950 border-slate-800 text-slate-400"
-                    }`}
-                  >
-                    <div className="font-bold text-xs">FEMALE PERSONA</div>
-                    <div className="text-[10px] text-slate-500">Smooth Crisp Quantum Voice</div>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      soundEffects.playClick();
-                      onUpdateCustomization({ ...customization, activeVoiceMode: "custom" });
-                    }}
-                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
-                      customization.activeVoiceMode === "custom"
-                        ? "bg-purple-950 border-purple-400 text-purple-300"
-                        : "bg-slate-950 border-slate-800 text-slate-400"
-                    }`}
-                  >
-                    <div className="font-bold text-xs">CUSTOM CLONED VOICE</div>
-                    <div className="text-[10px] text-slate-500">User or Friend Voice Sample</div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Custom Voice Studio (Record or Clone Friend's Voice) */}
+              {/* Custom Voice Studio (Record, Upload MP3/WAV, & Assign to Wasu / Wasi ki Jan) */}
               <div className="p-5 rounded-2xl bg-slate-900 border border-purple-500/30 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-orbitron font-bold text-sm text-purple-300 uppercase flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-purple-400" />
-                    <span>Custom Voice Studio & Cloner</span>
+                    <Volume2 className="w-4 h-4 text-purple-400" />
+                    <span>Custom Voice Studio &amp; Audio Uploader</span>
                   </h3>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-500/30">
-                    VOICE PROFILE BUILDER
+                    ADD YOUR OWN VOICE
                   </span>
                 </div>
 
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Apni ya apni female friend ki voice add karein! Aap microphone se direct voice record kar sakte hain ya custom pitch aur rate adjust kar ke naya profile save kar sakte hain.
+                  Apni khud ki voice add karein, mic se record karein ya MP3/WAV/M4A file upload karein — aur choose karein ke woh <span className="text-sky-300 font-bold">{maleCharName}</span> ya <span className="text-cyan-300 font-bold">{femaleCharName}</span> par kab chale.
                 </p>
 
-                {/* Form to create custom voice */}
                 <form onSubmit={handleSaveCustomVoice} className="space-y-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[11px] font-mono text-slate-400 mb-1">Voice Profile Name</label>
                       <input
                         type="text"
                         value={newVoiceName}
                         onChange={(e) => setNewVoiceName(e.target.value)}
-                        placeholder="e.g. My Friend Ayesha or Commander Voice"
+                        placeholder={`e.g. Custom ${maleCharName} or Sweet ${femaleCharName}`}
                         required
                         className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs font-mono"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-mono text-slate-400 mb-1">Base Vocal Persona</label>
+                      <label className="block text-[11px] font-mono text-slate-400 mb-1">Base Gender</label>
                       <select
                         value={newVoiceGender}
-                        onChange={(e) => setNewVoiceGender(e.target.value as any)}
+                        onChange={(e) => setNewVoiceGender(e.target.value === "male" ? "male" : "female")}
                         className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs font-mono"
                       >
-                        <option value="female">Female (Soft / Crisp Tone)</option>
-                        <option value="male">Male (Deep / Authoritative Tone)</option>
+                        <option value="female">Female ({femaleCharName})</option>
+                        <option value="male">Male ({maleCharName})</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-mono text-slate-400 mb-1">Assign To</label>
+                      <select
+                        value={newVoiceAssignTo}
+                        onChange={(e) => setNewVoiceAssignTo(e.target.value as "custom" | "male" | "female")}
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs font-mono"
+                      >
+                        <option value="custom">Standalone Custom Voice</option>
+                        <option value="male">Attach to {maleCharName} (Male)</option>
+                        <option value="female">Attach to {femaleCharName} (Female)</option>
                       </select>
                     </div>
                   </div>
@@ -820,14 +1348,14 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                     <div>
                       <div className="flex justify-between text-[11px] font-mono text-slate-400 mb-1">
-                        <span>Vocal Pitch (Pitch Frequency)</span>
+                        <span>Vocal Pitch</span>
                         <span className="text-cyan-400 font-bold">{newVoicePitch.toFixed(2)}x</span>
                       </div>
                       <input
                         type="range"
-                        min="0.6"
-                        max="1.7"
-                        step="0.05"
+                        min="0.65"
+                        max="1.5"
+                        step="0.02"
                         value={newVoicePitch}
                         onChange={(e) => setNewVoicePitch(parseFloat(e.target.value))}
                         className="w-full accent-cyan-400 cursor-pointer"
@@ -836,14 +1364,14 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
 
                     <div>
                       <div className="flex justify-between text-[11px] font-mono text-slate-400 mb-1">
-                        <span>Speech Rate (Speed)</span>
+                        <span>Speech Speed</span>
                         <span className="text-purple-400 font-bold">{newVoiceRate.toFixed(2)}x</span>
                       </div>
                       <input
                         type="range"
-                        min="0.7"
-                        max="1.4"
-                        step="0.05"
+                        min="0.75"
+                        max="1.35"
+                        step="0.02"
                         value={newVoiceRate}
                         onChange={(e) => setNewVoiceRate(parseFloat(e.target.value))}
                         className="w-full accent-purple-400 cursor-pointer"
@@ -851,9 +1379,27 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Microphone Record Sample */}
+                  {browserVoices.length > 0 && (
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1">Browser/Device Voice Override (Optional)</label>
+                      <select
+                        value={newVoiceBrowserURI}
+                        onChange={(e) => setNewVoiceBrowserURI(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 text-xs"
+                      >
+                        <option value="">Default Pakistani Urdu Voice</option>
+                        {browserVoices.map((bv) => (
+                          <option key={bv.voiceURI} value={bv.voiceURI}>
+                            {bv.name} ({bv.lang})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Microphone Record Sample + Audio File Upload */}
                   <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={isRecordingVoice ? stopRecordingVoice : startRecordingVoice}
@@ -863,9 +1409,15 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                             : "bg-slate-900 border border-slate-700 hover:border-purple-400 text-slate-300"
                         }`}
                       >
-                        {isRecordingVoice ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5 text-purple-400" />}
-                        <span>{isRecordingVoice ? "STOP RECORDING" : "RECORD 5-SEC VOICE SAMPLE"}</span>
+                        <AudioWaveform className={`w-3.5 h-3.5 ${isRecordingVoice ? "text-white animate-pulse" : "text-purple-400"}`} />
+                        <span>{isRecordingVoice ? "STOP RECORDING" : "RECORD VOICE"}</span>
                       </button>
+
+                      <label className="px-3 py-2 rounded-xl text-xs font-mono bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-300 flex items-center gap-1.5 cursor-pointer">
+                        <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>UPLOAD AUDIO</span>
+                        <input type="file" accept="audio/*" onChange={handleUploadCustomVoiceFile} className="hidden" />
+                      </label>
 
                       {recordedAudioUrl && (
                         <audio src={recordedAudioUrl} controls className="h-7 max-w-[180px]" />
@@ -875,7 +1427,9 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => handleTestVoice(newVoicePitch, newVoiceRate, newVoiceGender)}
+                        onClick={() =>
+                          handleTestVoice(newVoicePitch, newVoiceRate, newVoiceGender, newVoiceBrowserURI || undefined)
+                        }
                         className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-400 text-cyan-300 font-mono text-xs flex items-center gap-1 cursor-pointer"
                       >
                         <Play className="w-3 h-3" />
@@ -886,7 +1440,7 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                         type="submit"
                         className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold font-mono text-xs cursor-pointer shadow-lg shadow-purple-900/50"
                       >
-                        SAVE VOICE CLONE
+                        SAVE CUSTOM VOICE
                       </button>
                     </div>
                   </div>
@@ -894,52 +1448,160 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
 
                 {/* Saved Profiles List */}
                 <div className="space-y-2">
-                  <span className="text-[11px] font-mono text-slate-400">SAVED CUSTOM VOICES:</span>
+                  <span className="text-[11px] font-mono text-slate-400">SAVED VOICE PROFILES:</span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {customization.customVoices.map((v) => (
-                      <div
-                        key={v.id}
-                        className={`p-3 rounded-xl border flex items-center justify-between ${
-                          customization.activeCustomVoiceId === v.id && customization.activeVoiceMode === "custom"
-                            ? "bg-purple-950/40 border-purple-400 text-purple-200"
-                            : "bg-slate-950 border-slate-800 text-slate-300"
-                        }`}
-                      >
-                        <div>
-                          <div className="font-bold text-xs text-slate-100">{v.name}</div>
-                          <div className="text-[10px] text-slate-500">
-                            Pitch: {v.pitch}x {"\u2022"} Speed: {v.rate}x {"\u2022"} {v.gender.toUpperCase()}
+                    {customization.customVoices.map((v) => {
+                      const sampleSrc = v.audioBase64 || v.audioBlobUrl;
+                      const isActiveCustom =
+                        customization.activeCustomVoiceId === v.id && customization.activeVoiceMode === "custom";
+                      const isSystemBuiltIn =
+                        v.id === "voice-wasi-ki-jan-ur" || v.id === "voice-wasu-ur";
+                      return (
+                        <div
+                          key={v.id}
+                          className={`p-3 rounded-xl border flex flex-col gap-2 ${
+                            isActiveCustom
+                              ? "bg-purple-950/40 border-purple-400 text-purple-200"
+                              : "bg-slate-950 border-slate-800 text-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="font-bold text-xs text-slate-100">{v.name}</div>
+                              <div className="text-[10px] text-slate-400">
+                                Pitch: {v.pitch.toFixed(2)}x {"\u2022"} Speed: {v.rate.toFixed(2)}x {"\u2022"} {v.gender.toUpperCase()}
+                                {sampleSrc ? " • Audio Sample Attached" : ""}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (sampleSrc) {
+                                    speechService.playCustomAudioSample(sampleSrc);
+                                  } else {
+                                    handleTestVoice(v.pitch, v.rate, v.gender, v.browserVoiceURI);
+                                  }
+                                }}
+                                className="p-1 rounded bg-slate-900 hover:text-cyan-300 text-slate-400 cursor-pointer"
+                                title={sampleSrc ? "Play Recorded/Uploaded Clip" : "Test Pakistani Urdu Speech"}
+                              >
+                                <Play className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const matchedPreset = ELEVENLABS_VOICE_PRESETS.find((p) => p.gender === v.gender);
+                                  onUpdateCustomization({
+                                    ...customization,
+                                    activeVoiceMode: isSystemBuiltIn ? v.gender : "custom",
+                                    activeCustomVoiceId: v.id,
+                                    avatarConfig: {
+                                      ...avatarCfg,
+                                      characterGender: v.gender,
+                                      personalityId: v.gender === "male" ? "wasu_male" : "wasi_ki_jan_female",
+                                      ...(matchedPreset ? { elevenLabsVoiceId: matchedPreset.id } : {}),
+                                    },
+                                  });
+                                  soundEffects.playBeepConfirm();
+                                }}
+                                className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
+                                  isActiveCustom ||
+                                  (isSystemBuiltIn && customization.activeVoiceMode === v.gender)
+                                    ? "bg-purple-600 text-white"
+                                    : "bg-slate-900 text-slate-300 hover:text-white"
+                                }`}
+                              >
+                                {isActiveCustom || (isSystemBuiltIn && customization.activeVoiceMode === v.gender)
+                                  ? "ACTIVE"
+                                  : "USE"}
+                              </button>
+                              {!isSystemBuiltIn && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const filtered = customization.customVoices.filter((cv) => cv.id !== v.id);
+                                    onUpdateCustomization({
+                                      ...customization,
+                                      customVoices: filtered,
+                                      activeVoiceMode:
+                                        customization.activeCustomVoiceId === v.id ? "female" : customization.activeVoiceMode,
+                                      activeCustomVoiceId:
+                                        customization.activeCustomVoiceId === v.id ? undefined : customization.activeCustomVoiceId,
+                                    });
+                                    soundEffects.playClick();
+                                  }}
+                                  className="p-1 rounded bg-slate-900 hover:text-rose-400 text-slate-500 cursor-pointer"
+                                  title="Delete Custom Voice"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onUpdateCustomization({
+                                  ...customization,
+                                  activeVoiceMode: "male",
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    characterGender: "male",
+                                    personalityId: "wasu_male",
+                                    maleVoiceSettings: {
+                                      pitch: v.pitch,
+                                      rate: v.rate,
+                                      preferredBrowserVoiceURI: v.browserVoiceURI,
+                                      activeCustomVoiceId: v.id,
+                                    },
+                                  },
+                                });
+                                soundEffects.playBeepConfirm();
+                              }}
+                              className={`px-2 py-0.5 rounded border cursor-pointer ${
+                                avatarCfg.maleVoiceSettings?.activeCustomVoiceId === v.id
+                                  ? "bg-sky-500/20 border-sky-400 text-sky-200"
+                                  : "bg-slate-900 border-slate-800 text-slate-400 hover:text-sky-200"
+                              }`}
+                            >
+                              Set for {maleCharName}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onUpdateCustomization({
+                                  ...customization,
+                                  activeVoiceMode: "female",
+                                  avatarConfig: {
+                                    ...avatarCfg,
+                                    characterGender: "female",
+                                    personalityId: "wasi_ki_jan_female",
+                                    femaleVoiceSettings: {
+                                      pitch: v.pitch,
+                                      rate: v.rate,
+                                      preferredBrowserVoiceURI: v.browserVoiceURI,
+                                      activeCustomVoiceId: v.id,
+                                    },
+                                  },
+                                });
+                                soundEffects.playBeepConfirm();
+                              }}
+                              className={`px-2 py-0.5 rounded border cursor-pointer ${
+                                avatarCfg.femaleVoiceSettings?.activeCustomVoiceId === v.id
+                                  ? "bg-cyan-500/20 border-cyan-400 text-cyan-200"
+                                  : "bg-slate-900 border-slate-800 text-slate-400 hover:text-cyan-200"
+                              }`}
+                            >
+                              Set for {femaleCharName}
+                            </button>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleTestVoice(v.pitch, v.rate, v.gender)}
-                            className="p-1 rounded bg-slate-900 hover:text-cyan-300 text-slate-400"
-                            title="Test Speech"
-                          >
-                            <Play className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              onUpdateCustomization({
-                                ...customization,
-                                activeVoiceMode: "custom",
-                                activeCustomVoiceId: v.id,
-                              });
-                              soundEffects.playBeepConfirm();
-                            }}
-                            className={`px-2 py-1 rounded text-[10px] font-bold ${
-                              customization.activeCustomVoiceId === v.id && customization.activeVoiceMode === "custom"
-                                ? "bg-purple-600 text-white"
-                                : "bg-slate-900 text-slate-400 hover:text-white"
-                            }`}
-                          >
-                            {customization.activeCustomVoiceId === v.id && customization.activeVoiceMode === "custom" ? "ACTIVE" : "USE"}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -1040,10 +1702,6 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                           };
                           saveStoredSecurityConfig(next);
                           onUpdateCustomization({ ...customization, securityConfig: next });
-                          speechService.speak("Fingerprint unlock active ho gaya hai Wasi jaan.", {
-                            lang: language,
-                            gender: "female",
-                          });
                         }
                       }}
                       className="flex-1 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer transition"
@@ -1129,10 +1787,6 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                                 };
                                 saveStoredSecurityConfig(next);
                                 onUpdateCustomization({ ...customization, securityConfig: next });
-                                speechService.speak("Face unlock calibrate ho gaya hai Wasi jaan.", {
-                                  lang: language,
-                                  gender: "female",
-                                });
                               }
                             }, 1800);
                             return;
@@ -1382,7 +2036,7 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
 
                 <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 text-amber-300 text-[11px] flex items-center gap-2">
                   <Shield className="w-4 h-4 shrink-0" />
-                  <span>Jab yeh timer poora hoga to Zoya aapke phone ko mandatory eye-rest mode mein daal degi taa-ke aankhon ko sakoon mil sake.</span>
+                  <span>Jab yeh timer poora hoga to {activeCharName} aapke phone ko mandatory eye-rest mode mein daal degi taa-ke aankhon ko sakoon mil sake.</span>
                 </div>
               </div>
             </div>
@@ -1424,6 +2078,29 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                     <span>RESTORE BACKUP FILE</span>
                   </button>
                 </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-rose-300 text-xs flex items-center gap-1.5">
+                    <Trash2 className="w-4 h-4" />
+                    <span>Clear All Cache &amp; Personal Data</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Deletes all cached tasks, expenses, life records, health logs, and browser caches so you start 100% blank.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    soundEffects.playAlert();
+                    await storageService.clearAllCacheAndPersonalData();
+                    window.location.reload();
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold font-mono text-xs transition cursor-pointer shrink-0"
+                >
+                  CLEAR CACHE &amp; RESET
+                </button>
               </div>
             </div>
           )}

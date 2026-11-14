@@ -35,13 +35,14 @@ export const MandatoryHealthLockdown: React.FC<MandatoryHealthLockdownProps> = (
     }
 
     soundEffects.playAlert();
-
-    const announce =
+    speechService.speak(
       language === "pa"
-        ? "Wasi paji! Tussi continuous PC use kar rahe o. Tuhadi sehat layi 5 minute da mandatory rest shuru ho chukeya ae. Hun PC use karna band karo te rest karo."
-        : "Wasi Sahab! Aap musalsal PC use kar rahe hain. Aapki sehat, kamar aur aankhon ki hifazat ke liye Quantum Mandatory Rest shuru ho chuka hai. Rest complete hone tak screen locked rahegi.";
-
-    speechService.speak(announce, { lang: language, gender: voiceGender });
+        ? "Wasi paji, mandatory health rest shuru ho gaya ae. Aankhan te gardan nu aaram dyo."
+        : language === "en"
+        ? `Mandatory health rest active for ${durationMinutes} minutes. Look away from screen and stretch.`
+        : `Wasi Sahab, screen time limit poori ho gayi hai. ${durationMinutes} minute ka health break lein aur aankhon ko aaram dein.`,
+      { lang: language, gender: voiceGender }
+    );
 
     const timer = setInterval(() => {
       setSecondsLeft((prev) => (prev <= 0 ? 0 : prev - 1));
@@ -59,14 +60,15 @@ export const MandatoryHealthLockdown: React.FC<MandatoryHealthLockdownProps> = (
 
   useEffect(() => {
     if (!isOpen || secondsLeft !== 0) return;
-    soundEffects.playQuantumStartup();
-    const doneGreet =
-      language === "pa"
-        ? "Rest complete ho gaya Wasi paji! Tussi fresh ho ke dobara kaam shuru kar sakde o."
-        : "Shabash Wasi Sahab! Rest complete ho chuka hai. Ab aap fresh mind ke sath wapas kaam continue kar sakte hain.";
-    speechService.speak(doneGreet, { lang: language, gender: voiceGender });
+    soundEffects.playBeepConfirm();
+    speechService.speak(
+      language === "en"
+        ? "Health rest complete. System unlocked."
+        : "Health rest mukammal ho gaya hai. System unlock ho raha hai.",
+      { lang: language, gender: voiceGender }
+    );
     onRestCompleted();
-  }, [isOpen, secondsLeft, language, voiceGender, onRestCompleted]);
+  }, [isOpen, secondsLeft, onRestCompleted, language, voiceGender]);
 
   if (!isOpen) return null;
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Mic,
-  MicOff,
+  AudioWaveform,
+  Square,
   Send,
   Sparkles,
   X,
@@ -12,17 +12,21 @@ import {
   Youtube,
   Upload,
   Zap,
-  User,
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
+import { storageService } from "../services/storage";
 import {
   generateAIOrCanvasImage,
   generateAIOrCanvasVideo,
   captureScreenSnapshotBase64,
 } from "../services/mediaStudioGenerator";
-import { PERSONALITY_MODES } from "../data/jarvisCatalog";
-import { detectBodyMovementFromText, BODY_MOVEMENT_COMMANDS } from "../utils/bodyMovementParser";
+import {
+  PERSONALITY_MODES,
+  ELEVENLABS_VOICE_PRESETS,
+  getCharacterDisplayName,
+  isIdentityVideoCommand,
+} from "../data/jarvisCatalog";
 import { readPhoneHardwareTelemetry } from "../services/systemTelemetry";
 import {
   isNativeAndroidApk,
@@ -66,9 +70,14 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
   autoListenTrigger = 0,
   initialCommand = null,
 }) => {
+  const activeGender = avatarConfig?.characterGender || "female";
   const activePersonality =
     PERSONALITY_MODES.find((p) => p.id === avatarConfig?.personalityId) ||
+    PERSONALITY_MODES.find((p) => p.voiceGender === activeGender) ||
     PERSONALITY_MODES[0];
+  const maleCharName = getCharacterDisplayName(avatarConfig, "male");
+  const femaleCharName = getCharacterDisplayName(avatarConfig, "female");
+  const activeCharName = getCharacterDisplayName(avatarConfig, activeGender);
 
   const [messages, setMessages] = useState<JarvisChatMessage[]>([
     {
@@ -76,10 +85,10 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
       sender: "jarvis",
       text:
         language === "pa"
-          ? activePersonality.greetingPa
+          ? `Ji Wasi! Main ${activeCharName} hazir aan. 'Hi Jarvis' ya 'Hi ${activeCharName}' bol ke apna hukam dyo.`
           : language === "en"
-          ? activePersonality.greetingEn
-          : activePersonality.greetingUr,
+          ? `${activeCharName} online, Commander Wasi. Say 'Hi Jarvis' or 'Hi ${activeCharName}' anytime you want me to listen.`
+          : `Assalam o Alaikum Wasi Sahab! Main ${activeCharName} hoon. 'Hi Jarvis' ya 'Hi ${activeCharName}' bol kar apna command dein.`,
       language,
       timestamp: "Just now",
       quantumTelemetry: "Coherence: 99.98%",
@@ -93,27 +102,43 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
   const [micNotice, setMicNotice] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const speakWithPersonality = (text: string, langOverride?: LanguageCode) => {
+  const handleSendRef = useRef<(text?: string) => Promise<void>>(async () => {});
+  const isProcessingRef = useRef(false);
+  isProcessingRef.current = isProcessing;
+
+  const speakWithPersonality = (
+    text: string,
+    langOverride?: LanguageCode,
+    voiceOverride?: {
+      pitch?: number;
+      rate?: number;
+      gender?: VoiceGender;
+      useElevenLabs?: boolean;
+      urduSpeechText?: string;
+    }
+  ) => {
     const fast = avatarConfig?.fastTalkingMode ?? true;
+    const baseGender = voiceOverride?.gender || activePersonality.voiceGender || voiceGender;
+    const basePitch = voiceOverride?.pitch ?? activePersonality.pitch;
+    const baseRate = voiceOverride?.rate ?? activePersonality.rate;
     speechService.speak(text, {
       lang: langOverride || language,
-      gender: activePersonality.voiceGender || voiceGender,
-      pitch: activePersonality.pitch,
-      rate: fast ? Math.max(activePersonality.rate, 1.12) : activePersonality.rate,
+      gender: baseGender,
+      pitch: basePitch,
+      rate: fast ? Math.max(baseRate, 1.06) : baseRate,
       fast,
-      useElevenLabs: avatarConfig?.useElevenLabs,
+      useElevenLabs: voiceOverride?.useElevenLabs ?? avatarConfig?.useElevenLabs,
       elevenLabsVoiceId: avatarConfig?.elevenLabsVoiceId,
+      urduSpeechText: voiceOverride?.urduSpeechText,
     });
   };
 
   // Suggested voice commands
   const suggestedCommands = [
-    "Mjy humanoid model dikhao",
-    "Sirf face hologram dikhao",
-    "Hero pose dikhao Zoya",
-    "Dance karo jaan",
-    "Kick karo Zoya",
-    "Kuch bhi perform karo",
+    "Mere pending tasks batao",
+    "Meri health aur pani ka status batao",
+    "Messages aur calls check karo",
+    "Mere phone ki info batao",
   ];
 
   const lastAutoListenRef = useRef(0);
@@ -123,72 +148,155 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Register live command callbacks (never stale!) whenever modal is open
   useEffect(() => {
     if (!isOpen) return;
-    speechService.setCallbacks({
-      onStart: () => setIsListening(true),
+
+    speechService.setCommandCallbacks({
+      onStart: () => {
+        setMicNotice(null);
+        setIsListening(true);
+      },
       onResult: (transcript, isFinal) => {
         setInputVal(transcript);
-        if (isFinal) {
-          handleSendMessage(transcript);
+        if (isFinal && transcript.trim()) {
+          handleSendRef.current(transcript.trim());
         }
       },
-      onError: () => setIsListening(false),
-      onEnd: () => setIsListening(false),
-    });
-  }, [isOpen, language, avatarConfig?.personalityId]);
+      onAudioCaptured: async (audioBase64, mimeType) => {
+        if (isProcessingRef.current) return;
+        setIsListening(false);
+        setIsProcessing(true);
+        setMicNotice("Awaaz process ho rahi hai...");
+        try {
+          const res = await fetch("/api/jarvis/voice-audio", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              audioBase64,
+              mimeType,
+              language,
+              characterGender: activeGender,
+              personalityName: activeCharName,
+              personalityPrompt: activePersonality.systemPromptModifier,
+              userProfile,
+              fastMode: avatarConfig?.fastTalkingMode ?? true,
+            }),
+          });
+          if (!res.ok) {
+            setMicNotice("Voice server busy — dobara koshish karein ya neeche type karein.");
+            setTimeout(() => setMicNotice(null), 5000);
+            return;
+          }
+          const data = await res.json();
+          setMicNotice(null);
 
-  // Hands-Free "Hi Jarvis" / "Wake up Jarvis" -> auto-starts mic recording without button tap!
+          if (data.silentAudio) {
+            setMicNotice(
+              data.reply || "Awaaz clear detect nahi hui. Mic button daba kar kareeb se bolein."
+            );
+            setTimeout(() => setMicNotice(null), 5000);
+            return;
+          }
+
+          const heardText = (data.transcript || "").trim();
+          const replyText = (data.reply || "Ji Commander, hukam farmaein.").trim();
+
+          setMessages((prev) => [
+            ...prev,
+            ...(heardText
+              ? [
+                  {
+                    id: Date.now().toString(),
+                    sender: "user" as const,
+                    text: `🎤 ${heardText}`,
+                    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                  },
+                ]
+              : []),
+            {
+              id: (Date.now() + 1).toString(),
+              sender: "jarvis" as const,
+              text: replyText,
+              language: data.languageDetected || language,
+              actionExecuted: data.action && data.action !== "NONE" ? data.action : undefined,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            },
+          ]);
+
+          if (data.action === "SHOW_IDENTITY_VIDEO") {
+            speechService.cancelSpeech();
+            onExecuteAction("SHOW_IDENTITY_VIDEO", data.actionPayload);
+          } else {
+            speakWithPersonality(replyText, data.languageDetected || language, {
+              urduSpeechText: data.urduSpeechText,
+            });
+            if (data.action && data.action !== "NONE") {
+              onExecuteAction(data.action, data.actionPayload);
+            }
+          }
+        } catch {
+          setMicNotice("Voice server error — dobara koshish karein ya neeche type karein.");
+          setTimeout(() => setMicNotice(null), 5000);
+        } finally {
+          setIsProcessing(false);
+        }
+      },
+      onError: (errMsg) => {
+        setIsListening(false);
+        setMicNotice(errMsg || "Awaaz detect nahi hui. Mic permission check karein.");
+        setTimeout(() => setMicNotice(null), 5000);
+      },
+      onEnd: () => {
+        setIsListening(false);
+      },
+    });
+  }, [isOpen, language, activeGender, activePersonality.id, userProfile, avatarConfig?.fastTalkingMode]);
+
+  // Hands-Free "Hi Jarvis" -> silently starts one-shot command mic recording without overlapping speaker TTS
   useEffect(() => {
     if (!isOpen || !autoListenTrigger || autoListenTrigger === lastAutoListenRef.current) return;
     lastAutoListenRef.current = autoListenTrigger;
 
-    let started = false;
-    const beginCapture = () => {
-      if (started) return;
-      started = true;
-      soundEffects.playBeepConfirm();
+    const timer = setTimeout(() => {
       const ok = speechService.startListening(language);
       if (!ok) {
-        setMicNotice("Allow Microphone permission once so 'Hi Jarvis' auto-records your command.");
+        setMicNotice("Allow Microphone permission once so 'Hi Jarvis' records your command.");
       }
-    };
+    }, 120);
 
-    const promptText =
-      language === "en"
-        ? "Yes, listening!"
-        : language === "pa"
-        ? "Haanji boliye!"
-        : "Ji boliye!";
-
-    speechService.speak(promptText, {
-      lang: language,
-      gender: activePersonality.voiceGender || voiceGender,
-      fast: true,
-      onEnd: beginCapture,
-    });
-
-    const safety = setTimeout(beginCapture, 1650);
-    return () => clearTimeout(safety);
+    return () => clearTimeout(timer);
   }, [isOpen, autoListenTrigger, language]);
 
   // Execute trailing command spoken right after "Hi Jarvis <command>"
   useEffect(() => {
     if (!isOpen || !initialCommand || initialCommand.id === lastInitialCmdRef.current) return;
     lastInitialCmdRef.current = initialCommand.id;
-    handleSendMessage(initialCommand.text);
+    handleSendRef.current(initialCommand.text);
   }, [isOpen, initialCommand]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isListening || isProcessing) {
-      interval = setInterval(() => {
-        setWaveformLevels(Array.from({ length: 8 }, () => Math.floor(Math.random() * 85) + 15));
-      }, 100);
-    } else {
+    if (!isListening) {
+      if (isProcessing) {
+        const interval = setInterval(() => {
+          setWaveformLevels(Array.from({ length: 8 }, () => Math.floor(Math.random() * 55) + 30));
+        }, 120);
+        return () => clearInterval(interval);
+      }
       setWaveformLevels([15, 25, 20, 30, 20, 25, 15, 20]);
+      return;
     }
-    return () => clearInterval(interval);
+
+    const unsub = speechService.subscribeAudioLevel((lvl) => {
+      const base = Math.max(12, Math.round(lvl * 95));
+      setWaveformLevels(
+        Array.from({ length: 8 }, (_, idx) => {
+          const factor = 0.55 + Math.sin(Date.now() * 0.015 + idx) * 0.45;
+          return Math.min(100, Math.max(10, Math.round(base * factor)));
+        })
+      );
+    });
+    return unsub;
   }, [isListening, isProcessing]);
 
   const toggleMic = () => {
@@ -297,23 +405,88 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
     try {
       const lower = text.toLowerCase();
 
-      // 0. Direct Full-Body Movement Command for Cyber Girlfriend
-      const detectedMove = detectBodyMovementFromText(text);
-      if (detectedMove) {
-        const meta = BODY_MOVEMENT_COMMANDS.find((m) => m.id === detectedMove);
-        const reply = (language === "en" ? meta?.replyEn : meta?.replyUr) || "Ji Jaan, kar diya!";
+      // 0. Instant Holographic Identity Video ("mjy apna ap dikhao" / "apna aap dikhao" / "show yourself")
+      if (isIdentityVideoCommand(text)) {
+        const reply =
+          language === "pa"
+            ? `Ji Wasi paji! Dekho, main ${activeCharName} tuhade saamne hazir haan.`
+            : language === "en"
+            ? `Presenting ${maleCharName} and ${femaleCharName} live on screen, Commander Wasi.`
+            : `Ji Wasi Sahab! Dekhein, main ${activeCharName} aapke saamne hazir hoon.`;
         setMessages((prev) => [
           ...prev,
           {
             id: (Date.now() + 1).toString(),
             sender: "jarvis",
             text: reply,
-            actionExecuted: `AVATAR_MOVE (${detectedMove.toUpperCase()})`,
+            actionExecuted: "SHOW_IDENTITY_VIDEO",
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+        soundEffects.playBeepConfirm();
+        speechService.cancelSpeech();
+        onExecuteAction("SHOW_IDENTITY_VIDEO");
+        return;
+      }
+
+      // 0A-1. Live Tasks & Reminders Report
+      if (
+        lower.includes("task") ||
+        lower.includes("kaam") ||
+        lower.includes("todo") ||
+        lower.includes("reminder")
+      ) {
+        const tasks = storageService.getTasks();
+        const pending = tasks.filter((t) => !t.completed);
+        const reply =
+          tasks.length === 0
+            ? "📋 Abhi aapne koi task ya reminder add nahi kiya. Jab aap tasks add kareinge to main unki detail aur reminder dungi."
+            : pending.length > 0
+            ? `📋 Tasks Summary: ${pending.length} pending, ${tasks.length - pending.length} completed. Top priority: ${pending[0].title}${pending[0].dueDate ? ` (${pending[0].dueDate})` : ""}.`
+            : `✅ Aapke ${tasks.length} add kiye huye tasks complete ho chuke hain.`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            sender: "jarvis",
+            text: reply,
+            actionExecuted: "TASKS_CHECK",
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           },
         ]);
         speakWithPersonality(reply);
-        onExecuteAction("AVATAR_MOVE", { movement: detectedMove });
+        return;
+      }
+
+      // 0A-2. Live Health, Hydration & Ergonomic Status Report
+      if (
+        lower.includes("health") ||
+        lower.includes("sehat") ||
+        lower.includes("pani") ||
+        lower.includes("water") ||
+        lower.includes("sleep") ||
+        lower.includes("steps")
+      ) {
+        const h = storageService.getHealth();
+        const hasHealthData =
+          h.waterDrankGlasses > 0 ||
+          h.dailySteps > 0 ||
+          h.sleepHoursLastNight > 0 ||
+          h.mealsLogged.length > 0;
+        const reply = !hasHealthData
+          ? "💚 Abhi tak aapne pani, steps, sleep ya meals ka koi health log add nahi kiya. Health Guard mein apna data add karein."
+          : `💚 Health Guard: Water ${h.waterDrankGlasses} glasses, ${h.dailySteps} steps logged, ${h.sleepHoursLastNight}h sleep, ${h.mealsLogged.length} meals logged.`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            sender: "jarvis",
+            text: reply,
+            actionExecuted: "HEALTH_STATUS",
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+        speakWithPersonality(reply);
         return;
       }
 
@@ -471,31 +644,6 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
         return;
       }
 
-      // 1. Direct "Open Humanoid" / Avatar command
-      if (
-        lower.includes("open humanoid") ||
-        lower.includes("humanoid khol") ||
-        lower.includes("show humanoid") ||
-        lower.includes("show avatar") ||
-        lower.includes("open avatar") ||
-        lower.includes("real girl avatar")
-      ) {
-        const reply = `${activePersonality.emoji} Ji Wasi Jaan! Aapki Full-Body Cyber Girlfriend Zoya Stage khol rahi hoon.`;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            sender: "jarvis",
-            text: reply,
-            actionExecuted: "OPEN_HUMANOID",
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          },
-        ]);
-        speakWithPersonality(reply);
-        onExecuteAction("OPEN_HUMANOID");
-        return;
-      }
-
       // 2. Image Generation in Chat (/image or natural trigger)
       if (
         lower.startsWith("/image") ||
@@ -579,7 +727,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
         return;
       }
 
-      // 5. Standard Fast-Talk Trilingual Personality Chat
+      // 5. Standard Fast-Talk Trilingual Chat
       const response = await fetch("/api/jarvis/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -587,12 +735,23 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
           message: text,
           language,
           userProfile,
-          personalityName: activePersonality.name,
+          characterGender: activeGender,
+          personalityName: activeCharName,
           personalityPrompt: activePersonality.systemPromptModifier,
           fastMode: avatarConfig?.fastTalkingMode ?? true,
           currentContext: {
             time: new Date().toISOString(),
-            platform: "Desktop OS",
+            platform: "Mobile / Cockpit OS",
+            userTasks: storageService.getTasks(),
+            userLifeRecords: (() => {
+              try {
+                return JSON.parse(localStorage.getItem("q_nexus_life_records") || "[]");
+              } catch {
+                return [];
+              }
+            })(),
+            userHealth: storageService.getHealth(),
+            userExpenses: storageService.getExpenses(),
           },
         }),
       });
@@ -612,10 +771,17 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
 
       setMessages((prev) => [...prev, jarvisMsg]);
       soundEffects.playBeepConfirm();
-      speakWithPersonality(replyText, data.languageDetected || language);
+      if (data.action === "SHOW_IDENTITY_VIDEO") {
+        speechService.cancelSpeech();
+        onExecuteAction("SHOW_IDENTITY_VIDEO", data.actionPayload);
+      } else {
+        speakWithPersonality(replyText, data.languageDetected || language, {
+          urduSpeechText: data.urduSpeechText,
+        });
 
-      if (data.action && data.action !== "NONE") {
-        onExecuteAction(data.action, data.actionPayload);
+        if (data.action && data.action !== "NONE") {
+          onExecuteAction(data.action, data.actionPayload);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -640,6 +806,8 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
     }
   };
 
+  handleSendRef.current = handleSendMessage;
+
   if (!isOpen) return null;
 
   return (
@@ -656,28 +824,55 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
                 QUANTUM FAST-TALK & MEDIA CHAT
               </h3>
               <p className="text-[10px] font-mono text-slate-400">
-                {activePersonality.emoji} {activePersonality.name} • {language.toUpperCase()} •{" "}
-                {avatarConfig?.useElevenLabs ? "ElevenLabs" : "Gemini/Neural"}
+                {activePersonality.emoji} {activeCharName} ({activeGender === "male" ? "Male" : "Female"}) • {language.toUpperCase()} •{" "}
+                {avatarConfig?.useElevenLabs ? "ElevenLabs" : "Pakistani Urdu HD"}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 text-[10px] font-mono">
-            {/* Personality Quick Switcher */}
+            {/* Strictly 2 Voice Personas Switcher */}
             {avatarConfig && onUpdateAvatarConfig && (
-              <select
-                value={avatarConfig.personalityId}
-                onChange={(e) =>
-                  onUpdateAvatarConfig({ ...avatarConfig, personalityId: e.target.value })
-                }
-                className="px-2 py-1 rounded-lg bg-slate-950 border border-purple-500/40 text-purple-200 max-w-[140px]"
-              >
-                {PERSONALITY_MODES.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.emoji} {p.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center rounded-lg bg-slate-950 border border-cyan-500/40 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const maleVoice = ELEVENLABS_VOICE_PRESETS.find((v) => v.gender === "male");
+                    onUpdateAvatarConfig({
+                      ...avatarConfig,
+                      characterGender: "male",
+                      personalityId: "wasu_male",
+                      ...(maleVoice ? { elevenLabsVoiceId: maleVoice.id } : {}),
+                    });
+                  }}
+                  className={`px-2 py-0.5 rounded cursor-pointer transition ${
+                    activeGender === "male"
+                      ? "bg-sky-500 text-slate-950 font-bold"
+                      : "text-slate-300 hover:text-white"
+                  }`}
+                >
+                  🛡️ {maleCharName}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const femaleVoice = ELEVENLABS_VOICE_PRESETS.find((v) => v.gender === "female");
+                    onUpdateAvatarConfig({
+                      ...avatarConfig,
+                      characterGender: "female",
+                      personalityId: "wasi_ki_jan_female",
+                      ...(femaleVoice ? { elevenLabsVoiceId: femaleVoice.id } : {}),
+                    });
+                  }}
+                  className={`px-2 py-0.5 rounded cursor-pointer transition ${
+                    activeGender === "female"
+                      ? "bg-cyan-400 text-slate-950 font-bold"
+                      : "text-slate-300 hover:text-white"
+                  }`}
+                >
+                  💠 {femaleCharName}
+                </button>
+              </div>
             )}
 
             {/* Fast Talk Toggle */}
@@ -702,15 +897,6 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
             )}
 
             <button
-              type="button"
-              onClick={() => onExecuteAction("OPEN_HUMANOID")}
-              className="px-2 py-1 rounded-lg bg-cyan-950 border border-cyan-400/60 text-cyan-300 flex items-center gap-1 cursor-pointer"
-            >
-              <User className="w-3 h-3" />
-              <span>HUMANOID</span>
-            </button>
-
-            <button
               onClick={() => {
                 speechService.cancelSpeech();
                 onClose();
@@ -723,7 +909,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
         </div>
 
         {/* Live Audio Waveform Visualizer Bar */}
-        <div className="px-5 py-2 bg-slate-900/60 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-5 py-2 bg-slate-900/60 border-b border-slate-800 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1 h-5">
               {waveformLevels.map((lvl, idx) => (
@@ -738,14 +924,14 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
             </div>
             <span className="text-[11px] font-mono text-slate-300">
               {isListening
-                ? "🎙️ LISTENING..."
+                ? "🔴 WAVE LISTENING (Auto-stops when done)..."
                 : isProcessing
-                ? "⚡ PROCESSING / GENERATING..."
-                : "READY — TYPE /image, /video, OR PASTE YOUTUBE LINK"}
+                ? "⏳ PROCESSING VOICE..."
+                : 'Mic OFF — Say "Hi Jarvis" for Wave Listener'}
             </span>
           </div>
           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
-            99.98% COHERENCE
+            WAVE TRIGGER
           </span>
         </div>
 
@@ -764,7 +950,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
                 }`}
               >
                 <div className="flex items-center justify-between gap-4 text-[10px] font-mono opacity-60">
-                  <span>{msg.sender === "user" ? "COMMANDER WASI" : activePersonality.name.toUpperCase()}</span>
+                  <span>{msg.sender === "user" ? "COMMANDER WASI" : activeCharName.toUpperCase()}</span>
                   <span>{msg.timestamp}</span>
                 </div>
 
@@ -897,20 +1083,21 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
             <button
               type="button"
               onClick={toggleMic}
+              title={isListening ? "Stop Wave Capture" : "Start Wave Capture"}
               className={`p-2.5 rounded-xl transition cursor-pointer ${
                 isListening
                   ? "bg-amber-500 text-slate-950 animate-pulse"
                   : "bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-cyan-500/30"
               }`}
             >
-              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              {isListening ? <Square className="w-5 h-5" /> : <AudioWaveform className="w-5 h-5" />}
             </button>
 
             <input
               type="text"
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
-              placeholder="Ask anything, paste YouTube URL, /image <prompt>, /video <prompt>, or 'Open Humanoid'..."
+              placeholder="Ask anything, paste YouTube URL, /image <prompt>, /video <prompt>..."
               className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none font-mono text-xs md:text-sm"
             />
 

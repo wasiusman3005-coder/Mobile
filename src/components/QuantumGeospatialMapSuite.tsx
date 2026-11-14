@@ -168,22 +168,11 @@ export const QuantumGeospatialMapSuite: React.FC<QuantumGeospatialMapSuiteProps>
             accuracyMeters: Math.round(pos.coords.accuracy),
           };
           setSelectedLocation(updatedLoc);
-
-          const speech =
-            language === "pa"
-              ? "Live GPS coordinates lock ho gaye ne Wasi paji!"
-              : "Live GPS location acquired. Quantum satellite link locked.";
-          speechService.speak(speech, { lang: language, gender: voiceGender });
         },
-        (err) => {
+        () => {
           setIsLocating(false);
-          soundEffects.playAlert();
           // Fallback to Lahore Center
           setActiveCenter({ lat: 31.5204, lng: 74.3587 });
-          speechService.speak(
-            "GPS unavailable. Loaded primary Command Center coordinates.",
-            { lang: language, gender: voiceGender }
-          );
         },
         { enableHighAccuracy: true, timeout: 8000 }
       );
@@ -243,9 +232,6 @@ export const QuantumGeospatialMapSuite: React.FC<QuantumGeospatialMapSuiteProps>
         description: `Queried Region: ${city.title}`,
       });
       setSearchQuery("");
-      soundEffects.playBeepConfirm();
-    } else {
-      speechService.speak(`Searching sector for: ${searchQuery}`, { lang: language, gender: voiceGender });
     }
   };
 
@@ -587,13 +573,8 @@ export const QuantumGeospatialMapSuite: React.FC<QuantumGeospatialMapSuiteProps>
             <button
               type="button"
               onClick={() => {
-                soundEffects.playBeepConfirm();
                 const phoneLoc = allLocations.find((l) => l.category === "device");
                 if (phoneLoc) handleSelectLoc(phoneLoc);
-                speechService.speak("Focused camera on Commander Wasi's primary mobile device.", {
-                  lang: language,
-                  gender: voiceGender,
-                });
               }}
               className="w-full py-2 px-3 rounded-xl bg-purple-950 hover:bg-purple-900 border border-purple-500/40 text-purple-200 text-xs font-mono transition flex items-center justify-between cursor-pointer"
             >

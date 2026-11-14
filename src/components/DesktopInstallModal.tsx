@@ -37,6 +37,10 @@ export const DesktopInstallModal: React.FC<DesktopInstallModalProps> = ({
   };
 
   const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  const mobileAppLink =
+    currentOrigin && !currentOrigin.includes("localhost") && !currentOrigin.includes("127.0.0.1")
+      ? currentOrigin.replace("https://ais-dev-", "https://ais-pre-")
+      : "https://ais-pre-3b363hdraqq5cmkne56v2i-987831856092.asia-southeast1.run.app";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/85 backdrop-blur-md animate-fadeIn font-rajdhani">
@@ -119,7 +123,7 @@ export const DesktopInstallModal: React.FC<DesktopInstallModalProps> = ({
               <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-950/60 to-cyan-950/40 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <strong className="text-emerald-300 font-bold text-sm block mb-1">
-                    📱 1-Tap Phone App Install (Zoya 3D + Urdu Voice + Fingerprint)
+                    📱 1-Tap Phone App Install (3D Hologram + Pakistani Urdu + Fingerprint)
                   </strong>
                   <p className="text-slate-300 leading-relaxed">
                     Google Chrome mein yeh button dabate hi Q-NEXUS bilkul real Android app ban kar Home Screen par aa jayega — full screen, offline support, aur bina browser bar ke!
@@ -130,30 +134,26 @@ export const DesktopInstallModal: React.FC<DesktopInstallModalProps> = ({
                 </div>
               </div>
 
-              {currentOrigin && (
-                <div className="p-3.5 rounded-xl bg-slate-900/90 border border-cyan-500/30 space-y-2.5">
-                  <div className="flex items-center gap-2 text-cyan-300 font-bold">
-                    <Globe className="w-4 h-4" />
-                    <span>Step 1: Phone ke Google Chrome mein Shared App Link kholein</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                    <span className="text-emerald-300 truncate">
-                      {currentOrigin.replace("https://ais-dev-", "https://ais-pre-")}
-                    </span>
-                    <button
-                      onClick={() => copyText(currentOrigin.replace("https://ais-dev-", "https://ais-pre-"), 1)}
-                      className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 shrink-0 cursor-pointer"
-                    >
-                      {copiedIndex === 1 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedIndex === 1 ? "Copied" : "Copy"}</span>
-                    </button>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-200 leading-relaxed text-[11px]">
-                    <strong className="text-amber-300 block mb-0.5">⚠️ Zaroori: AI Studio Install Honay Se Kaise Bachein?</strong>
-                    Agar aap link ko <code className="text-white">aistudio.google.com</code> ke andar kholenge to Chrome <strong>AI Studio</strong> ka shortcut bana dega! Hamesha ooper wala direct <code className="text-cyan-300">ais-pre-...run.app</code> link <strong>Direct Chrome Tab</strong> mein kholein (ya upar orange <strong>OPEN DIRECT APP</strong> button dabayein), aur phir Install dabayein — tab sirf <strong>Q-NEXUS</strong> install hoga!
-                  </div>
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-cyan-500/30 space-y-2.5">
+                <div className="flex items-center gap-2 text-cyan-300 font-bold">
+                  <Globe className="w-4 h-4" />
+                  <span>Step 1: Phone ke Google Chrome mein Shared App Link kholein</span>
                 </div>
-              )}
+                <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                  <span className="text-emerald-300 truncate">{mobileAppLink}</span>
+                  <button
+                    onClick={() => copyText(mobileAppLink, 1)}
+                    className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 shrink-0 cursor-pointer"
+                  >
+                    {copiedIndex === 1 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedIndex === 1 ? "Copied" : "Copy"}</span>
+                  </button>
+                </div>
+                <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-200 leading-relaxed text-[11px]">
+                  <strong className="text-amber-300 block mb-0.5">⚠️ Zaroori: AI Studio Install &amp; 403 Error Se Kaise Bachein?</strong>
+                  Phone ke Google Chrome mein wohi Google account sign-in rakhein jis se app banaya hai (ya AI Studio mein Share/Publish permissions allow karein). Direct <code className="text-cyan-300">ais-pre-...run.app</code> link ko <strong>Chrome Tab</strong> mein khol kar Install dabayein — tab sirf <strong>Q-NEXUS</strong> install hoga!
+                </div>
+              </div>
 
               <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2.5">
                 <strong className="text-emerald-400 block">Step-by-Step Android Install:</strong>

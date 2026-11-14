@@ -1,10 +1,18 @@
 import { UserProfile, TaskItem, ExpenseItem, HealthState, EditingMacro, FileItem, DashboardCustomization, AvatarStudioConfig, MobileSecurityConfig } from "../types";
 
+export const CLEAN_SLATE_VERSION = "v3-clean-no-sample";
+
 const STORAGE_KEYS = {
+  CLEAN_VERSION: "q_nexus_clean_cache_version",
   USER_PROFILE: "q_nexus_user_profile",
   TASKS: "q_nexus_tasks",
   EXPENSES: "q_nexus_expenses",
   HEALTH: "q_nexus_health",
+  LIFE_RECORDS: "q_nexus_life_records",
+  STUDY_TASKS: "q_nexus_study_tasks",
+  FOCUS_LOGS: "q_nexus_focus_logs",
+  MOBILE_VAULT_FILES: "q_nexus_mobile_vault_files",
+  FINANCE_SETTINGS: "q_nexus_finance_settings",
   CHAT_LOGS: "q_nexus_chat_logs",
   SECURITY: "q_nexus_security",
   SETTINGS: "q_nexus_settings",
@@ -12,24 +20,36 @@ const STORAGE_KEYS = {
 };
 
 export const defaultAvatarConfig: AvatarStudioConfig = {
-  mode: "real_girl",
-  avatarIndex: 0,
-  outfitIndex: 0,
-  hairstyleIndex: 0,
-  hairColor: "#0f172a",
-  accessories: [],
-  custom2DUrl: "",
-  custom3DUrl: "",
-  custom3DName: "",
-  standbyAnimation: "breathe",
-  autoOutfitChange: false,
-  autoOutfitIntervalSec: 12,
-  floatingAvatarEnabled: true,
-  personalityId: "sweet_girlfriend",
+  characterGender: "female",
+  activeCharacterId: "wasi_ki_jan",
+  customNicknames: {},
+  customFemaleName: "Wasi ki Jan",
+  customMaleName: "Wasu",
+  personalityId: "wasi_ki_jan_female",
   fastTalkingMode: true,
   useElevenLabs: false,
   elevenLabsVoiceId: "EXAVITQu4vr4xnSDxMaL",
-  customWakeWords: ["haath hilao", "dance karo", "flying kiss", "ghoom jao"],
+  customWakeWords: [],
+  maleVoiceSettings: {
+    pitch: 0.94,
+    rate: 0.98,
+    elevenLabsVoiceId: "pNInz6obpgDQGcFmaJgB",
+  },
+  femaleVoiceSettings: {
+    pitch: 1.03,
+    rate: 0.97,
+    elevenLabsVoiceId: "EXAVITQu4vr4xnSDxMaL",
+  },
+  voiceSchedule: {
+    enabled: false,
+    mode: "manual",
+    dayStartHour: 6,
+    nightStartHour: 19,
+    dayVoice: "male",
+    nightVoice: "female",
+    urduVoice: "female",
+    englishVoice: "male",
+  },
 };
 
 export const defaultSecurityConfig: MobileSecurityConfig = {
@@ -59,26 +79,30 @@ export const defaultCustomization: DashboardCustomization = {
   hudGlowLevel: "ultra",
   customVoices: [
     {
-      id: "voice-zoya-pak-urdu",
-      name: "Zoya (Clear Pakistani Urdu Girlfriend)",
+      id: "voice-wasi-ki-jan-ur",
+      name: "Wasi ki Jan (Pakistani Urdu Female)",
       gender: "female",
-      pitch: 1.12,
-      rate: 0.98,
-      description: "Crystal-clear affectionate Pakistani Urdu female accent",
-      dateAdded: "Default Preset",
+      assignedTo: "female",
+      scheduleRule: "always",
+      pitch: 1.03,
+      rate: 0.97,
+      description: "100% Pakistani Urdu female voice",
+      dateAdded: "System Voice",
     },
     {
-      id: "voice-wasi-clone",
-      name: "Commander Wasi (Male Backup)",
+      id: "voice-wasu-ur",
+      name: "Wasu (Pakistani Urdu Male)",
       gender: "male",
-      pitch: 0.85,
+      assignedTo: "male",
+      scheduleRule: "always",
+      pitch: 0.94,
       rate: 0.98,
-      description: "Authoritative resonant male voice profile",
-      dateAdded: "Default Preset",
+      description: "100% Pakistani Urdu male voice",
+      dateAdded: "System Voice",
     },
   ],
   activeVoiceMode: "female",
-  activeCustomVoiceId: "voice-zoya-pak-urdu",
+  activeCustomVoiceId: "voice-wasi-ki-jan-ur",
   avatarConfig: defaultAvatarConfig,
   securityConfig: defaultSecurityConfig,
 };
@@ -86,208 +110,106 @@ export const defaultCustomization: DashboardCustomization = {
 export const defaultUserProfile: UserProfile = {
   username: "wasu3005",
   displayName: "Wasi",
-  title: "Commander & Creator",
+  title: "Personal Commander",
   preferredLanguage: "ur",
   voiceGender: "female",
   dailyWaterTargetGlasses: 8,
   dailyFocusTargetMinutes: 120,
-  monthlyBudget: 150000,
-  emergencyFundTarget: 500000,
-  primarySoftwares: [
-    "Adobe Premiere Pro 2025",
-    "Adobe After Effects",
-    "Adobe Photoshop",
-    "Visual Studio Code",
-    "Blender 4.2",
-    "OBS Studio",
-  ],
-  personalNotes: [
-    "Workstation Telemetry: Synced live with Host PC Hardware Probe",
-    "Diet Priority: High protein, clean meals, avoid late night snacks & oily food",
-    "Workout: Evening 6:00 PM - 7:00 PM (Strength & Cardio)",
-    "Financial Policy: Always save 30% of earnings; analyze before buying non-essentials",
-  ],
-  goals: [
-    "Master advanced 3D Motion Graphics & Unreal Engine",
-    "Complete YouTube high-retention video project before weekend",
-    "Drink 8 glasses of pure water every single day without fail",
-    "Maintain 100% Fazool Kharchi defense on online shopping",
-  ],
+  monthlyBudget: 0,
+  emergencyFundTarget: 0,
+  primarySoftwares: [],
+  personalNotes: [],
+  goals: [],
 };
 
-export const defaultTasks: TaskItem[] = [
-  {
-    id: "task-1",
-    title: "Export Final 4K Master in Adobe Premiere Pro",
-    category: "editing",
-    priority: "high",
-    completed: false,
-    dueDate: "Today, 6:00 PM",
-    assignedToJarvis: true,
-  },
-  {
-    id: "task-2",
-    title: "Review monthly investment yield & budget allocation",
-    category: "finance",
-    priority: "medium",
-    completed: false,
-    dueDate: "Tomorrow",
-    assignedToJarvis: false,
-  },
-  {
-    id: "task-3",
-    title: "Complete 45 min strength workout & 30 min brisk walk",
-    category: "fitness",
-    priority: "high",
-    completed: true,
-    dueDate: "Today",
-    assignedToJarvis: false,
-  },
-  {
-    id: "task-4",
-    title: "Clean temp cache & backup Premiere project to SSD D:",
-    category: "editing",
-    priority: "medium",
-    completed: false,
-    dueDate: "Tonight",
-    assignedToJarvis: true,
-  },
-];
+export const defaultTasks: TaskItem[] = [];
 
-export const defaultExpenses: ExpenseItem[] = [
-  {
-    id: "exp-1",
-    title: "Cloud Backup & Adobe Creative Cloud Subscription",
-    amount: 9800,
-    category: "subscriptions",
-    isFazoolKharchi: false,
-    date: "Yesterday",
-    notes: "Essential for client video deliveries",
-  },
-  {
-    id: "exp-2",
-    title: "Healthy High-Protein Groceries (Eggs, Chicken, Nuts)",
-    amount: 14500,
-    category: "food",
-    isFazoolKharchi: false,
-    date: "3 days ago",
-    notes: "Meal prep nutrition",
-  },
-  {
-    id: "exp-3",
-    title: "High-Speed NVMe 2TB Samsung Pro Drive",
-    amount: 32000,
-    category: "hardware",
-    isFazoolKharchi: false,
-    date: "1 week ago",
-    notes: "Crucial for 4K ProRes 422 HQ footage playback",
-  },
-  {
-    id: "exp-4",
-    title: "Unnecessary Late-Night Delivery Junk Food",
-    amount: 3200,
-    category: "food",
-    isFazoolKharchi: true,
-    date: "5 days ago",
-    notes: "Jarvis flagged: High calories & wasteful expense",
-  },
-];
+export const defaultExpenses: ExpenseItem[] = [];
 
 export const defaultHealthState: HealthState = {
-  waterDrankGlasses: 5,
-  lastWaterReminder: Date.now() - 35 * 60 * 1000,
+  waterDrankGlasses: 0,
+  lastWaterReminder: 0,
   eyeRestIntervalMinutes: 20,
-  lastEyeRest: Date.now() - 15 * 60 * 1000,
-  postureAlertsCount: 3,
-  mealsLogged: [
-    {
-      meal: "Breakfast",
-      desc: "3 Boiled Eggs, Whole wheat toast, Green Tea",
-      calories: 420,
-      proteinGrams: 28,
-      healthy: true,
-    },
-    {
-      meal: "Lunch",
-      desc: "Grilled Chicken Breast, Lentils (Daal), Mixed Green Salad",
-      calories: 580,
-      proteinGrams: 46,
-      healthy: true,
-    },
-  ],
-  sleepHoursLastNight: 7.5,
-  dailySteps: 7420,
+  lastEyeRest: Date.now(),
+  postureAlertsCount: 0,
+  mealsLogged: [],
+  sleepHoursLastNight: 0,
+  dailySteps: 0,
 };
 
-export const defaultMacros: EditingMacro[] = [
-  {
-    id: "macro-1",
-    software: "Premiere Pro",
-    title: "Auto-Cut Audio Silences & Breaths",
-    commandSnippet: "premiere.exec('ripple_delete_gaps_threshold(-38dB)')",
-    voicePromptUrdu: "Premiere main khamoshi aur pauses cut kar do",
-    voicePromptEnglish: "Auto cut silences in Premiere Pro",
-    voicePromptPunjabi: "Premiere ch pause te silence cut kar de",
-    category: "cut",
-  },
-  {
-    id: "macro-2",
-    software: "Premiere Pro",
-    title: "Apply Cinema Teal & Orange LUT",
-    commandSnippet: "lumetri.applyPreset('Arri_Alexa_Golden_Warmth.cube')",
-    voicePromptUrdu: "Cinematic color grade apply karo",
-    voicePromptEnglish: "Apply cinematic LUT",
-    voicePromptPunjabi: "Cinematic color grade laa de",
-    category: "color",
-  },
-  {
-    id: "macro-3",
-    software: "After Effects",
-    title: "Purge All Memory & Disk Cache",
-    commandSnippet: "ae.app.purge(PurgeTarget.ALL_CACHES)",
-    voicePromptUrdu: "After Effects ka cache purge kar do",
-    voicePromptEnglish: "Purge After Effects memory cache",
-    voicePromptPunjabi: "After Effects da cache saaf kar de",
-    category: "cleanup",
-  },
-  {
-    id: "macro-4",
-    software: "Premiere Pro",
-    title: "Toggle 1/4 Proxy Playback Mode",
-    commandSnippet: "premiere.sequence.toggleProxies(true, '1/4')",
-    voicePromptUrdu: "Timeline proxy playback on karo",
-    voicePromptEnglish: "Enable proxy playback",
-    voicePromptPunjabi: "Proxy playback chalao",
-    category: "proxy",
-  },
-  {
-    id: "macro-5",
-    software: "Blender",
-    title: "Cycles GPU OptiX Render Scene",
-    commandSnippet: "bpy.ops.render.render(animation=True, write_still=False)",
-    voicePromptUrdu: "Blender GPU render shuru karo",
-    voicePromptEnglish: "Start Blender GPU render",
-    voicePromptPunjabi: "Blender GPU render shuru kar de",
-    category: "render",
-  },
-];
+export const defaultMacros: EditingMacro[] = [];
 
-export const defaultFiles: FileItem[] = [
-  { name: "Cinematic_Broll_4K_60fps.mp4", type: "video", size: "3.4 GB", path: "C:/Users/Wasi/Downloads", suggestedFolder: "D:/Projects/Footage" },
-  { name: "Client_Thumbnail_Draft_v3.psd", type: "image", size: "185 MB", path: "C:/Users/Wasi/Desktop", suggestedFolder: "D:/Thumbnails" },
-  { name: "Monthly_Financial_Savings_Tracker.xlsx", type: "document", size: "2.1 MB", path: "C:/Users/Wasi/Downloads", suggestedFolder: "E:/Documents/Finance" },
-  { name: "Quantum_Jarvis_Core_Engine.zip", type: "archive", size: "84 MB", path: "C:/Users/Wasi/Downloads", suggestedFolder: "D:/Development/Backups" },
-  { name: "Voice_Over_Urdu_Master_Take2.wav", type: "audio", size: "240 MB", path: "C:/Users/Wasi/Desktop", suggestedFolder: "D:/Audio/Voiceovers" },
-  { name: "Server_Automation_Script.py", type: "code", size: "45 KB", path: "C:/Users/Wasi/Desktop", suggestedFolder: "D:/Development/Scripts" },
-];
+export const defaultFiles: FileItem[] = [];
+
+function ensureCleanCacheInitialized(): void {
+  if (typeof window === "undefined" || typeof localStorage === "undefined") return;
+  try {
+    const marker = localStorage.getItem(STORAGE_KEYS.CLEAN_VERSION);
+    if (marker === CLEAN_SLATE_VERSION) return;
+
+    // Purge any legacy pre-populated sample data from older installs/cache
+    localStorage.removeItem(STORAGE_KEYS.TASKS);
+    localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+    localStorage.removeItem(STORAGE_KEYS.HEALTH);
+    localStorage.removeItem(STORAGE_KEYS.LIFE_RECORDS);
+    localStorage.removeItem(STORAGE_KEYS.STUDY_TASKS);
+    localStorage.removeItem(STORAGE_KEYS.FOCUS_LOGS);
+    localStorage.removeItem(STORAGE_KEYS.MOBILE_VAULT_FILES);
+    localStorage.removeItem(STORAGE_KEYS.FINANCE_SETTINGS);
+    localStorage.removeItem(STORAGE_KEYS.CHAT_LOGS);
+
+    // Strip any old sample notes/goals from cached profile while keeping custom displayName/lang
+    const rawProfile = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
+    if (rawProfile) {
+      try {
+        const parsed = JSON.parse(rawProfile);
+        localStorage.setItem(
+          STORAGE_KEYS.USER_PROFILE,
+          JSON.stringify({
+            ...defaultUserProfile,
+            username: parsed.username || defaultUserProfile.username,
+            displayName: parsed.displayName || defaultUserProfile.displayName,
+            preferredLanguage: parsed.preferredLanguage || defaultUserProfile.preferredLanguage,
+            voiceGender: parsed.voiceGender || defaultUserProfile.voiceGender,
+            personalNotes: [],
+            goals: [],
+            primarySoftwares: [],
+            monthlyBudget: 0,
+            emergencyFundTarget: 0,
+          })
+        );
+      } catch {
+        localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+      }
+    }
+
+    localStorage.setItem(STORAGE_KEYS.CLEAN_VERSION, CLEAN_SLATE_VERSION);
+
+    // Also flush stale SW caches in background so phone install is 100% fresh
+    if ("caches" in window) {
+      window.caches.keys().then((keys) => {
+        keys.forEach((k) => {
+          window.caches.delete(k).catch(() => {});
+        });
+      }).catch(() => {});
+    }
+  } catch {
+    // Ignore storage restriction errors
+  }
+}
 
 export class StorageService {
+  constructor() {
+    ensureCleanCacheInitialized();
+  }
+
   getUserProfile(): UserProfile {
+    ensureCleanCacheInitialized();
     try {
       const data = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-      return data ? { ...defaultUserProfile, ...JSON.parse(data) } : defaultUserProfile;
+      return data ? { ...defaultUserProfile, ...JSON.parse(data) } : { ...defaultUserProfile };
     } catch {
-      return defaultUserProfile;
+      return { ...defaultUserProfile };
     }
   }
 
@@ -300,11 +222,14 @@ export class StorageService {
   }
 
   getTasks(): TaskItem[] {
+    ensureCleanCacheInitialized();
     try {
       const data = localStorage.getItem(STORAGE_KEYS.TASKS);
-      return data ? JSON.parse(data) : defaultTasks;
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
-      return defaultTasks;
+      return [];
     }
   }
 
@@ -317,11 +242,14 @@ export class StorageService {
   }
 
   getExpenses(): ExpenseItem[] {
+    ensureCleanCacheInitialized();
     try {
       const data = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-      return data ? JSON.parse(data) : defaultExpenses;
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
-      return defaultExpenses;
+      return [];
     }
   }
 
@@ -334,11 +262,13 @@ export class StorageService {
   }
 
   getHealth(): HealthState {
+    ensureCleanCacheInitialized();
     try {
       const data = localStorage.getItem(STORAGE_KEYS.HEALTH);
-      return data ? JSON.parse(data) : defaultHealthState;
+      if (!data) return { ...defaultHealthState };
+      return { ...defaultHealthState, ...JSON.parse(data) };
     } catch {
-      return defaultHealthState;
+      return { ...defaultHealthState };
     }
   }
 
@@ -351,16 +281,66 @@ export class StorageService {
   }
 
   getCustomization(): DashboardCustomization {
+    ensureCleanCacheInitialized();
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CUSTOMIZATION);
       if (!data) return defaultCustomization;
       const parsed = JSON.parse(data);
+      const rawAvatar = parsed.avatarConfig || {};
+      const migratedFemaleName =
+        !rawAvatar.customFemaleName || rawAvatar.customFemaleName === "Zoya"
+          ? "Wasi ki Jan"
+          : rawAvatar.customFemaleName;
+      const migratedMaleName =
+        !rawAvatar.customMaleName || rawAvatar.customMaleName === "Jarvis"
+          ? "Wasu"
+          : rawAvatar.customMaleName;
+      const migratedNicks = { ...(rawAvatar.customNicknames || {}) };
+      if (migratedNicks.zoya === "Zoya") delete migratedNicks.zoya;
+      const migratedVoices = Array.isArray(parsed.customVoices)
+        ? parsed.customVoices.map((v: any) => {
+            if (v?.id === "voice-zoya-pak-urdu") {
+              return { ...v, name: "Wasi ki Jan (Pakistani Urdu Female)", assignedTo: "female" };
+            }
+            if (v?.id === "voice-jarvis-male") {
+              return { ...v, name: "Wasu (Pakistani Urdu Male)", assignedTo: "male" };
+            }
+            return v;
+          })
+        : defaultCustomization.customVoices;
+
       return {
         ...defaultCustomization,
         ...parsed,
+        customVoices: migratedVoices,
         avatarConfig: {
           ...defaultAvatarConfig,
-          ...(parsed.avatarConfig || {}),
+          ...rawAvatar,
+          activeCharacterId:
+            rawAvatar.activeCharacterId === "zoya" || !rawAvatar.activeCharacterId
+              ? "wasi_ki_jan"
+              : rawAvatar.activeCharacterId,
+          customFemaleName: migratedFemaleName,
+          customMaleName: migratedMaleName,
+          customNicknames: migratedNicks,
+          personalityId:
+            rawAvatar.personalityId === "jarvis_male"
+              ? "wasu_male"
+              : rawAvatar.personalityId === "zoya_female" || !rawAvatar.personalityId
+              ? "wasi_ki_jan_female"
+              : rawAvatar.personalityId,
+          maleVoiceSettings: {
+            ...defaultAvatarConfig.maleVoiceSettings!,
+            ...(rawAvatar.maleVoiceSettings || {}),
+          },
+          femaleVoiceSettings: {
+            ...defaultAvatarConfig.femaleVoiceSettings!,
+            ...(rawAvatar.femaleVoiceSettings || {}),
+          },
+          voiceSchedule: {
+            ...defaultAvatarConfig.voiceSchedule!,
+            ...(rawAvatar.voiceSchedule || {}),
+          },
         },
         securityConfig: {
           ...defaultSecurityConfig,
@@ -378,9 +358,32 @@ export class StorageService {
     } catch {}
   }
 
+  async clearAllCacheAndPersonalData(): Promise<void> {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+      localStorage.removeItem(STORAGE_KEYS.TASKS);
+      localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+      localStorage.removeItem(STORAGE_KEYS.HEALTH);
+      localStorage.removeItem(STORAGE_KEYS.LIFE_RECORDS);
+      localStorage.removeItem(STORAGE_KEYS.STUDY_TASKS);
+      localStorage.removeItem(STORAGE_KEYS.FOCUS_LOGS);
+      localStorage.removeItem(STORAGE_KEYS.MOBILE_VAULT_FILES);
+      localStorage.removeItem(STORAGE_KEYS.FINANCE_SETTINGS);
+      localStorage.removeItem(STORAGE_KEYS.CHAT_LOGS);
+      localStorage.setItem(STORAGE_KEYS.CLEAN_VERSION, CLEAN_SLATE_VERSION);
+
+      if (typeof window !== "undefined" && "caches" in window) {
+        const keys = await window.caches.keys();
+        await Promise.all(keys.map((k) => window.caches.delete(k)));
+      }
+    } catch {
+      // Ignored
+    }
+  }
+
   exportFullBackup(): string {
     const backup = {
-      version: "2.5.0-quantum",
+      version: "3.0.0-clean",
       timestamp: new Date().toISOString(),
       userProfile: this.getUserProfile(),
       customization: this.getCustomization(),

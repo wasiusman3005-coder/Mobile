@@ -59,13 +59,14 @@ export const HealthLifestyleGuard: React.FC<HealthLifestyleGuardProps> = ({
       lastWaterReminder: Date.now(),
     };
     updateHealth(updated);
-
-    const vocalText =
-      language === "pa"
-        ? `Shabash Wasi paji! ${newGlasses} glass paani complete ho gaya. Hydration level bohot fit ae.`
-        : `Zabardast Wasi Sahab! ${newGlasses} glasses pani complete ho chuka hai. Aapka hydration level bilkul fit hai.`;
-
-    speechService.speak(vocalText, { lang: language, gender: voiceGender });
+    const left = Math.max(0, 8 - newGlasses);
+    const msg =
+      language === "en"
+        ? `Hydration logged. ${newGlasses} of 8 glasses complete.`
+        : left === 0
+        ? `Shabash Wasi Sahab! Aaj ke 8 glasses pani ka target mukammal ho gaya.`
+        : `Shabash! Ek glass pani log ho gaya. Aaj ${newGlasses} glasses ho gaye hain, ${left} aur baqi hain.`;
+    speechService.speak(msg, { lang: language, gender: voiceGender });
   };
 
   // Trigger Eye Rest
@@ -73,13 +74,11 @@ export const HealthLifestyleGuard: React.FC<HealthLifestyleGuardProps> = ({
     soundEffects.playAlert();
     setIsEyeRestModalOpen(true);
     setEyeRestCountdown(20);
-
-    const vocalText =
-      language === "pa"
-        ? "Wasi paji, screen to dhyan hatao te 20 second layi 20 foot door dekho."
-        : "Wasi Sahab, 20 minute ho chuke hain. Baraye meherbani screen se nazar hataiye aur 20 second ke liye 20 feet door dekhiye.";
-
-    speechService.speak(vocalText, { lang: language, gender: voiceGender });
+    const msg =
+      language === "en"
+        ? "Eye rest alert! Look 20 feet away from your screen for 20 seconds."
+        : "Wasi Sahab, 20-20-20 Eye Rest ka waqt hai! 20 second ke liye screen se door dekhein.";
+    speechService.speak(msg, { lang: language, gender: voiceGender });
   };
 
   // Eye rest countdown modal tick
@@ -92,27 +91,27 @@ export const HealthLifestyleGuard: React.FC<HealthLifestyleGuardProps> = ({
     } else if (isEyeRestModalOpen && eyeRestCountdown === 0) {
       soundEffects.playBeepConfirm();
       setIsEyeRestModalOpen(false);
-      const doneText =
-        language === "pa"
-          ? "Eye rest complete ho gaya Wasi paji. Hun tussi dubara kaam shuru kar sakde o."
-          : "Eye rest complete ho gaya Wasi Sahab. Aap wapas apna kaam continue kar sakte hain.";
-      speechService.speak(doneText, { lang: language, gender: voiceGender });
+      speechService.speak(
+        language === "en"
+          ? "Eye rest completed. You may resume work."
+          : "Eye rest complete ho gaya hai. Ab aap kaam jaari rakh sakte hain.",
+        { lang: language, gender: voiceGender }
+      );
     }
     return () => clearInterval(interval);
-  }, [isEyeRestModalOpen, eyeRestCountdown]);
+  }, [isEyeRestModalOpen, eyeRestCountdown, language, voiceGender]);
 
   // Posture Alert
   const handlePostureCheck = () => {
-    soundEffects.playAlert();
+    soundEffects.playBeepConfirm();
     const updated = { ...health, postureAlertsCount: health.postureAlertsCount + 1 };
     updateHealth(updated);
-
-    const vocalText =
-      language === "pa"
-        ? "Wasi paji, posture theek karo! Apni pith sidhi rakho te thoda stretch kar lo."
-        : "Wasi Sahab, posture alert! Apni kamar bilkul seedhi rakhein aur shoulders ko relax karein.";
-
-    speechService.speak(vocalText, { lang: language, gender: voiceGender });
+    speechService.speak(
+      language === "en"
+        ? "Posture calibrated. Keep your spine straight and shoulders relaxed."
+        : "Posture calibration record ho gayi hai. Kamar seedhi aur kandhe relaxed rakhein.",
+      { lang: language, gender: voiceGender }
+    );
   };
 
   // Add Meal
@@ -134,22 +133,12 @@ export const HealthLifestyleGuard: React.FC<HealthLifestyleGuardProps> = ({
       mealsLogged: [...health.mealsLogged, newMeal],
     };
     updateHealth(updated);
+    const msg = isMealHealthy
+      ? `Zabardast! Healthy ${mealCategory} log ho gaya (${mealProtein}g protein).`
+      : `Dhyan rahe Wasi Sahab, yeh meal junk food mark hui hai. Agli meal clean rakhein.`;
+    speechService.speak(msg, { lang: language, gender: voiceGender });
     setMealDesc("");
     setShowMealForm(false);
-
-    let vocalText = "";
-    if (isMealHealthy) {
-      vocalText =
-        language === "pa"
-          ? `Zabardast Wasi paji! ${mealDesc} badiya healthy meal ae. Protein intake vi fit ae.`
-          : `Shabash Wasi Sahab, healthy meal log ho gaya hai. Aapki protein aur calorie targets theek chal rahi hain.`;
-    } else {
-      vocalText =
-        language === "pa"
-          ? "Dhyan dyo Wasi paji! Yeh junk food hai, zyada na khao, sehat kharab ho sakdi ae."
-          : "Wasi Sahab, yeh un-healthy meal hai. Baraye meherbani junk food kam karein taake aapki energy aur focus high rahe.";
-    }
-    speechService.speak(vocalText, { lang: language, gender: voiceGender });
   };
 
   const totalCalories = health.mealsLogged.reduce((sum, m) => sum + m.calories, 0);
@@ -288,9 +277,11 @@ export const HealthLifestyleGuard: React.FC<HealthLifestyleGuardProps> = ({
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-mono text-slate-400 flex items-center gap-1.5">
               <Moon className="w-4 h-4 text-blue-400" />
-              REST & RECOVERY
+              REST &amp; RECOVERY
             </span>
-            <span className="text-xs font-mono text-blue-400 font-bold">RECHARGED</span>
+            <span className="text-xs font-mono text-blue-400 font-bold">
+              {health.sleepHoursLastNight > 0 ? "LOGGED" : "NOT LOGGED"}
+            </span>
           </div>
 
           <div className="my-2">
@@ -298,13 +289,25 @@ export const HealthLifestyleGuard: React.FC<HealthLifestyleGuardProps> = ({
               {health.sleepHoursLastNight}h
             </div>
             <div className="text-[11px] font-mono text-slate-400 mt-1">
-              Sleep Debt: 0.0 hrs • Bedtime: 11:30 PM
+              {health.sleepHoursLastNight > 0 ? "Sleep hours logged by you" : "Log last night's sleep below"}
             </div>
           </div>
 
-          <div className="py-2 px-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-blue-300 text-center">
-            Evening Workout: 6:00 PM - 7:00 PM
-          </div>
+          <input
+            type="number"
+            min={0}
+            max={24}
+            step={0.5}
+            value={health.sleepHoursLastNight || ""}
+            placeholder="Hours slept (e.g. 7.5)"
+            onChange={(e) =>
+              updateHealth({
+                ...health,
+                sleepHoursLastNight: Math.max(0, Math.min(24, Number(e.target.value) || 0)),
+              })
+            }
+            className="w-full py-2 px-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-blue-300 text-center focus:border-blue-400 focus:outline-none"
+          />
         </div>
       </div>
 
@@ -402,33 +405,39 @@ export const HealthLifestyleGuard: React.FC<HealthLifestyleGuardProps> = ({
 
         {/* Meals Log List */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {health.mealsLogged.map((m, idx) => (
-            <div
-              key={idx}
-              className={`p-3.5 rounded-xl border flex items-center justify-between text-xs font-mono ${
-                m.healthy
-                  ? "bg-slate-950/80 border-slate-800 text-slate-200"
-                  : "bg-red-950/20 border-red-500/30 text-red-200"
-              }`}
-            >
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-bold text-amber-400">{m.meal}</span>
-                  {!m.healthy && (
-                    <span className="px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-500/30 text-[10px]">
-                      JUNK FOOD FLAGGED
-                    </span>
-                  )}
-                </div>
-                <div className="text-slate-300">{m.desc}</div>
-              </div>
-
-              <div className="text-right shrink-0">
-                <div className="text-slate-400">{m.calories} kcal</div>
-                <div className="text-emerald-400 font-bold">{m.proteinGrams}g Protein</div>
-              </div>
+          {health.mealsLogged.length === 0 ? (
+            <div className="md:col-span-2 p-4 rounded-xl bg-slate-950/60 border border-dashed border-slate-800 text-center text-xs font-mono text-slate-400">
+              Abhi koi meal log nahi hai. &quot;LOG MEAL&quot; par click karke apna khana add karein.
             </div>
-          ))}
+          ) : (
+            health.mealsLogged.map((m, idx) => (
+              <div
+                key={idx}
+                className={`p-3.5 rounded-xl border flex items-center justify-between text-xs font-mono ${
+                  m.healthy
+                    ? "bg-slate-950/80 border-slate-800 text-slate-200"
+                    : "bg-red-950/20 border-red-500/30 text-red-200"
+                }`}
+              >
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-bold text-amber-400">{m.meal}</span>
+                    {!m.healthy && (
+                      <span className="px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-500/30 text-[10px]">
+                        JUNK FOOD FLAGGED
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-slate-300">{m.desc}</div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <div className="text-slate-400">{m.calories} kcal</div>
+                  <div className="text-emerald-400 font-bold">{m.proteinGrams}g Protein</div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

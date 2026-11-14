@@ -4,18 +4,172 @@ import * as THREE from "three";
 interface QuantumBackground3DProps {
   intensity?: number;
   customAccentHex?: string;
+  customSecondaryHex?: string;
+  energySurge?: boolean;
   show3D?: boolean;
   customBgUrl?: string;
 }
 
+const QUANTUM_EQUATIONS = [
+  { title: "SCHRÖDINGER EQUATION", formula: "iℏ ∂Ψ/∂t = [ -ℏ²/(2m)∇² + V(r,t) ] Ψ" },
+  { title: "DIRAC RELATIVISTIC EQUATION", formula: "( iγᵘ ∂ᵤ - mc/ℏ ) ψ = 0" },
+  { title: "HEISENBERG UNCERTAINTY", formula: "σₓ · σₚ ≥ ℏ / 2" },
+  { title: "QED LAGRANGIAN DENSITY", formula: "ℒ = ψ̄(iγᵘDᵤ - m)ψ - ¼ F_μν F^μν" },
+  { title: "FEYNMAN PATH INTEGRAL", formula: "K(b,a) = ∫ 𝒟[x(t)] exp( i S[x] / ℏ )" },
+];
+
+function createGlowSpriteTexture(): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
+  grad.addColorStop(0.18, "rgba(210, 240, 255, 0.85)");
+  grad.addColorStop(0.45, "rgba(96, 165, 250, 0.25)");
+  grad.addColorStop(1.0, "rgba(0, 0, 0, 0.0)");
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createEquationTexture(
+  title: string,
+  formula: string,
+  accentHex: string,
+  maxAniso: number
+): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 768;
+  canvas.height = 192;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.22)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+
+  ctx.strokeStyle = accentHex;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(8, 30);
+  ctx.lineTo(8, 8);
+  ctx.lineTo(36, 8);
+  ctx.moveTo(canvas.width - 36, 8);
+  ctx.lineTo(canvas.width - 8, 8);
+  ctx.lineTo(canvas.width - 8, 30);
+  ctx.moveTo(8, canvas.height - 30);
+  ctx.lineTo(8, canvas.height - 8);
+  ctx.lineTo(36, canvas.height - 8);
+  ctx.moveTo(canvas.width - 36, canvas.height - 8);
+  ctx.lineTo(canvas.width - 8, canvas.height - 8);
+  ctx.lineTo(canvas.width - 8, canvas.height - 30);
+  ctx.stroke();
+
+  ctx.font = "600 18px 'JetBrains Mono', monospace";
+  ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
+  ctx.fillText(title, 32, 48);
+
+  ctx.font = "700 30px 'JetBrains Mono', monospace";
+  ctx.shadowColor = accentHex;
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillText(formula, 32, 122);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAniso;
+  return tex;
+}
+
+function createSpiralGalaxy(
+  starCount: number,
+  radius: number,
+  branches: number,
+  spinFactor: number,
+  coreColorHex: number,
+  armColorHex: number,
+  spriteTex: THREE.CanvasTexture | null
+): { points: THREE.Points; geo: THREE.BufferGeometry; mat: THREE.PointsMaterial } {
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(starCount * 3);
+  const colors = new Float32Array(starCount * 3);
+
+  const coreColor = new THREE.Color(coreColorHex);
+  const armColor = new THREE.Color(armColorHex);
+  const mixed = new THREE.Color();
+
+  for (let i = 0; i < starCount; i++) {
+    const i3 = i * 3;
+    const r = Math.pow(Math.random(), 1.55) * radius;
+    const branchAngle = ((i % branches) / branches) * Math.PI * 2;
+    const spinAngle = r * spinFactor;
+
+    const scatter = Math.pow(Math.random(), 2.2) * (Math.random() < 0.5 ? 1 : -1) * (0.28 * r + 0.55);
+    const scatterY = (Math.random() - 0.5) * (0.14 * r + 0.35);
+    const scatterZ = Math.pow(Math.random(), 2.2) * (Math.random() < 0.5 ? 1 : -1) * (0.28 * r + 0.55);
+
+    positions[i3] = Math.cos(branchAngle + spinAngle) * r + scatter;
+    positions[i3 + 1] = scatterY;
+    positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * r + scatterZ;
+
+    mixed.copy(coreColor).lerp(armColor, Math.min(1, r / radius));
+    colors[i3] = mixed.r;
+    colors[i3 + 1] = mixed.g;
+    colors[i3 + 2] = mixed.b;
+  }
+
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+  const mat = new THREE.PointsMaterial({
+    size: 0.55,
+    map: spriteTex || undefined,
+    alphaTest: 0.001,
+    sizeAttenuation: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.9,
+  });
+
+  return { points: new THREE.Points(geo, mat), geo, mat };
+}
+
 export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
-  intensity = 1.0,
-  customAccentHex,
   show3D = true,
   customBgUrl,
+  customAccentHex = "#00f0ff",
+  customSecondaryHex = "#8b5cf6",
+  energySurge = false,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number | null>(null);
+  const accentRef = useRef(new THREE.Color(customAccentHex));
+  const secondaryRef = useRef(new THREE.Color(customSecondaryHex));
+  const surgeRef = useRef(energySurge);
+
+  useEffect(() => {
+    accentRef.current.set(customAccentHex);
+  }, [customAccentHex]);
+
+  useEffect(() => {
+    secondaryRef.current.set(customSecondaryHex);
+  }, [customSecondaryHex]);
+
+  useEffect(() => {
+    surgeRef.current = energySurge;
+  }, [energySurge]);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -25,20 +179,13 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
     const height = window.innerHeight;
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x02050f, 0.032);
+    scene.fog = new THREE.FogExp2(0x01030b, 0.0085);
 
-    const camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
-    camera.position.z = 20;
+    const camera = new THREE.PerspectiveCamera(58, width / height, 0.1, 400);
+    camera.position.z = 26;
 
-    const isSoftwareGl = (() => {
-      const gl = document.createElement("canvas").getContext("webgl2");
-      if (!gl) return true;
-      const ext = gl.getExtension("WEBGL_debug_renderer_info");
-      const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
-      const gpu = String(gl.getParameter(param));
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
-      return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
-    })();
+    const isSoftwareGl =
+      typeof navigator !== "undefined" && (navigator.hardwareConcurrency || 4) <= 2;
 
     let renderer: THREE.WebGLRenderer;
     try {
@@ -51,224 +198,253 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
       return;
     }
 
+    const canvas = renderer.domElement;
+    const onLost = (e: Event) => {
+      e.preventDefault();
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
+
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.2;
     renderer.setSize(width, height);
-    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 3)); // 4K UHD crispness
+    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
     container.innerHTML = "";
-    container.appendChild(renderer.domElement);
+    container.appendChild(canvas);
 
-    // ==========================================
-    // 1. DYNAMIC COLOR SPECTRUM PALETTE
-    // Constantly morphs through 6 vibrant quantum spectrums
-    // ==========================================
-    const palette = [
-      new THREE.Color(0x06b6d4), // Tachyon Cyan
-      new THREE.Color(0xa855f7), // Nebula Violet
-      new THREE.Color(0x10b981), // Matrix Emerald
-      new THREE.Color(0xf59e0b), // Solar Gold
-      new THREE.Color(0xf43f5e), // Cosmic Rose
-      new THREE.Color(0x3b82f6), // Electric Sapphire
+    const maxAniso = renderer.capabilities.getMaxAnisotropy();
+    const glowSprite = createGlowSpriteTexture();
+
+    // =========================================================================
+    // 1. DEEP COSMOS MULTI-SPECTRAL STARFIELD
+    // =========================================================================
+    const starCount = isSoftwareGl ? 1200 : 2400;
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = new Float32Array(starCount * 3);
+    const starColors = new Float32Array(starCount * 3);
+    const starSpeeds = new Float32Array(starCount);
+
+    const spectralPalette = [
+      new THREE.Color(0xe0f2fe),
+      new THREE.Color(0x93c5fd),
+      new THREE.Color(0xfef3c7),
+      new THREE.Color(0xc4b5fd),
+      new THREE.Color(0xfda4af),
+      new THREE.Color(0x67e8f9),
     ];
 
-    let colorIndex = 0;
-    let nextColorIndex = 1;
-    let colorProgress = 0;
-    const activeColor = palette[0].clone();
-    const secondaryColor = palette[1].clone();
+    for (let i = 0; i < starCount; i++) {
+      const i3 = i * 3;
+      starPos[i3] = (Math.random() - 0.5) * 180;
+      starPos[i3 + 1] = (Math.random() - 0.5) * 130;
+      starPos[i3 + 2] = (Math.random() - 0.5) * 140 - 20;
+      starSpeeds[i] = 0.015 + Math.random() * 0.045;
 
-    // ==========================================
-    // 2. MORPHING BACKGROUND LOGO GEOMETRIES (5 DISTINCT 3D LOGO MODES)
-    // Automatically transitions between different quantum logo structures
-    // ==========================================
-    const logoMasterGroup = new THREE.Group();
-    scene.add(logoMasterGroup);
-
-    // MODE 0: Tachyon Qubit Reactor (Concentric Gimbal Rings + Singularity Core)
-    const mode0Group = new THREE.Group();
-    const coreSphereGeo = new THREE.SphereGeometry(1.6, 28, 28);
-    const coreSphereMat = new THREE.MeshBasicMaterial({
-      color: palette[0],
-      wireframe: true,
-      transparent: true,
-      opacity: 0.8,
-    });
-    const coreSphere = new THREE.Mesh(coreSphereGeo, coreSphereMat);
-    mode0Group.add(coreSphere);
-
-    const ring0AGeo = new THREE.TorusGeometry(6.2, 0.12, 16, 90);
-    const ring0AMat = new THREE.MeshBasicMaterial({ color: palette[0], transparent: true, opacity: 0.7 });
-    const ring0A = new THREE.Mesh(ring0AGeo, ring0AMat);
-    ring0A.rotation.x = Math.PI / 3;
-    mode0Group.add(ring0A);
-
-    const ring0BGeo = new THREE.TorusGeometry(7.6, 0.12, 16, 90);
-    const ring0BMat = new THREE.MeshBasicMaterial({ color: palette[1], transparent: true, opacity: 0.6 });
-    const ring0B = new THREE.Mesh(ring0BGeo, ring0BMat);
-    ring0B.rotation.y = Math.PI / 3.5;
-    mode0Group.add(ring0B);
-
-    const ring0CGeo = new THREE.TorusGeometry(9.0, 0.1, 16, 90);
-    const ring0CMat = new THREE.MeshBasicMaterial({ color: palette[2], transparent: true, opacity: 0.5 });
-    const ring0C = new THREE.Mesh(ring0CGeo, ring0CMat);
-    ring0C.rotation.z = Math.PI / 4;
-    mode0Group.add(ring0C);
-    logoMasterGroup.add(mode0Group);
-
-    // MODE 1: 4D Hypercube Tesseract (Nested Geometric Projection)
-    const mode1Group = new THREE.Group();
-    const outerBoxGeo = new THREE.BoxGeometry(6.5, 6.5, 6.5);
-    const outerBoxMat = new THREE.MeshBasicMaterial({
-      color: palette[1],
-      wireframe: true,
-      transparent: true,
-      opacity: 0,
-    });
-    const outerBox = new THREE.Mesh(outerBoxGeo, outerBoxMat);
-    mode1Group.add(outerBox);
-
-    const innerBoxGeo = new THREE.BoxGeometry(3.6, 3.6, 3.6);
-    const innerBoxMat = new THREE.MeshBasicMaterial({
-      color: palette[0],
-      wireframe: true,
-      transparent: true,
-      opacity: 0,
-    });
-    const innerBox = new THREE.Mesh(innerBoxGeo, innerBoxMat);
-    mode1Group.add(innerBox);
-    logoMasterGroup.add(mode1Group);
-
-    // MODE 2: Crystalline Geodesic Icosahedron Diamond
-    const mode2Group = new THREE.Group();
-    const icoOuterGeo = new THREE.IcosahedronGeometry(5.2, 1);
-    const icoOuterMat = new THREE.MeshBasicMaterial({
-      color: palette[2],
-      wireframe: true,
-      transparent: true,
-      opacity: 0,
-    });
-    const icoOuter = new THREE.Mesh(icoOuterGeo, icoOuterMat);
-    mode2Group.add(icoOuter);
-
-    const dodecaInnerGeo = new THREE.DodecahedronGeometry(3.2, 0);
-    const dodecaInnerMat = new THREE.MeshBasicMaterial({
-      color: palette[3],
-      wireframe: true,
-      transparent: true,
-      opacity: 0,
-    });
-    const dodecaInner = new THREE.Mesh(dodecaInnerGeo, dodecaInnerMat);
-    mode2Group.add(dodecaInner);
-    logoMasterGroup.add(mode2Group);
-
-    // MODE 3: Neural Energy Vortex & Torus Knot Singularity
-    const mode3Group = new THREE.Group();
-    const knotGeo = new THREE.TorusKnotGeometry(4.8, 0.28, 120, 24, 2, 3);
-    const knotMat = new THREE.MeshBasicMaterial({
-      color: palette[4],
-      wireframe: true,
-      transparent: true,
-      opacity: 0,
-    });
-    const knotMesh = new THREE.Mesh(knotGeo, knotMat);
-    mode3Group.add(knotMesh);
-    logoMasterGroup.add(mode3Group);
-
-    // MODE 4: Tachyon Double Helix Matrix
-    const mode4Group = new THREE.Group();
-    const helixNodeCount = 140;
-    const helixSphereGeo = new THREE.SphereGeometry(0.12, 8, 8);
-    const helixSphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
-
-    const helixNodes1: THREE.Mesh[] = [];
-    const helixNodes2: THREE.Mesh[] = [];
-
-    for (let i = 0; i < helixNodeCount; i++) {
-      const s1 = new THREE.Mesh(helixSphereGeo, helixSphereMat);
-      mode4Group.add(s1);
-      helixNodes1.push(s1);
-
-      const s2 = new THREE.Mesh(helixSphereGeo, helixSphereMat);
-      mode4Group.add(s2);
-      helixNodes2.push(s2);
+      const c = spectralPalette[Math.floor(Math.random() * spectralPalette.length)];
+      const brightness = 0.55 + Math.random() * 0.45;
+      starColors[i3] = c.r * brightness;
+      starColors[i3 + 1] = c.g * brightness;
+      starColors[i3 + 2] = c.b * brightness;
     }
-    logoMasterGroup.add(mode4Group);
 
-    // ==========================================
-    // 3. CONTINUOUS BACKGROUND EFFECTS
-    // ==========================================
-    // Effect A: Pulsing Expanding Dimensional Shockwave Rings (Ripples)
-    const rippleCount = 4;
-    const rippleMeshes: { mesh: THREE.Mesh; speed: number; maxRadius: number }[] = [];
-    for (let i = 0; i < rippleCount; i++) {
-      const rGeo = new THREE.RingGeometry(0.5, 0.65, 64);
-      const rMat = new THREE.MeshBasicMaterial({
-        color: palette[0],
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+    starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3));
+
+    const starMat = new THREE.PointsMaterial({
+      size: 0.42,
+      map: glowSprite || undefined,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const deepStars = new THREE.Points(starGeo, starMat);
+    scene.add(deepStars);
+
+    // =========================================================================
+    // 2. DISTANT GRAND SPIRAL GALAXIES
+    // =========================================================================
+    const galaxyPrimary = createSpiralGalaxy(
+      isSoftwareGl ? 700 : 1450,
+      26,
+      4,
+      0.34,
+      0xfef08a,
+      0x38bdf8,
+      glowSprite
+    );
+    galaxyPrimary.points.position.set(-22, 13, -46);
+    galaxyPrimary.points.rotation.set(0.95, 0.28, -0.35);
+    scene.add(galaxyPrimary.points);
+
+    const galaxySecondary = createSpiralGalaxy(
+      isSoftwareGl ? 500 : 950,
+      20,
+      3,
+      0.42,
+      0xf5d0fe,
+      0x818cf8,
+      glowSprite
+    );
+    galaxySecondary.points.position.set(24, -14, -56);
+    galaxySecondary.points.rotation.set(1.12, -0.45, 0.42);
+    scene.add(galaxySecondary.points);
+
+    const milkyWay = createSpiralGalaxy(
+      isSoftwareGl ? 600 : 1100,
+      58,
+      2,
+      0.16,
+      0x38bdf8,
+      0x6366f1,
+      glowSprite
+    );
+    milkyWay.points.position.set(2, -4, -75);
+    milkyWay.points.rotation.set(1.32, 0.1, 0.65);
+    milkyWay.mat.opacity = 0.42;
+    scene.add(milkyWay.points);
+
+    // =========================================================================
+    // 3. DRIFTING 3D QUANTUM PHYSICS FORMULAS WITH PARALLAX DEPTH (Q-DYNAMICS)
+    // =========================================================================
+    const formulaGroup = new THREE.Group();
+    scene.add(formulaGroup);
+    const formulaPlaneGeo = new THREE.PlaneGeometry(8.6, 2.15);
+    const formulaTextures: THREE.CanvasTexture[] = [];
+    const formulaMats: THREE.MeshBasicMaterial[] = [];
+    const formulaCards: {
+      mesh: THREE.Mesh;
+      mat: THREE.MeshBasicMaterial;
+      baseY: number;
+      speedX: number;
+      bobAmp: number;
+      bobFreq: number;
+      phase: number;
+    }[] = [];
+
+    for (let i = 0; i < 15; i++) {
+      const eq = QUANTUM_EQUATIONS[i % QUANTUM_EQUATIONS.length];
+      const tex = createEquationTexture(eq.title, eq.formula, "#00f0ff", maxAniso);
+      if (!tex) continue;
+      formulaTextures.push(tex);
+      const mat = new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 0.34 + (i % 3) * 0.1,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        color: new THREE.Color("#ffffff"),
+      });
+      formulaMats.push(mat);
+
+      const mesh = new THREE.Mesh(formulaPlaneGeo, mat);
+      const depthLayer = -2 - (i % 5) * 6.5;
+      const spreadX = (Math.random() - 0.5) * 52;
+      const spreadY = (Math.random() - 0.5) * 26;
+      mesh.position.set(spreadX, spreadY, depthLayer);
+      mesh.rotation.y = (Math.random() - 0.5) * 0.24;
+      const scale = 0.68 + (1 - Math.abs(depthLayer) / 36) * 0.52;
+      mesh.scale.setScalar(scale);
+
+      formulaGroup.add(mesh);
+      formulaCards.push({
+        mesh,
+        mat,
+        baseY: spreadY,
+        speedX: (0.65 + Math.random() * 0.85) * (i % 2 === 0 ? 1 : -1),
+        bobAmp: 0.35 + Math.random() * 0.4,
+        bobFreq: 0.45 + Math.random() * 0.45,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+
+    // =========================================================================
+    // 4. LUMINOUS COSMIC NEBULA CLOUDS
+    // =========================================================================
+    const nebulaColors = [0x1d4ed8, 0x7e22ce, 0x0e7490, 0xbe185d, 0x4338ca];
+    const nebulaSprites: { sprite: THREE.Sprite; baseX: number; baseY: number; speed: number; phase: number }[] = [];
+    const nebulaMats: THREE.SpriteMaterial[] = [];
+
+    if (glowSprite) {
+      for (let i = 0; i < 10; i++) {
+        const mat = new THREE.SpriteMaterial({
+          map: glowSprite,
+          color: nebulaColors[i % nebulaColors.length],
+          transparent: true,
+          opacity: 0.14 + (i % 3) * 0.04,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        nebulaMats.push(mat);
+        const sprite = new THREE.Sprite(mat);
+        const bx = (Math.random() - 0.5) * 70;
+        const by = (Math.random() - 0.5) * 44;
+        const bz = -35 - Math.random() * 45;
+        const scale = 22 + Math.random() * 24;
+        sprite.position.set(bx, by, bz);
+        sprite.scale.set(scale, scale * 0.72, 1);
+        scene.add(sprite);
+        nebulaSprites.push({
+          sprite,
+          baseX: bx,
+          baseY: by,
+          speed: 0.08 + Math.random() * 0.08,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
+    }
+
+    // =========================================================================
+    // 5. OCCASIONAL SHOOTING STARS
+    // =========================================================================
+    interface MeteorItem {
+      line: THREE.Line;
+      geo: THREE.BufferGeometry;
+      mat: THREE.LineBasicMaterial;
+      active: boolean;
+      vx: number;
+      vy: number;
+      vz: number;
+      life: number;
+      cooldown: number;
+    }
+
+    const meteors: MeteorItem[] = [];
+    for (let i = 0; i < 4; i++) {
+      const mGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(2.4, 1.3, 0),
+      ]);
+      const mMat = new THREE.LineBasicMaterial({
+        color: i % 2 === 0 ? 0xe0f2fe : 0xa5f3fc,
         transparent: true,
         opacity: 0,
-        side: THREE.DoubleSide,
       });
-      const rMesh = new THREE.Mesh(rGeo, rMat);
-      rMesh.position.z = -2;
-      scene.add(rMesh);
-      rippleMeshes.push({ mesh: rMesh, speed: 0.12 + i * 0.04, maxRadius: 26 });
-    }
-
-    // Effect B: Flying Quantum Starfield / Tachyon Particle Warp (1,000+ particles with Z travel)
-    const particleCount = 1000;
-    const particlesGeo = new THREE.BufferGeometry();
-    const positions = new Float32Array(particleCount * 3);
-    const velocities = new Float32Array(particleCount);
-
-    for (let i = 0; i < particleCount; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 60;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 45;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 50;
-      velocities[i] = 0.06 + Math.random() * 0.14; // forward warp velocity
-    }
-    particlesGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-
-    const particlesMat = new THREE.PointsMaterial({
-      size: 0.14,
-      color: palette[0],
-      transparent: true,
-      opacity: 0.75,
-    });
-    const particleSystem = new THREE.Points(particlesGeo, particlesMat);
-    scene.add(particleSystem);
-
-    // Effect C: Sweeping Quantum Energy Ray Beams (Cross-axis lasers)
-    const beamCount = 6;
-    const beamGroup = new THREE.Group();
-    const beamMeshes: THREE.Line[] = [];
-    for (let i = 0; i < beamCount; i++) {
-      const beamGeo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-30, 0, 0),
-        new THREE.Vector3(30, 0, 0),
-      ]);
-      const beamMat = new THREE.LineBasicMaterial({
-        color: palette[1],
-        transparent: true,
-        opacity: 0.15,
+      const mLine = new THREE.Line(mGeo, mMat);
+      scene.add(mLine);
+      meteors.push({
+        line: mLine,
+        geo: mGeo,
+        mat: mMat,
+        active: false,
+        vx: -0.65,
+        vy: -0.35,
+        vz: 0.08,
+        life: 0,
+        cooldown: 1.5 + i * 2.4,
       });
-      const beam = new THREE.Line(beamGeo, beamMat);
-      beam.position.y = (i - 2.5) * 6;
-      beam.position.z = -5 + Math.random() * 8;
-      beamGroup.add(beam);
-      beamMeshes.push(beam);
     }
-    scene.add(beamGroup);
 
-    // Mouse Parallax Interaction
     let targetMouseX = 0;
     let targetMouseY = 0;
     let mouseX = 0;
     let mouseY = 0;
 
     const handleMouseMove = (e: MouseEvent) => {
-      targetMouseX = (e.clientX / window.innerWidth - 0.5) * 5;
-      targetMouseY = -(e.clientY / window.innerHeight - 0.5) * 4;
+      targetMouseX = (e.clientX / window.innerWidth - 0.5) * 3.4;
+      targetMouseY = -(e.clientY / window.innerHeight - 0.5) * 2.4;
     };
     window.addEventListener("mousemove", handleMouseMove);
 
@@ -282,174 +458,88 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
     };
     window.addEventListener("resize", handleResize);
 
-    // ==========================================
-    // 4. ANIMATION & MORPHING RENDER LOOP
-    // ==========================================
     const clock = new THREE.Clock();
-    let currentLogoMode = 0;
-    let logoModeTimer = 0;
-    const LOGO_SWITCH_DURATION = 6.5; // Switch logo design every 6.5 seconds
-
-    // Mode opacity trackers for smooth cross-fading
-    const modeOpacities = [1, 0, 0, 0, 0];
+    const liveAccent = new THREE.Color(customAccentHex);
+    const liveSecondary = new THREE.Color(customSecondaryHex);
 
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
-      const delta = clock.getDelta();
-      const time = clock.getElapsedTime();
+      const delta = Math.min(clock.getDelta(), 0.05);
+      const t = clock.getElapsedTime();
+      const surgeMult = surgeRef.current ? 1.85 : 1.0;
 
-      // --- A. Dynamic Continuous Color Morphing ---
-      colorProgress += delta * 0.28;
-      if (colorProgress >= 1.0) {
-        colorProgress = 0;
-        colorIndex = nextColorIndex;
-        nextColorIndex = (nextColorIndex + 1) % palette.length;
-      }
-      activeColor.lerpColors(palette[colorIndex], palette[nextColorIndex], colorProgress);
-      secondaryColor.lerpColors(
-        palette[(colorIndex + 2) % palette.length],
-        palette[(nextColorIndex + 2) % palette.length],
-        colorProgress
-      );
+      const cDamp = 1 - Math.exp(-2.4 * delta);
+      liveAccent.lerp(accentRef.current, cDamp);
+      liveSecondary.lerp(secondaryRef.current, cDamp);
 
-      // --- B. Automatic Logo Mode Switching & Smooth Morphing ---
-      logoModeTimer += delta;
-      if (logoModeTimer >= LOGO_SWITCH_DURATION) {
-        logoModeTimer = 0;
-        currentLogoMode = (currentLogoMode + 1) % 5;
-      }
+      galaxyPrimary.points.rotation.y = 0.28 + t * 0.032 * surgeMult;
+      galaxySecondary.points.rotation.y = -0.45 - t * 0.038 * surgeMult;
+      milkyWay.points.rotation.y = 0.1 + t * 0.012;
 
-      // Smoothly interpolate opacity for all 5 logo designs
-      for (let m = 0; m < 5; m++) {
-        const targetOp = m === currentLogoMode ? 1.0 : 0.0;
-        modeOpacities[m] = THREE.MathUtils.lerp(modeOpacities[m], targetOp, delta * 2.8);
-      }
-
-      // Apply opacities & colors to Mode 0: Reactor
-      const op0 = modeOpacities[0];
-      coreSphereMat.opacity = op0 * 0.75;
-      coreSphereMat.color.copy(activeColor);
-      ring0AMat.opacity = op0 * 0.7;
-      ring0AMat.color.copy(activeColor);
-      ring0BMat.opacity = op0 * 0.6;
-      ring0BMat.color.copy(secondaryColor);
-      ring0CMat.opacity = op0 * 0.5;
-      ring0CMat.color.copy(activeColor);
-      mode0Group.visible = op0 > 0.01;
-
-      // Apply to Mode 1: 4D Hypercube Tesseract
-      const op1 = modeOpacities[1];
-      outerBoxMat.opacity = op1 * 0.75;
-      outerBoxMat.color.copy(activeColor);
-      innerBoxMat.opacity = op1 * 0.85;
-      innerBoxMat.color.copy(secondaryColor);
-      mode1Group.visible = op1 > 0.01;
-
-      // Apply to Mode 2: Crystalline Icosahedron
-      const op2 = modeOpacities[2];
-      icoOuterMat.opacity = op2 * 0.8;
-      icoOuterMat.color.copy(activeColor);
-      dodecaInnerMat.opacity = op2 * 0.7;
-      dodecaInnerMat.color.copy(secondaryColor);
-      mode2Group.visible = op2 > 0.01;
-
-      // Apply to Mode 3: Torus Knot Singularity
-      const op3 = modeOpacities[3];
-      knotMat.opacity = op3 * 0.85;
-      knotMat.color.copy(activeColor);
-      mode3Group.visible = op3 > 0.01;
-
-      // Apply to Mode 4: Double Helix
-      const op4 = modeOpacities[4];
-      helixSphereMat.opacity = op4 * 0.75;
-      helixSphereMat.color.copy(activeColor);
-      mode4Group.visible = op4 > 0.01;
-
-      // --- C. Dynamic Logo Rotations & Pulsing ---
-      logoMasterGroup.rotation.y = time * 0.25;
-      logoMasterGroup.rotation.x = Math.sin(time * 0.2) * 0.18;
-
-      // Mode 0 rotations
-      ring0A.rotation.z += 0.02;
-      ring0B.rotation.x += 0.018;
-      ring0C.rotation.y -= 0.015;
-      const pulse0 = 1 + Math.sin(time * 2.8) * 0.08;
-      coreSphere.scale.set(pulse0, pulse0, pulse0);
-
-      // Mode 1 rotations
-      outerBox.rotation.x = time * 0.35;
-      outerBox.rotation.y = time * 0.5;
-      innerBox.rotation.x = -time * 0.6;
-      innerBox.rotation.y = -time * 0.4;
-
-      // Mode 2 rotations
-      icoOuter.rotation.x = time * 0.4;
-      icoOuter.rotation.y = time * 0.6;
-      dodecaInner.rotation.y = -time * 0.5;
-
-      // Mode 3 rotations
-      knotMesh.rotation.y = -time * 0.25;
-      knotMesh.rotation.z = time * 0.2;
-
-      // Mode 4 Helix animation
-      if (mode4Group.visible) {
-        for (let i = 0; i < helixNodeCount; i++) {
-          const t = (i / helixNodeCount) * Math.PI * 8 + time * 1.5;
-          const y = (i - helixNodeCount / 2) * 0.16;
-          const r = 3.6 + Math.sin(time * 2 + i * 0.1) * 0.4;
-
-          helixNodes1[i].position.set(Math.cos(t) * r, y, Math.sin(t) * r);
-          helixNodes2[i].position.set(-Math.cos(t) * r, y, -Math.sin(t) * r);
+      const posArr = starGeo.attributes.position.array as Float32Array;
+      for (let i = 0; i < starCount; i++) {
+        posArr[i * 3 + 2] += starSpeeds[i] * 0.85 * surgeMult;
+        if (posArr[i * 3 + 2] > 28) {
+          posArr[i * 3 + 2] = -110;
+          posArr[i * 3] = (Math.random() - 0.5) * 180;
+          posArr[i * 3 + 1] = (Math.random() - 0.5) * 130;
         }
       }
+      starGeo.attributes.position.needsUpdate = true;
+      deepStars.rotation.z = t * 0.008;
 
-      // --- D. Continuous Background Effect: Expanding Shockwave Ripples ---
-      rippleMeshes.forEach((item, index) => {
-        const mesh = item.mesh;
-        const currentScale = mesh.scale.x;
-        const newScale = currentScale + item.speed * 0.8;
+      // Drifting 3D Background Quantum Physics Formulas with Parallax
+      formulaGroup.position.x = THREE.MathUtils.damp(formulaGroup.position.x, -targetMouseX * 0.85, 3.2, delta);
+      formulaGroup.position.y = THREE.MathUtils.damp(formulaGroup.position.y, -targetMouseY * 0.55, 3.2, delta);
+      for (let i = 0; i < formulaCards.length; i++) {
+        const fc = formulaCards[i];
+        fc.mesh.position.x += fc.speedX * delta * surgeMult;
+        fc.mesh.position.y = fc.baseY + Math.sin(t * fc.bobFreq + fc.phase) * fc.bobAmp;
+        fc.mat.color.copy(i % 2 === 0 ? liveAccent : liveSecondary);
+        if (fc.mesh.position.x > 30) fc.mesh.position.x = -30;
+        if (fc.mesh.position.x < -30) fc.mesh.position.x = 30;
+      }
 
-        if (newScale >= item.maxRadius) {
-          mesh.scale.set(0.5, 0.5, 0.5);
-          (mesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      nebulaSprites.forEach((n) => {
+        n.sprite.position.x = n.baseX + Math.sin(t * n.speed + n.phase) * 2.2;
+        n.sprite.position.y = n.baseY + Math.cos(t * n.speed + n.phase) * 1.4;
+      });
+
+      meteors.forEach((m) => {
+        if (!m.active) {
+          m.cooldown -= delta;
+          if (m.cooldown <= 0) {
+            m.active = true;
+            m.life = 0;
+            m.line.position.set(
+              (Math.random() - 0.1) * 44,
+              10 + Math.random() * 18,
+              -12 - Math.random() * 25
+            );
+            m.vx = -0.6 - Math.random() * 0.45;
+            m.vy = -0.32 - Math.random() * 0.25;
+            m.vz = 0.1;
+          }
         } else {
-          mesh.scale.set(newScale, newScale, newScale);
-          const life = newScale / item.maxRadius;
-          const fade = Math.sin(life * Math.PI) * 0.35;
-          (mesh.material as THREE.MeshBasicMaterial).opacity = fade;
-          (mesh.material as THREE.MeshBasicMaterial).color.copy(activeColor);
+          m.life += delta;
+          m.line.position.x += m.vx;
+          m.line.position.y += m.vy;
+          m.line.position.z += m.vz;
+          const progress = m.life / 0.85;
+          m.mat.opacity = Math.sin(Math.min(1, progress) * Math.PI) * 0.85;
+          if (progress >= 1) {
+            m.active = false;
+            m.mat.opacity = 0;
+            m.cooldown = 3.5 + Math.random() * 5.5;
+          }
         }
-        mesh.rotation.z = time * 0.1 + index * (Math.PI / 4);
       });
 
-      // --- E. Continuous Background Effect: Forward Particle Warp Motion ---
-      const posArr = particlesGeo.attributes.position.array as Float32Array;
-      for (let i = 0; i < particleCount; i++) {
-        posArr[i * 3 + 2] += velocities[i] * 1.8; // Move toward camera
-        if (posArr[i * 3 + 2] > 22) {
-          posArr[i * 3 + 2] = -35;
-          posArr[i * 3] = (Math.random() - 0.5) * 60;
-          posArr[i * 3 + 1] = (Math.random() - 0.5) * 45;
-        }
-      }
-      particlesGeo.attributes.position.needsUpdate = true;
-      particlesMat.color.copy(activeColor);
-
-      // --- F. Continuous Background Effect: Sweeping Energy Beams ---
-      beamGroup.rotation.z = Math.sin(time * 0.25) * 0.35;
-      beamMeshes.forEach((beam, idx) => {
-        const mat = beam.material as THREE.LineBasicMaterial;
-        mat.opacity = 0.12 + Math.sin(time * 2.2 + idx) * 0.12;
-        mat.color.copy(secondaryColor);
-        beam.position.y = Math.sin(time * 0.5 + idx) * 12;
-      });
-
-      // --- G. Smooth Camera Parallax Lerp ---
-      mouseX += (targetMouseX - mouseX) * 0.04;
-      mouseY += (targetMouseY - mouseY) * 0.04;
+      mouseX += (targetMouseX - mouseX) * 0.035;
+      mouseY += (targetMouseY - mouseY) * 0.035;
       camera.position.x = mouseX;
       camera.position.y = mouseY;
-      camera.lookAt(scene.position);
+      camera.lookAt(0, 0, -25);
 
       renderer.render(scene, camera);
     };
@@ -458,57 +548,50 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
 
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      canvas.removeEventListener("webglcontextlost", onLost);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", handleResize);
       renderer.dispose();
 
-      coreSphereGeo.dispose();
-      coreSphereMat.dispose();
-      ring0AGeo.dispose();
-      ring0AMat.dispose();
-      ring0BGeo.dispose();
-      ring0BMat.dispose();
-      ring0CGeo.dispose();
-      ring0CMat.dispose();
+      starGeo.dispose();
+      starMat.dispose();
+      galaxyPrimary.geo.dispose();
+      galaxyPrimary.mat.dispose();
+      galaxySecondary.geo.dispose();
+      galaxySecondary.mat.dispose();
+      milkyWay.geo.dispose();
+      milkyWay.mat.dispose();
+      formulaPlaneGeo.dispose();
+      formulaTextures.forEach((tx) => tx.dispose());
+      formulaMats.forEach((m) => m.dispose());
+      nebulaMats.forEach((m) => m.dispose());
+      meteors.forEach((m) => {
+        m.geo.dispose();
+        m.mat.dispose();
+      });
+      glowSprite?.dispose();
 
-      outerBoxGeo.dispose();
-      outerBoxMat.dispose();
-      innerBoxGeo.dispose();
-      innerBoxMat.dispose();
-
-      icoOuterGeo.dispose();
-      icoOuterMat.dispose();
-      dodecaInnerGeo.dispose();
-      dodecaInnerMat.dispose();
-
-      knotGeo.dispose();
-      knotMat.dispose();
-      helixSphereGeo.dispose();
-      helixSphereMat.dispose();
-
-      particlesGeo.dispose();
-      particlesMat.dispose();
-
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
+      if (container.contains(canvas)) {
+        container.removeChild(canvas);
       }
     };
   }, []);
 
   return (
-    <>
+    <div
+      className="fixed inset-0 z-0 pointer-events-none overflow-hidden"
+      style={{
+        background:
+          "radial-gradient(ellipse at 22% 18%, rgba(29, 78, 216, 0.22) 0%, transparent 52%), radial-gradient(ellipse at 78% 76%, rgba(109, 40, 217, 0.18) 0%, transparent 52%), radial-gradient(circle at 50% 48%, rgba(14, 116, 144, 0.12) 0%, #02040a 78%)",
+      }}
+    >
       {customBgUrl && (
         <div
-          className="fixed inset-0 z-0 bg-cover bg-center opacity-30 pointer-events-none transition-opacity duration-1000"
+          className="absolute inset-0 bg-cover bg-center opacity-30 transition-opacity duration-1000"
           style={{ backgroundImage: `url(${customBgUrl})` }}
         />
       )}
-      {show3D && (
-        <div
-          ref={mountRef}
-          className="fixed inset-0 z-0 pointer-events-none opacity-90 overflow-hidden"
-        />
-      )}
-    </>
+      {show3D && <div ref={mountRef} className="absolute inset-0 opacity-95" />}
+    </div>
   );
 };

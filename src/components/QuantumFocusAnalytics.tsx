@@ -2,7 +2,14 @@ import React, { useState, useEffect } from "react";
 import { Target, Play, Pause, RotateCcw, ShieldCheck, Flame, BarChart3, FileText, CheckCircle2, Clock, Sparkles } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
+import { storageService } from "../services/storage";
 import { LanguageCode, VoiceGender } from "../types";
+
+interface FocusLogEntry {
+  time: string;
+  title: string;
+  detail: string;
+}
 
 interface QuantumFocusAnalyticsProps {
   language: LanguageCode;
@@ -17,7 +24,15 @@ export const QuantumFocusAnalytics: React.FC<QuantumFocusAnalyticsProps> = ({
   const [focusDuration, setFocusDuration] = useState(25); // minutes
   const [timeLeft, setTimeLeft] = useState(25 * 60); // seconds
   const [isFocusActive, setIsFocusActive] = useState(false);
-  const [distractionsBlocked, setDistractionsBlocked] = useState(7);
+  const [distractionsBlocked, setDistractionsBlocked] = useState(0);
+  const [focusLogs, setFocusLogs] = useState<FocusLogEntry[]>(() => {
+    try {
+      const raw = localStorage.getItem("q_nexus_focus_logs");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Daily Report State
   const [dailyReportText, setDailyReportText] = useState<string | null>(null);
@@ -31,38 +46,48 @@ export const QuantumFocusAnalytics: React.FC<QuantumFocusAnalyticsProps> = ({
         setTimeLeft((prev) => prev - 1);
       }, 1000);
     } else if (isFocusActive && timeLeft === 0) {
-      soundEffects.playQuantumStartup();
-      soundEffects.stopQuantumBinauralHum();
       setIsFocusActive(false);
-
-      const finishText =
-        language === "pa"
-          ? "Zabardast Wasi paji! Focus session complete ho gaya ae. Thoda rest kar lo."
-          : "Mubarak ho Wasi Sahab! 25 minute ka Quantum Deep Focus session kamyabi se complete ho gaya hai.";
-
-      speechService.speak(finishText, { lang: language, gender: voiceGender });
+      soundEffects.stopQuantumBinauralHum();
+      soundEffects.playBeepConfirm();
+      const entry: FocusLogEntry = {
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        title: `${focusDuration}-Min Focus Session Complete`,
+        detail: "Deep focus session completed cleanly.",
+      };
+      setFocusLogs((prev) => {
+        const next = [entry, ...prev].slice(0, 20);
+        try {
+          localStorage.setItem("q_nexus_focus_logs", JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      setDistractionsBlocked((c) => c + 1);
+      speechService.speak(
+        language === "en"
+          ? "Deep focus session complete! Great work."
+          : "Deep Focus session mukammal ho gaya hai! Ab thora pani aur eye rest lein.",
+        { lang: language, gender: voiceGender }
+      );
     }
     return () => clearInterval(interval);
-  }, [isFocusActive, timeLeft, language, voiceGender]);
+  }, [isFocusActive, timeLeft, focusDuration, language, voiceGender]);
 
   // Toggle Focus
   const toggleFocus = () => {
     soundEffects.playClick();
-    if (!isFocusActive) {
-      soundEffects.playBeepConfirm();
-      soundEffects.startQuantumBinauralHum();
-      setIsFocusActive(true);
-
-      const startText =
-        language === "pa"
-          ? "Quantum Focus Mode active ho gaya Wasi paji! Saari distractions block kar dittiyan ne."
-          : "Quantum Deep Focus Mode active kar diya gaya hai Wasi Sahab. Distractions block hain, apne goal par focus rakhein.";
-
-      speechService.speak(startText, { lang: language, gender: voiceGender });
-    } else {
-      soundEffects.stopQuantumBinauralHum();
-      setIsFocusActive(false);
-    }
+    setIsFocusActive((prev) => {
+      const next = !prev;
+      if (next) {
+        soundEffects.startQuantumBinauralHum();
+        speechService.speak(`${focusDuration} minute ka Deep Focus session shuru ho gaya hai.`, {
+          lang: language,
+          gender: voiceGender,
+        });
+      } else {
+        soundEffects.stopQuantumBinauralHum();
+      }
+      return next;
+    });
   };
 
   const resetFocus = (mins: number) => {
@@ -73,10 +98,14 @@ export const QuantumFocusAnalytics: React.FC<QuantumFocusAnalyticsProps> = ({
     setTimeLeft(mins * 60);
   };
 
-  // Generate AI Daily Evening Report
+  // Generate AI Daily Evening Report from REAL stored tasks/health/focus data
   const handleGenerateReport = async () => {
     soundEffects.playScan();
     setIsGeneratingReport(true);
+    const realTasks = storageService.getTasks();
+    const tasksDone = realTasks.filter((t) => t.completed).length;
+    const realHealth = storageService.getHealth();
+    const realFocusMins = focusLogs.length * focusDuration;
 
     try {
       const res = await fetch("/api/jarvis/daily-briefing", {
@@ -85,29 +114,31 @@ export const QuantumFocusAnalytics: React.FC<QuantumFocusAnalyticsProps> = ({
         body: JSON.stringify({
           language,
           stats: {
-            focusMinutes: 145,
-            tasksDone: 4,
-            waterGlasses: 6,
+            focusMinutes: realFocusMins,
+            focusSessions: focusLogs.length,
+            tasksDone,
+            totalTasks: realTasks.length,
+            waterGlasses: realHealth.waterDrankGlasses,
             blockedDistractions: distractionsBlocked,
-            coherenceRate: 99.8,
           },
         }),
       });
       const data = await res.json();
       setDailyReportText(data.report);
       soundEffects.playBeepConfirm();
-
-      if (data.audioText) {
-        speechService.speak(data.audioText, { lang: language, gender: voiceGender });
+      if (data.report) {
+        speechService.speak(data.report, { lang: language, gender: voiceGender });
       }
     } catch {
-      const fallbackReport = `Quantum Daily Report for Commander Wasi:
-• Focus Time: 145 mins in deep editing & coding.
-• Hydration & Health: 6/8 glasses logged, posture balanced.
-• Financial Discipline: 4 impulse shopping urges intercepted.
-• Tomorrow's Focus: Complete Premiere project rendering & review portfolio.`;
+      const fallbackReport = `Real Daily Summary:
+• Focus Sessions Logged: ${focusLogs.length} (${realFocusMins} mins)
+• Tasks Completed: ${tasksDone} / ${realTasks.length}
+• Water Logged: ${realHealth.waterDrankGlasses} / 8 glasses`;
       setDailyReportText(fallbackReport);
-      speechService.speak("Wasi Sahab, aaj ka quantum report tayar hai.", { lang: language, gender: voiceGender });
+      speechService.speak("Aaj ki real activity report tayar hai.", {
+        lang: language,
+        gender: voiceGender,
+      });
     } finally {
       setIsGeneratingReport(false);
     }
@@ -161,7 +192,7 @@ export const QuantumFocusAnalytics: React.FC<QuantumFocusAnalyticsProps> = ({
             </div>
             <div className="text-xs font-mono text-cyan-300 mt-2 flex items-center justify-center gap-2">
               <span className={`w-2 h-2 rounded-full ${isFocusActive ? "bg-emerald-400 animate-ping" : "bg-slate-600"}`}></span>
-              <span>{isFocusActive ? "BINAURAL 432Hz FREQUENCY EMITTING • SHIELD ON" : "READY TO INITIATE DEEP WORK"}</span>
+              <span>{isFocusActive ? "SILENT DEEP FOCUS ACTIVE • SHIELD ON" : "READY TO INITIATE DEEP WORK"}</span>
             </div>
           </div>
 
@@ -238,29 +269,19 @@ export const QuantumFocusAnalytics: React.FC<QuantumFocusAnalyticsProps> = ({
           </div>
 
           <div className="space-y-3 relative pl-4 border-l border-slate-800 text-xs font-mono">
-            <div className="relative">
-              <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
-              <div className="text-cyan-400 font-bold">09:15 AM • Quantum Initialization</div>
-              <div className="text-slate-400">Wasi logged in. Biometric handshake verified.</div>
-            </div>
-
-            <div className="relative">
-              <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-purple-400"></span>
-              <div className="text-purple-400 font-bold">11:00 AM • Video Editing Session</div>
-              <div className="text-slate-400">Adobe Premiere Pro: Auto-cut silences macro executed.</div>
-            </div>
-
-            <div className="relative">
-              <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-              <div className="text-emerald-400 font-bold">01:30 PM • Health & Hydration Check</div>
-              <div className="text-slate-400">Clean meal logged (Grilled Chicken & Salad) + 3 glasses water.</div>
-            </div>
-
-            <div className="relative">
-              <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-              <div className="text-amber-400 font-bold">04:20 PM • Fazool Kharchi Intercepted</div>
-              <div className="text-slate-400">Online cart impulse buy analyzed & deferred by Jarvis advice.</div>
-            </div>
+            {focusLogs.length === 0 ? (
+              <div className="p-3 rounded-lg bg-slate-950/60 border border-dashed border-slate-800 text-slate-400">
+                Abhi koi focus session record nahi hai. Session start karein to yahan real log save hoga.
+              </div>
+            ) : (
+              focusLogs.map((item, idx) => (
+                <div key={idx} className="relative">
+                  <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                  <div className="text-cyan-400 font-bold">{item.time} • {item.title}</div>
+                  <div className="text-slate-400">{item.detail}</div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

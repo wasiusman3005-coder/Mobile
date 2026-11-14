@@ -15,42 +15,7 @@ export interface StudyTask {
   solutionText?: string;
 }
 
-const defaultStudyTasks: StudyTask[] = [
-  {
-    id: "study-1",
-    subject: "Computer Science",
-    title: "Data Structures: Binary Search Trees & Time Complexity Proof",
-    description: "Write AVL tree insertion algorithms and compute O(log n) worst-case derivation.",
-    dueDate: "Tomorrow, 11:59 PM",
-    completed: true,
-    autoPilotSolved: true,
-    solutionText: "BST balancing proof: When height h <= 1.44 log2(N+2) - 0.328, rotations (LL, RR, LR, RL) guarantee O(log n) lookup and insertion.",
-  },
-  {
-    id: "study-2",
-    subject: "Mathematics / Calculus",
-    title: "Eigenvalues & Diagonalization of 3x3 Matrices",
-    description: "Solve det(A - lambda*I) = 0 for quantum mechanical wave equation operators.",
-    dueDate: "Friday",
-    completed: false,
-  },
-  {
-    id: "study-3",
-    subject: "Physics",
-    title: "Quantum Superposition & Schrödinger Wave Equation",
-    description: "Derive 1D infinite potential well energy quantization: En = (n^2 * h^2) / (8mL^2).",
-    dueDate: "Monday",
-    completed: false,
-  },
-  {
-    id: "study-4",
-    subject: "Artificial Intelligence",
-    title: "Convolutional Neural Networks & Backpropagation math",
-    description: "Calculate gradient descent weight updates for 2D cross-entropy loss function.",
-    dueDate: "Next Week",
-    completed: false,
-  },
-];
+const defaultStudyTasks: StudyTask[] = [];
 
 interface StudentStudyHubProps {
   language: LanguageCode;
@@ -64,7 +29,9 @@ export const StudentStudyHub: React.FC<StudentStudyHubProps> = ({
   const [tasks, setTasks] = useState<StudyTask[]>(() => {
     try {
       const stored = localStorage.getItem("q_nexus_study_tasks");
-      return stored ? JSON.parse(stored) : defaultStudyTasks;
+      if (!stored) return defaultStudyTasks;
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return defaultStudyTasks;
     }
@@ -126,16 +93,13 @@ export const StudentStudyHub: React.FC<StudentStudyHubProps> = ({
 
     const updated = [item, ...tasks];
     saveTasks(updated);
+    speechService.speak(`Naya study task save ho gaya hai: ${item.title}`, {
+      lang: language,
+      gender: voiceGender,
+    });
     setNewTitle("");
     setNewDesc("");
     setShowAddForm(false);
-
-    const vocal =
-      language === "pa"
-        ? `Study task add ho gaya Wasi paji: ${item.title}. Main exam te deadline yaad rakhanga.`
-        : `Wasi Sahab, aapka study task add ho gaya hai: ${item.title}. Main time par alert doonga.`;
-
-    speechService.speak(vocal, { lang: language, gender: voiceGender });
   };
 
   // Solve with Academic Auto-Pilot
@@ -164,6 +128,10 @@ export const StudentStudyHub: React.FC<StudentStudyHubProps> = ({
       const data = await res.json();
       setSolvedOutput(data.solution);
       soundEffects.playBeepConfirm();
+      speechService.speak(`${subj} ka study solution tayar ho gaya hai.`, {
+        lang: language,
+        gender: voiceGender,
+      });
 
       if (taskToSolve) {
         const updated = tasks.map((t) =>
@@ -171,13 +139,6 @@ export const StudentStudyHub: React.FC<StudentStudyHubProps> = ({
         );
         saveTasks(updated);
       }
-
-      const vocal = data.vocalSummary || (
-        language === "pa"
-          ? "Wasi paji, study task solve ho gaya ae. Notes ready ne!"
-          : "Wasi Sahab, study task kamyabi se solve ho gaya hai. Notes tayar hain."
-      );
-      speechService.speak(vocal, { lang: language, gender: voiceGender });
     } catch {
       const fallback = `[Academic Solution Summary for Wasi]
 Subject: ${subj}

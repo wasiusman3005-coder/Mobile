@@ -13,48 +13,7 @@ export interface LifeRecord {
   priority: "high" | "medium" | "low";
 }
 
-const defaultLifeRecords: LifeRecord[] = [
-  {
-    id: "rec-1",
-    title: "Daily YouTube Video Editing & Upload Routine",
-    category: "routine",
-    content: "Rough cut by 1:00 PM, audio mastering & noise reduction by 3:00 PM, final 4K render and thumbnail upload by 6:00 PM.",
-    dateCreated: "Active",
-    priority: "high",
-  },
-  {
-    id: "rec-2",
-    title: "Computer Science University Exam Syllabus",
-    category: "study",
-    content: "Advanced Algorithms, Operating Systems memory management, and Neural Networks matrix derivations.",
-    dateCreated: "Active",
-    priority: "high",
-  },
-  {
-    id: "rec-3",
-    title: "Host PC Workstation Profile & Performance Rules",
-    category: "tech",
-    content: "Live Host PC hardware probe active in PC & Video Suite; prioritize SSD cache cleanup before 4K renders.",
-    dateCreated: "Saved",
-    priority: "medium",
-  },
-  {
-    id: "rec-4",
-    title: "Monthly Saving Target & Fazool Kharchi Rule",
-    category: "finance",
-    content: "Minimum 40,000 PKR to be moved to Emergency Gold/Investment Vault immediately on 1st of every month.",
-    dateCreated: "Saved",
-    priority: "high",
-  },
-  {
-    id: "rec-5",
-    title: "Daily Vitamin D & Omega 3 Supplement",
-    category: "health",
-    content: "Take 1 Vitamin D3 + Omega 3 capsule after lunch with water. Avoid late-night tea.",
-    dateCreated: "Daily",
-    priority: "medium",
-  },
-];
+const defaultLifeRecords: LifeRecord[] = [];
 
 interface LifeRecordsManagerProps {
   language: LanguageCode;
@@ -68,7 +27,9 @@ export const LifeRecordsManager: React.FC<LifeRecordsManagerProps> = ({
   const [records, setRecords] = useState<LifeRecord[]>(() => {
     try {
       const stored = localStorage.getItem("q_nexus_life_records");
-      return stored ? JSON.parse(stored) : defaultLifeRecords;
+      if (!stored) return defaultLifeRecords;
+      const parsed = JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return defaultLifeRecords;
     }
@@ -138,6 +99,10 @@ export const LifeRecordsManager: React.FC<LifeRecordsManagerProps> = ({
           : r
       );
       saveRecords(updated);
+      speechService.speak(`Record update ho gaya hai: ${formTitle.trim()}`, {
+        lang: language,
+        gender: voiceGender,
+      });
     } else {
       // Add
       const newRec: LifeRecord = {
@@ -149,13 +114,10 @@ export const LifeRecordsManager: React.FC<LifeRecordsManagerProps> = ({
         dateCreated: new Date().toLocaleDateString(),
       };
       saveRecords([newRec, ...records]);
-
-      const announce =
-        language === "pa"
-          ? `Record save ho gaya Wasi paji: ${newRec.title}. Main sab yaad rakhanga.`
-          : `Wasi Sahab, aapka record save kar liya gaya hai: ${newRec.title}. Main her waqt aapko guide karta rahoonga.`;
-
-      speechService.speak(announce, { lang: language, gender: voiceGender });
+      speechService.speak(`Naya task record save kar liya hai: ${newRec.title}`, {
+        lang: language,
+        gender: voiceGender,
+      });
     }
 
     setShowForm(false);

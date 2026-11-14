@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Brain, User, Target, Plus, Search, CheckCircle2, Circle, Trash2, Calendar, Bell, Sparkles } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
-import { storageService, defaultTasks } from "../services/storage";
+import { storageService } from "../services/storage";
 import { TaskItem, UserProfile, LanguageCode, VoiceGender } from "../types";
 
 interface PersonalMemoryBankProps {
@@ -33,16 +33,26 @@ export const PersonalMemoryBank: React.FC<PersonalMemoryBankProps> = ({
   // Toggle Task Completion
   const toggleTask = (taskId: string) => {
     soundEffects.playClick();
+    let completedTitle: string | null = null;
     const updated = tasks.map((t) => {
       if (t.id === taskId) {
         const nextState = !t.completed;
-        if (nextState) soundEffects.playBeepConfirm();
+        if (nextState) {
+          soundEffects.playBeepConfirm();
+          completedTitle = t.title;
+        }
         return { ...t, completed: nextState };
       }
       return t;
     });
     setTasks(updated);
     storageService.saveTasks(updated);
+    if (completedTitle) {
+      speechService.speak(`Shabash! Task mukammal ho gaya: ${completedTitle}`, {
+        lang: language,
+        gender: voiceGender,
+      });
+    }
   };
 
   // Add Task
@@ -50,7 +60,7 @@ export const PersonalMemoryBank: React.FC<PersonalMemoryBankProps> = ({
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
 
-    soundEffects.playClick();
+    soundEffects.playBeepConfirm();
     const item: TaskItem = {
       id: Date.now().toString(),
       title: newTaskTitle.trim(),
@@ -64,15 +74,12 @@ export const PersonalMemoryBank: React.FC<PersonalMemoryBankProps> = ({
     const updated = [item, ...tasks];
     setTasks(updated);
     storageService.saveTasks(updated);
+    speechService.speak(`Naya task schedule ho gaya hai: ${item.title}. Main aapko waqt par yaad dilaungi.`, {
+      lang: language,
+      gender: voiceGender,
+    });
     setNewTaskTitle("");
     setShowTaskForm(false);
-
-    const vocalText =
-      language === "pa"
-        ? `Task add ho gaya Wasi paji: ${item.title}. Main time te yaad karawaanga.`
-        : `Task add kar diya gaya hai Wasi Sahab: ${item.title}. Main waqt par aapko alert doonga.`;
-
-    speechService.speak(vocalText, { lang: language, gender: voiceGender });
   };
 
   // Delete Task
@@ -207,43 +214,49 @@ export const PersonalMemoryBank: React.FC<PersonalMemoryBankProps> = ({
 
             {/* Tasks List */}
             <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className={`p-3 rounded-xl border flex items-center justify-between text-xs font-mono transition ${
-                    task.completed
-                      ? "bg-slate-950/40 border-slate-800/50 text-slate-500 line-through"
-                      : "bg-slate-950/80 border-slate-800 text-slate-200 hover:border-cyan-500/40"
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <button
-                      onClick={() => toggleTask(task.id)}
-                      className="cursor-pointer shrink-0 text-cyan-400 hover:text-cyan-300"
-                    >
-                      {task.completed ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <Circle className="w-4 h-4" />
-                      )}
-                    </button>
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">{task.title}</div>
-                      <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
-                        <span className="uppercase text-cyan-400">{task.category}</span>
-                        {task.dueDate && <span>• Due: {task.dueDate}</span>}
+              {tasks.length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-950/60 border border-dashed border-slate-800 text-center text-xs font-mono text-slate-400">
+                  Abhi koi task add nahi hai. &quot;ADD TASK&quot; dabaein ya voice se task batayein.
+                </div>
+              ) : (
+                tasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className={`p-3 rounded-xl border flex items-center justify-between text-xs font-mono transition ${
+                      task.completed
+                        ? "bg-slate-950/40 border-slate-800/50 text-slate-500 line-through"
+                        : "bg-slate-950/80 border-slate-800 text-slate-200 hover:border-cyan-500/40"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        onClick={() => toggleTask(task.id)}
+                        className="cursor-pointer shrink-0 text-cyan-400 hover:text-cyan-300"
+                      >
+                        {task.completed ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        ) : (
+                          <Circle className="w-4 h-4" />
+                        )}
+                      </button>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{task.title}</div>
+                        <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
+                          <span className="uppercase text-cyan-400">{task.category}</span>
+                          {task.dueDate && <span>• Due: {task.dueDate}</span>}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <button
-                    onClick={() => deleteTask(task.id)}
-                    className="text-slate-600 hover:text-red-400 p-1 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+                    <button
+                      onClick={() => deleteTask(task.id)}
+                      className="text-slate-600 hover:text-red-400 p-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -267,15 +280,21 @@ export const PersonalMemoryBank: React.FC<PersonalMemoryBankProps> = ({
             </div>
 
             <div className="space-y-2 mb-3 max-h-[140px] overflow-y-auto pr-1">
-              {userProfile.goals.map((g, idx) => (
-                <div
-                  key={idx}
-                  className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-xs font-mono text-slate-200 flex items-center gap-2"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                  <span>{g}</span>
+              {userProfile.goals.length === 0 ? (
+                <div className="p-3 rounded-lg bg-slate-950/60 border border-dashed border-slate-800 text-xs font-mono text-slate-500">
+                  Apna pehla goal niche add karein.
                 </div>
-              ))}
+              ) : (
+                userProfile.goals.map((g, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-xs font-mono text-slate-200 flex items-center gap-2"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    <span>{g}</span>
+                  </div>
+                ))
+              )}
             </div>
 
             <form onSubmit={handleAddGoal} className="flex gap-2">
@@ -305,14 +324,20 @@ export const PersonalMemoryBank: React.FC<PersonalMemoryBankProps> = ({
             </div>
 
             <div className="space-y-2 mb-3 max-h-[160px] overflow-y-auto pr-1">
-              {filteredNotes.map((note, idx) => (
-                <div
-                  key={idx}
-                  className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-xs font-mono text-slate-300"
-                >
-                  • {note}
+              {filteredNotes.length === 0 ? (
+                <div className="p-3 rounded-lg bg-slate-950/60 border border-dashed border-slate-800 text-xs font-mono text-slate-500">
+                  Koi personal note ya routine abhi add nahi hai — niche add karein.
                 </div>
-              ))}
+              ) : (
+                filteredNotes.map((note, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-xs font-mono text-slate-300"
+                  >
+                    • {note}
+                  </div>
+                ))
+              )}
             </div>
 
             <form onSubmit={handleAddNote} className="flex gap-2">

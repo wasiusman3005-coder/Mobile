@@ -24,7 +24,6 @@ export const AwayAutoPilot: React.FC<AwayAutoPilotProps> = ({
   ]);
 
   useEffect(() => {
-    soundEffects.playQuantumStartup();
     const interval = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
@@ -32,15 +31,13 @@ export const AwayAutoPilot: React.FC<AwayAutoPilotProps> = ({
   }, []);
 
   const handleWakeUp = () => {
-    soundEffects.playBeepConfirm();
-    const returnGreet =
-      language === "pa"
-        ? "Ji Aayan Nu Wasi paji! Tuhadi absence ch saare background tasks streamline ho gaye ne. System optimal ae."
-        : language === "en"
-        ? "Welcome back Commander Wasi. All pending renders and security checks were completed in your absence."
-        : "Khush Amdeed wapsi par Wasi Sahab! Aapki ghair-mojoodgi mein background tasks aur security patrol kamyabi se chal rahi thi. System ready hai.";
-
-    speechService.speak(returnGreet, { lang: language, gender: voiceGender });
+    soundEffects.playQuantumStartup();
+    speechService.speak(
+      language === "en"
+        ? "Welcome back Commander Wasi. All background systems are synced."
+        : "Khush aamdeed Wasi Sahab! Aapki gair-mojoodgi mein sab tasks aur security protected rahe.",
+      { lang: language, gender: voiceGender }
+    );
     onReturn();
   };
 

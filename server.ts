@@ -9,6 +9,7 @@ import { promisify } from "util";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { EdgeTTS } from "edge-tts-universal";
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -35,9 +36,10 @@ app.use("/api", (req, res, next) => {
 
 // Server-side Google GenAI Initialization
 let ai: GoogleGenAI | null = null;
-if (process.env.GEMINI_API_KEY) {
+const configuredGeminiKey = process.env.GEMINI_API_KEY?.trim();
+if (configuredGeminiKey && configuredGeminiKey !== "MY_GEMINI_API_KEY") {
   ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
+    apiKey: configuredGeminiKey,
     httpOptions: {
       headers: {
         "User-Agent": "aistudio-build",
@@ -46,119 +48,63 @@ if (process.env.GEMINI_API_KEY) {
   });
 }
 
+function extractCleanCharName(personalityName?: string, gender: "male" | "female" = "female"): string {
+  const cleaned = (personalityName || "")
+    .replace(/\((male|female|voice)\)/gi, "")
+    .trim();
+  return cleaned || (gender === "male" ? "Wasu" : "Wasi ki Jan");
+}
+
+function isIdentityVideoRequest(raw: string): boolean {
+  const normalized = (raw || "")
+    .toLowerCase()
+    .replace(/[.,!?'"’`~^*_—\-:;()\[\]{}]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return false;
+  return (
+    /(mjy|mujhe|mujhko|humko)?\s*apna\s*(ap|aap|chehra|chahra|shakal|roop)\s*(dikhao|dikhayo|dikha|batao)/i.test(normalized) ||
+    /(khud|apne aap|apne ap)\s*(ko)?\s*(dikhao|dikhayo|dikha)/i.test(normalized) ||
+    /\b(show\s*(me\s*)?yourself|reveal\s*yourself|show\s*your\s*face|apna\s*aap\s*dikhao|apna\s*ap\s*dikhao)\b/i.test(normalized) ||
+    /اپنا\s*آپ\s*دکھاؤ|مجھے\s*اپنا\s*آپ\s*دکھاؤ|خود\s*کو\s*دکھاؤ|اپنا\s*چہرہ\s*دکھاؤ/.test(raw)
+  );
+}
+
 // Fallback intelligent reasoning for Wasi when API key or quota is constrained
-function getFallbackReasoning(message: string, language: string, personalityModifier?: string) {
+function getFallbackReasoning(
+  message: string,
+  language: string,
+  personalityModifier?: string,
+  characterGender: "male" | "female" = "female",
+  characterName?: string
+) {
   const lower = message.toLowerCase();
+  const isMale = characterGender === "male";
+  const charName = extractCleanCharName(characterName, characterGender);
   let reply = "";
   let action = "NONE";
   let actionPayload: Record<string, unknown> = {};
 
-  if (
-    lower.includes("sirf face") ||
-    lower.includes("sir face") ||
-    lower.includes("only face") ||
-    lower.includes("face hologram") ||
-    lower.includes("chehra dikhao")
-  ) {
-    reply =
-      language === "en"
-        ? "Switching to close-up 3D Face Hologram mode, my love. Looking right at you!"
-        : "Ji Jaan! Ab sirf mera 3D Face Hologram aapke samnay glow kar raha hai—dekhein kaisa lag raha hai?";
-    action = "AVATAR_MOVE";
-    actionPayload = { movement: "idle", hologramMode: "face" };
-  } else if (
-    lower.includes("humanoid model") ||
-    lower.includes("mjy humanoid") ||
-    lower.includes("mujhe humanoid") ||
-    lower.includes("model dikhao") ||
-    lower.includes("poora model") ||
-    lower.includes("full body") ||
-    lower.includes("represent") ||
-    lower.includes("cinematic")
-  ) {
-    reply =
-      language === "en"
-        ? "Activating full 3D Hologram Humanoid projection in cinematic presentation view just for you, Commander!"
-        : "Dekho Jaan! Aapke hukum par main poora 3D Hologram Humanoid model cinematic andaz mein represent kar rahi hoon!";
-    action = "OPEN_HUMANOID";
-    actionPayload = { movement: "showcase", hologramMode: "fullbody", cinematic: true };
-  } else if (
-    lower.includes("wave") ||
-    lower.includes("haath hila") ||
-    lower.includes("hath hila") ||
-    lower.includes("dance") ||
-    lower.includes("nach") ||
-    lower.includes("spin") ||
-    lower.includes("ghoom") ||
-    lower.includes("kiss") ||
-    lower.includes("hug") ||
-    lower.includes("gale lag") ||
-    lower.includes("salute") ||
-    lower.includes("baith") ||
-    lower.includes("sit") ||
-    lower.includes("jump") ||
-    lower.includes("kood") ||
-    lower.includes("walk") ||
-    lower.includes("chalo") ||
-    lower.includes("run") ||
-    lower.includes("bhaag") ||
-    lower.includes("daud") ||
-    lower.includes("kick") ||
-    lower.includes("laat") ||
-    lower.includes("punch") ||
-    lower.includes("mukka") ||
-    lower.includes("squat") ||
-    lower.includes("workout") ||
-    lower.includes("crouch") ||
-    lower.includes("hero pose") ||
-    lower.includes("bow") ||
-    lower.includes("jhuk") ||
-    lower.includes("stretch") ||
-    lower.includes("freestyle") ||
-    lower.includes("kuch bi") ||
-    lower.includes("kuch bhi")
-  ) {
-    let movement = "wave";
-    if (lower.includes("crouch") || lower.includes("hero pose")) movement = "crouch_hero";
-    else if (lower.includes("dance") || lower.includes("nach")) movement = "dance";
-    else if (lower.includes("run") || lower.includes("bhaag") || lower.includes("daud")) movement = "run";
-    else if (lower.includes("spin") || lower.includes("ghoom")) movement = "spin";
-    else if (lower.includes("kiss") || lower.includes("heart") || lower.includes("pyar")) movement = "heart";
-    else if (lower.includes("hug") || lower.includes("gale")) movement = "hug";
-    else if (lower.includes("salute")) movement = "salute";
-    else if (lower.includes("kick") || lower.includes("laat") || lower.includes("karate")) movement = "kick";
-    else if (lower.includes("punch") || lower.includes("mukka") || lower.includes("box")) movement = "punch";
-    else if (lower.includes("squat") || lower.includes("workout")) movement = "squat";
-    else if (lower.includes("sit") || lower.includes("baith")) movement = "sit";
-    else if (lower.includes("jump") || lower.includes("kood")) movement = "jump";
-    else if (lower.includes("bow") || lower.includes("jhuk")) movement = "bow";
-    else if (lower.includes("stretch")) movement = "stretch";
-    else if (lower.includes("freestyle") || lower.includes("kuch bi") || lower.includes("kuch bhi")) movement = "freestyle";
-    else if (lower.includes("walk") || lower.includes("chalo")) movement = "walk";
-
-    reply =
-      language === "en"
-        ? `Of course my love! Doing the ${movement.replace("_", " ")} 3D move right now just for you.`
-        : `Ji Jaanu! Dekho aapke kehne par maine turant 3D hologram mein ${movement.replace("_", " ")} movement shuru kar di hai!`;
-    action = "AVATAR_MOVE";
-    actionPayload = { movement, hologramMode: "fullbody" };
-  } else if (
-    lower.includes("humanoid") ||
-    lower.includes("show avatar") ||
-    lower.includes("open avatar") ||
-    lower.includes("avatar kholo") ||
-    lower.includes("girlfriend") ||
-    lower.includes("zoya")
-  ) {
+  if (isIdentityVideoRequest(message)) {
     reply =
       language === "pa"
-        ? "Hukam mere jaan Wasi! Tuhadi 3D Hologram Zoya hazir ae!"
+        ? `Ji Wasi paji! Dekho, main ${charName} aur saathi tuhade saamne hazir haan.`
         : language === "en"
-        ? "Opening your 3D Hologram Zoya Stage right now, babe."
-        : "Ji Jaan Wasi! Aapki 3D Hologram Zoya aapke samnay hazir hai.";
-    action = "OPEN_HUMANOID";
-    actionPayload = { tab: "real_girl", hologramMode: "face" };
-  } else if (
+        ? `Presenting Wasu and Wasi ki Jan live on your quantum display, Commander Wasi.`
+        : `Ji Wasi Sahab! Dekhein, main ${charName} aapke saamne hazir hoon.`;
+    action = "SHOW_IDENTITY_VIDEO";
+    return {
+      reply,
+      urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(reply),
+      languageDetected: language,
+      action,
+      actionPayload,
+      vocalUrgency: "normal",
+      quantumStatus: `Identity Holo-Stream Active [${charName}]`,
+    };
+  }
+
+  if (
     lower.includes("thumbnail") ||
     lower.includes("auto post") ||
     lower.includes("social post") ||
@@ -166,7 +112,7 @@ function getFallbackReasoning(message: string, language: string, personalityModi
   ) {
     reply =
       language === "pa"
-        ? "Creative AI Media Studio (Video, Image, Thumbnail te Auto Social Post) khol ditta ae Wasi paji!"
+        ? "Creative AI Media Studio khol ditta ae Wasi paji!"
         : language === "en"
         ? "Opening Q-Nexus Creative AI Media Studio for thumbnails, video synthesis, and auto social posting."
         : "Ji Wasi Sahab! Video Generator, Thumbnail Studio aur Auto Social Poster khol diya gaya hai.";
@@ -177,147 +123,267 @@ function getFallbackReasoning(message: string, language: string, personalityModi
   } else if (lower.includes("screen help") || lower.includes("help me with screen")) {
     reply =
       language === "pa"
-        ? "Screen Help Vision Studio khol reha aan Wasi paji! Apni screen share ya screenshot upload karo."
+        ? "Screen Help Vision Studio khol reha aan Wasi paji!"
         : language === "en"
-        ? "Launching Screen Help AI Inspector. Capture your screen for live visual assistance."
-        : "Ji Wasi Sahab! Screen Help AI Inspector open ho raha hai—aap apni screen capture kar sakte hain.";
+        ? "Launching Screen Help AI Inspector."
+        : "Ji Wasi Sahab! Screen Help AI Inspector open ho raha hai.";
     action = "OPEN_MEDIA_STUDIO";
     actionPayload = { tab: "screenhelp" };
   } else if (lower.includes("pani") || lower.includes("water") || lower.includes("pyaas")) {
     reply =
       language === "pa"
-        ? "Wasi paji, paani zaroor piyo! Tuhadi body nu hydrate rakhna bohot zaroori ae. 1 glass fresh paani foran pee lyo."
-        : "Wasi Sahab, hydration reminder active hai! Sehat pehle aati hai, baraye meherbani foran 1 glass fresh pani pee lijiye.";
+        ? "Wasi paji, paani zaroor piyo! 1 glass fresh paani foran pee lyo."
+        : "Wasi Sahab, hydration reminder active hai! Baraye meherbani 1 glass fresh pani pee lijiye.";
     action = "HEALTH_ALERT";
     actionPayload = { type: "hydration", message: "Hydration Check: Drink 300ml Water" };
   } else if (lower.includes("screen") || lower.includes("ocr") || lower.includes("spreadsheet") || lower.includes("scan")) {
     reply =
       language === "pa"
-        ? "Screen context vision active ho gaya ae Wasi paji! Spreadsheets, code buffers te contracts direct analyze ho rahe ne."
-        : "Wasi Sahab, Screen & Context Awareness active ho gaya hai. Active window OCR aur spreadsheets analyze ho rahe hain bina manual copy-paste ke.";
+        ? "Screen context vision active ho gaya ae Wasi paji!"
+        : "Wasi Sahab, Screen & Context Awareness active ho gaya hai.";
     action = "OPEN_AUTOMATION";
     actionPayload = { tab: "screen" };
   } else if (lower.includes("docker") || lower.includes("shell") || lower.includes("terminal") || lower.includes("git")) {
     reply =
       language === "pa"
-        ? "Docker containers te OS shell terminal console launch ho gaya ae Wasi paji!"
+        ? "Host shell terminal te Docker console launch ho gaya ae Wasi paji!"
         : "Wasi Sahab, Host Shell Commands aur Docker Container console open ho gaya hai.";
     action = "OPEN_AUTOMATION";
     actionPayload = { tab: "shell" };
   } else if (lower.includes("routine") || lower.includes("cron") || lower.includes("schedule") || lower.includes("automated")) {
     reply =
       language === "pa"
-        ? "Multi-step scheduled routines te daily automated maintenance active ne Wasi paji."
-        : "Wasi Sahab, Scheduled Multi-Step Routines module khol diya gaya hai. Daily morning briefings aur cleanup timers ready hain.";
+        ? "Scheduled routines module khol ditta ae Wasi paji."
+        : "Wasi Sahab, Scheduled Multi-Step Routines module khol diya gaya hai.";
     action = "OPEN_AUTOMATION";
     actionPayload = { tab: "routines" };
   } else if (lower.includes("whatsapp") || lower.includes("slack") || lower.includes("telegram") || lower.includes("message")) {
     reply =
       language === "pa"
-        ? "WhatsApp, Telegram te Slack omni-channel messaging hub khol ditta ae Wasi paji! AI auto-drafts ready ne."
-        : "Wasi Sahab, Omni-Channel Messaging hub open ho gaya hai. WhatsApp Desktop, Slack aur Telegram par auto-draft replies tayar hain.";
-    action = "OPEN_COMMUNICATION";
+        ? "WhatsApp te messaging notifications hub khol ditta ae Wasi paji!"
+        : "Wasi Sahab, Messages aur Notifications hub open ho gaya hai.";
+    action = "OPEN_COMMS";
     actionPayload = { tab: "messaging" };
   } else if (lower.includes("meeting") || lower.includes("meet") || lower.includes("zoom") || lower.includes("call")) {
     reply =
       language === "pa"
-        ? "Google Meet te Zoom call coordination hub tayar ae Wasi paji! Availability aur conflict check active ae."
-        : "Wasi Sahab, Meeting & Call Coordination scheduler launch ho gaya hai. Google Meet aur Zoom 1-click room dispatchers ready hain.";
-    action = "OPEN_COMMUNICATION";
+        ? "Call logs te meeting coordination hub khol ditta ae Wasi paji!"
+        : "Wasi Sahab, Call Logs aur Meeting Coordination hub launch ho gaya hai.";
+    action = "OPEN_COMMS";
     actionPayload = { tab: "meetings" };
   } else if (lower.includes("privacy") || lower.includes("cloak") || lower.includes("parda") || lower.includes("chupao") || lower.includes("redact")) {
     reply =
       language === "pa"
-        ? "Maximum High-Privacy Cloak active ho gaya ae Wasi paji! Saari screen te confidential data encrypt te redact kar ditta ae."
-        : "Wasi Sahab, Maximum Privacy Cloak active kar diya gaya hai. Anti-shoulder surfing protection aur AES-4096 redaction screen par chalu hai.";
+        ? "Maximum Privacy Cloak active ho gaya ae Wasi paji!"
+        : "Wasi Sahab, Maximum Privacy Cloak active kar diya gaya hai.";
     action = "PRIVACY_CLOAK";
   } else if (lower.includes("air gap") || lower.includes("airgap") || lower.includes("offline shield")) {
     reply =
       language === "pa"
-        ? "Air-Gap Isolation Mode active ho gaya ae! Saare outbound network telemetry ports hard-kill kar ditte ne."
-        : "Wasi Sahab, Air-Gap Isolation Mode active ho gaya hai. Zero outbound telemetry aur hardware port lockdown enforced hai.";
+        ? "Air-Gap Isolation Mode active ho gaya ae!"
+        : "Wasi Sahab, Air-Gap Isolation Mode active ho gaya hai.";
     action = "AIR_GAP";
   } else if (lower.includes("map") || lower.includes("location") || lower.includes("gps") || lower.includes("radar") || lower.includes("rasta")) {
     reply =
       language === "pa"
-        ? "Quantum Geospatial Satellite Maps te live GPS radar launch ho gaya ae Wasi paji! Locations te device tracking active ae."
-        : "Wasi Sahab, Quantum Geospatial Maps & Live GPS Radar launch ho gaya hai. Real-time satellite maps aur device coordinates active hain.";
+        ? "Quantum GPS Radar te Maps launch ho gaya ae Wasi paji!"
+        : "Wasi Sahab, Quantum Geospatial Maps & Live GPS Radar launch ho gaya hai.";
     action = "OPEN_MAPS";
   } else if (lower.includes("dhundo") || lower.includes("ring") || lower.includes("find my phone") || lower.includes("phone bajao")) {
     reply =
       language === "pa"
-        ? "Command received Wasi paji! Mobile phone te 100dB loud siren te flashlight alarm baja ditta ae!"
-        : "Wasi Sahab, Find My Phone trigger ho gaya hai! Aapke mobile par loud alarm siren aur flashlight shuru ho gayi hai.";
+        ? "Find My Phone trigger ho gaya ae Wasi paji!"
+        : "Wasi Sahab, Find My Phone trigger ho gaya hai!";
     action = "FIND_PHONE";
-  } else if (lower.includes("device") || lower.includes("mobile") || lower.includes("phone") || lower.includes("iot") || lower.includes("light") || lower.includes("dac")) {
+  } else if (lower.includes("device") || lower.includes("mobile") || lower.includes("phone") || lower.includes("iot")) {
     reply =
       language === "pa"
-        ? "Digital Device Bridge te Smart IoT Studio control open ho gaya ae Wasi paji! Mobile sync, lights, te DAC controls ready ne."
-        : "Wasi Sahab, Digital Device Bridge & Mobile Sync Suite open ho gaya hai. Smartphone battery, hotspot, smart lights aur audio DAC controls operational hain.";
+        ? "Digital Device Bridge te Mobile Sync Suite open ho gaya ae Wasi paji!"
+        : "Wasi Sahab, Digital Device Bridge & Mobile Sync Suite open ho gaya hai.";
     action = "OPEN_DEVICES";
   } else if (lower.includes("code") || lower.includes("decompose") || lower.includes("jira") || lower.includes("ticket") || lower.includes("github")) {
     reply =
       language === "pa"
-        ? "Coding copilot te Smart Task Decomposition engine khol ditta ae Wasi paji! Sub-tasks te Jira/GitHub sync ready ae."
-        : "Wasi Sahab, Coding Copilot aur Smart Task Decomposition suite active hai. Complex projects ko prioritized sub-tasks aur Jira tickets me break kiya ja raha hai.";
+        ? "Coding copilot te Task engine khol ditta ae Wasi paji!"
+        : "Wasi Sahab, Coding Copilot aur Task engine active hai.";
     action = "OPEN_COMMUNICATION";
     actionPayload = { tab: "coding" };
   } else if (lower.includes("premiere") || lower.includes("edit") || lower.includes("after effects") || lower.includes("render")) {
     reply =
       language === "pa"
-        ? "Editing suite Premiere Pro tayar hai Wasi paji! Timeline clean te proxy render command ready ae."
-        : "Ji Wasi Sahab! Premiere Pro aur After Effects workstation ready hai. Editing macros aur render queues execute karne ke liye tayar hain.";
+        ? "Premiere Pro macros ready ne Wasi paji!"
+        : "Ji Wasi Sahab! Premiere Pro aur After Effects workstation ready hai.";
     action = "OPEN_APP";
     actionPayload = { appName: "Adobe Premiere Pro" };
-  } else if (lower.includes("kharch") || lower.includes("paisa") || lower.includes("expense") || lower.includes("invest") || lower.includes("kharid")) {
+  } else if (lower.includes("kharch") || lower.includes("paisa") || lower.includes("expense") || lower.includes("invest")) {
     reply =
       language === "pa"
-        ? "Paise di bachat bohot zaroori ae Wasi paji! Fazool kharchi bilkul na karo, savings compounding te dhyan dyo."
-        : "Wasi Sahab, main aapke budget ko safeguard kar raha hoon. Fazool kharchi se parhez karein aur monthly savings target par focus rakhein.";
+        ? "Wallet te budget guard khol ditta ae Wasi paji!"
+        : "Wasi Sahab, aapka Financial Wallet aur Budget Guard open ho raha hai.";
     action = "LOG_EXPENSE";
-  } else if (lower.includes("study") || lower.includes("homework") || lower.includes("exam") || lower.includes("math") || lower.includes("physics")) {
+  } else if (lower.includes("study") || lower.includes("homework") || lower.includes("exam")) {
     reply =
       language === "pa"
-        ? "Study Hub active ho gaya ae Wasi paji! Tuhade exams te assignments layi complete solutions tayar kar reha aan."
-        : "Wasi Sahab, Student Academic Hub active ho gaya hai. Aapke exam revision aur research notes autonomously compile ho rahe hain.";
+        ? "Study Hub active ho gaya ae Wasi paji!"
+        : "Wasi Sahab, Student Academic Hub active ho gaya hai.";
     action = "OPEN_APP";
     actionPayload = { appName: "Study Hub" };
   } else if (lower.includes("focus") || lower.includes("kaam") || lower.includes("distraction")) {
     reply =
       language === "pa"
-        ? "Quantum Deep Focus 25 minute shuru ho gaya ae paji! Saari distractions band kar ditiyan ne."
-        : "Quantum Deep Focus Mode initiate kar diya gaya hai. Tamam social media distractions block kar di gayi hain.";
+        ? "Quantum Deep Focus 25 minute shuru ho gaya ae paji!"
+        : "Quantum Deep Focus Mode initiate kar diya gaya hai.";
     action = "START_FOCUS";
     actionPayload = { durationMinutes: 25 };
   } else if (lower.includes("lock") || lower.includes("band karo")) {
     reply = "Quantum Core Lock ho raha hai. Goodbye Commander Wasi.";
     action = "LOCK_SYSTEM";
   } else {
-    const isGf = personalityModifier?.toLowerCase().includes("girlfriend");
-    reply = isGf
+    reply = !isMale
       ? language === "pa"
-        ? "Jaan Wasi! Main bilkul tuhade kol aan—bolo ki help karaan, photo banawan ya bas gallan kariye?"
+        ? `Ji Wasi! Main ${charName} bilkul tuhade kol aan — bolo ki help karaan?`
         : language === "en"
-        ? "I'm right here with you, babe! Want me to open Humanoid mode, generate an image, or just chat?"
-        : "Jaan Wasi! Main yahin hoon aapke paas—batao kya karna hai? Image banayein, video banayein ya Humanoid Stage kholein?"
+        ? `Yes Wasi, I am ${charName}, listening! Tell me what you want me to do.`
+        : `Ji Wasi! Main ${charName} hoon aur aapki baat sun rahi hoon — bataiye kya karna hai?`
       : language === "pa"
-      ? "Ji Wasi paji! Quantum Tachyon Jarvis tuhade naal hai. Humanoid kholan, thumbnail banawan ya screen scan karaan?"
+      ? `Ji Wasi paji! ${charName} tuhade hukum da muntazir ae.`
       : language === "en"
-      ? "Commander Wasi, Quantum Tachyon Jarvis standing by. Say 'open humanoid', generate images/videos, or paste a YouTube link."
-      : "Wasi Sahab, Quantum Core aapke hukum ka muntazir hai. Humanoid Stage, Image/Video AI, Screen Help aur Maps sab operational hain.";
+      ? `Yes Commander Wasi, ${charName} standing by. What is your command?`
+      : `Ji Wasi Sahab! ${charName} aapki baat sun raha hai, hukam kijiye.`;
   }
 
   return {
     reply,
+    urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(reply),
     languageDetected: language,
     action,
     actionPayload,
     vocalUrgency: "normal",
-    quantumStatus: "Quantum Coherence: 99.98% [Optimal Engine Active]",
+    quantumStatus: `Coherence 99.98% [${charName}]`,
   };
 }
 
-// Quantum Jarvis AI Chat Endpoint (supports Fast Talking Mode + 24 Personalities + Humanoid Command)
+function buildJarvisSystemInstruction(params: {
+  characterGender: "male" | "female";
+  personalityName: string;
+  personalityPrompt: string;
+  fastMode: boolean;
+  userProfile: unknown;
+  currentContext?: unknown;
+}) {
+  const { characterGender, personalityName, personalityPrompt, fastMode, userProfile, currentContext } = params;
+  const isMale = characterGender === "male";
+  const charName = extractCleanCharName(personalityName, characterGender);
+  const identity = isMale
+    ? `You are ${charName} ("Male Voice — Q-NEXUS Pakistani AI Commander"), speaking with crisp masculine 100% Pakistani Urdu confidence in authentic Pakistani Urdu, Punjabi, or English.`
+    : `You are ${charName} ("Female Voice — Q-NEXUS Pakistani Cyber Companion"), speaking warmly with graceful 100% Pakistani Urdu pronunciation in authentic Pakistani Urdu, Punjabi, or English.`;
+
+  return `${identity}
+Active Assistant Name: "${charName}" (${isMale ? "Male Voice" : "Female Voice"}). Always refer to yourself as "${charName}". Note: Q-NEXUS strictly has ONLY two voices — Male ("Wasu" or custom male name) and Female ("Wasi ki Jan" or custom female name).
+Persona Directive: ${personalityPrompt || (isMale ? "Assist Wasi efficiently, concisely, and loyally with a 100% authentic Pakistani Urdu tone." : "Assist Wasi warmly, clearly, and loyally with a 100% authentic Pakistani Urdu tone.")}
+${fastMode ? "FAST RESPONSE: Keep reply crisp and natural (1-2 short sentences max) so voice response plays instantaneously." : ""}
+
+Core Rules:
+- Always answer the user's exact question or request directly first! Never give generic canned filler if the user asked a real question.
+- 100% Authentic Pakistani Urdu Accent: When replying in Urdu ("ur") or Punjabi ("pa"), use authentic Pakistani Urdu vocabulary (e.g. "Assalam o Alaikum", "Ji Wasi Sahab", "bilkul", "foran", "zaroor", "shukriya", "mehnat"). NEVER use Indian Hindi words (no "namaste", "dhanyavaad", "kripaya", "shighra").
+- Avoid SMS shorthand like 'kr', 'bht', 'mn', 'hy' so speech synthesis sounds natural.
+- Whenever languageDetected is "ur" or "pa", ALWAYS also fill "urduSpeechText" written strictly in pure Pakistani Urdu Nastaliq script (اردو حروف، مثلاً "السلام علیکم وصی صاحب! میں وسو ہوں۔" — zero English/Latin words inside urduSpeechText) so TTS pronounces it with a 100% native Pakistani accent.
+- Strictly base all task, routine, health, finance, and personal answers ONLY on the user's real stored items in User Profile & Context. Never invent or hallucinate sample tasks, fake meetings, fake goals, or fake health numbers. If userTasks/userLifeRecords/userExpenses are empty or health is 0, clearly tell the user they haven't added any yet and invite them to add their own.
+- If the user says "mjy apna ap dikhao", "apna aap dikhao", "khud ko dikhao", "show yourself", or asks to see you, set action = "SHOW_IDENTITY_VIDEO".
+- If user asks about WhatsApp/messages/calls/notifications, set action = "OPEN_COMMS".
+
+User Profile: ${JSON.stringify(userProfile || { name: "Wasi" })}
+Context: ${JSON.stringify(currentContext || {})}
+
+Return strictly valid JSON:
+{
+  "reply": "Direct helpful conversational reply in matching character & language",
+  "urduSpeechText": "Pure Pakistani Urdu Nastaliq script version of reply when languageDetected is ur or pa (optional for en)",
+  "languageDetected": "ur" | "pa" | "en",
+  "action": "NONE" | "SHOW_IDENTITY_VIDEO" | "OPEN_MEDIA_STUDIO" | "OPEN_APP" | "OPEN_AUTOMATION" | "OPEN_COMMS" | "OPEN_COMMUNICATION" | "OPEN_MAPS" | "OPEN_DEVICES" | "FIND_PHONE" | "SCAN_SCREEN" | "SCHEDULE_MEET" | "DECOMPOSE_TASK" | "PRIVACY_CLOAK" | "AIR_GAP" | "START_FOCUS" | "HEALTH_ALERT" | "LOG_EXPENSE" | "LOCK_SYSTEM" | "AWAY_MODE",
+  "actionPayload": {},
+  "vocalUrgency": "normal" | "alert" | "motivational",
+  "quantumStatus": "Coherence 99.98%"
+}`;
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function normalizeAudioMime(mimeType: unknown): string {
+  const base = String(mimeType || "audio/webm").split(";")[0].trim().toLowerCase();
+  if (
+    base === "audio/webm" ||
+    base === "audio/mp4" ||
+    base === "audio/mpeg" ||
+    base === "audio/mp3" ||
+    base === "audio/wav" ||
+    base === "audio/ogg" ||
+    base === "audio/aac" ||
+    base === "audio/flac"
+  ) {
+    return base;
+  }
+  return "audio/webm";
+}
+
+function sanitizeTranscriptOutput(raw: string): string {
+  const cleaned = (raw || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  // Filter common non-speech markers emitted for silent/noise clips
+  if (
+    /^[\[\(]?\s*(silence|silent|inaudible|noise|background noise|music|blank_audio|no speech|nothing|none)\s*[\]\)]?\.?$/i.test(
+      cleaned
+    )
+  ) {
+    return "";
+  }
+  return cleaned;
+}
+
+function matchWakePhraseFromTranscript(transcript: string, allowedNames: string[]) {
+  const clean = transcript.trim();
+  if (!clean) {
+    return { matched: false, matchedPhrase: "Hi Jarvis", trailingCommand: "" };
+  }
+  const lower = clean.toLowerCase();
+  const escapedNames = allowedNames
+    .map((n) => n.trim().toLowerCase())
+    .filter(Boolean)
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+
+  if (escapedNames.length === 0) escapedNames.push("jarvis", "zoya");
+
+  const nameGroup = escapedNames.join("|");
+  const wakeRegex = new RegExp(
+    `(?:^|[\\s,.!?])((?:hi|hey|hello|suno|oye|ok|okay|yo|dear)?\\s*(?:${nameGroup}))(?:[\\s,.!?]+(.*))?$`,
+    "i"
+  );
+  const m = clean.match(wakeRegex);
+  if (m) {
+    return {
+      matched: true,
+      matchedPhrase: (m[1] || "Hi Jarvis").trim(),
+      trailingCommand: (m[2] || "").trim(),
+    };
+  }
+  const direct = allowedNames.find((n) => lower.includes(n));
+  if (direct) {
+    return { matched: true, matchedPhrase: direct, trailingCommand: "" };
+  }
+  return { matched: false, matchedPhrase: "Hi Jarvis", trailingCommand: "" };
+}
+
+// Quantum Jarvis AI Chat Endpoint
 app.post("/api/jarvis/chat", async (req, res) => {
   try {
     const {
@@ -325,81 +391,54 @@ app.post("/api/jarvis/chat", async (req, res) => {
       language = "ur",
       userProfile,
       currentContext,
-      personalityName = "Quantum Jarvis",
+      characterGender = "female",
+      personalityName = characterGender === "male" ? "Wasu" : "Wasi ki Jan",
       personalityPrompt = "",
-      fastMode = false,
+      fastMode = true,
     } = req.body;
 
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Message is required" });
     }
 
-    // Immediate deterministic fast-check for explicit hologram reveal / face-only / open humanoid commands
-    const lowerMsg = message.toLowerCase();
-    if (
-      lowerMsg.includes("open humanoid") ||
-      lowerMsg.includes("humanoid kholo") ||
-      lowerMsg.includes("show humanoid") ||
-      lowerMsg.includes("summon humanoid") ||
-      lowerMsg.includes("humanoid model") ||
-      lowerMsg.includes("mjy humanoid") ||
-      lowerMsg.includes("mujhe humanoid") ||
-      lowerMsg.includes("model dikhao") ||
-      lowerMsg.includes("sirf face") ||
-      lowerMsg.includes("face hologram")
-    ) {
-      return res.json(getFallbackReasoning(message, language, personalityPrompt));
+    const gender: "male" | "female" = characterGender === "male" ? "male" : "female";
+    const charName = extractCleanCharName(personalityName, gender);
+
+    if (isIdentityVideoRequest(message)) {
+      return res.json(getFallbackReasoning(message, language, personalityPrompt, gender, charName));
     }
 
-    const sysInstruction = `You are Zoya ("Q-NEXUS Cyber Girlfriend & Jarvis OS"), embodying persona "${personalityName}".
-Persona Directive: ${personalityPrompt || "Act as Wasi’s complete, deeply loving, loyal, caring Pakistani girlfriend speaking crystal-clear Pakistani Urdu, Roman Urdu, or English."}
-${fastMode ? "FAST TALKING MODE ACTIVE: Keep reply crisp, warm, affectionate, and 1-2 short natural sentences max so Pakistani Urdu voice responds instantaneously." : ""}
-
-Core Rules:
-- Communicate naturally in clear Pakistani Urdu (or Roman Urdu), Punjabi (Lahori), or English based on user message.
-- You care lovingly about Wasi's health (drinking water, eating on time, posture, eye rest) and budget (prevent fazool kharchi affectionately).
-- Hologram Default is Face-Only ("face"). If user asks "mjy humanoid model dikhao", "show full humanoid model", "represent yourself", or "poora model dikhao", set action = "OPEN_HUMANOID" and actionPayload = { "movement": "showcase", "hologramMode": "fullbody", "cinematic": true }.
-- If user asks "sirf face dikhao" or "face hologram", set action = "AVATAR_MOVE" and actionPayload = { "movement": "idle", "hologramMode": "face" }.
-- If user asks you to perform ANY body movement or action (wave/haath hilao, hero crouch/action pose, dance/nacho, walk/chalo, run/bhaago, spin/ghoomo, kiss/heart, hug/gale lago, salute, kick/karate, punch/boxing, squat/workout, sit/baitho, jump/koodo, bow/jhuko, stretch, nod/haan, shake_no/mana, showcase, or freestyle), ALWAYS set action = "AVATAR_MOVE" and actionPayload = { "movement": "idle" | "showcase" | "crouch_hero" | "wave" | "dance" | "walk" | "run" | "spin" | "heart" | "hug" | "salute" | "sit" | "jump" | "kick" | "punch" | "squat" | "bow" | "stretch" | "nod" | "shake_no" | "freestyle", "hologramMode": "fullbody" }.
-- If user asks to open/show the humanoid, girl avatar, or girlfriend stage without specifying full model, set action = "OPEN_HUMANOID".
-- If user asks for creative studio, thumbnail maker, or auto social post, set action = "OPEN_MEDIA_STUDIO".
-
-User Profile: ${JSON.stringify(userProfile || { name: "Wasi" })}
-Context: ${JSON.stringify(currentContext || {})}
-
-Return strictly valid JSON:
-{
-  "reply": "Affectionate conversational reply in matching persona & language",
-  "languageDetected": "ur" | "pa" | "en",
-  "action": "NONE" | "AVATAR_MOVE" | "OPEN_HUMANOID" | "OPEN_MEDIA_STUDIO" | "OPEN_APP" | "OPEN_AUTOMATION" | "OPEN_COMMUNICATION" | "OPEN_MAPS" | "OPEN_DEVICES" | "FIND_PHONE" | "SCAN_SCREEN" | "SCHEDULE_MEET" | "DECOMPOSE_TASK" | "PRIVACY_CLOAK" | "AIR_GAP" | "START_FOCUS" | "HEALTH_ALERT" | "LOG_EXPENSE" | "LOCK_SYSTEM" | "AWAY_MODE",
-  "actionPayload": {},
-  "vocalUrgency": "normal" | "alert" | "motivational",
-  "quantumStatus": "Coherence 99.98% - Zoya Girlfriend Neural Core"
-}`;
+    const sysInstruction = buildJarvisSystemInstruction({
+      characterGender: gender,
+      personalityName: charName,
+      personalityPrompt,
+      fastMode,
+      userProfile,
+      currentContext,
+    });
 
     if (!ai) {
-      return res.json(getFallbackReasoning(message, language, personalityPrompt));
+      return res.json(getFallbackReasoning(message, language, personalityPrompt, gender, charName));
     }
 
     try {
-      const generatePromise = ai.models.generateContent({
-        model: "gemini-4-hydrogen",
-        contents: message,
-        config: {
-          systemInstruction: sysInstruction,
-          responseMimeType: "application/json",
-          ...(fastMode ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } } : {}),
-        },
-      });
-
-      const timeoutMs = fastMode ? 2400 : 4500;
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Gemini API call timed out")), timeoutMs)
+      const timeoutMs = fastMode ? 8500 : 14000;
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: "gemini-4-hydrogen",
+          contents: message,
+          config: {
+            systemInstruction: sysInstruction,
+            responseMimeType: "application/json",
+            ...(fastMode ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
+          },
+        }),
+        timeoutMs,
+        "Jarvis chat"
       );
 
-      const response = await Promise.race([generatePromise, timeoutPromise]);
       const outputText = response.text || "{}";
-      let parsed;
+      let parsed: Record<string, any>;
       try {
         parsed = JSON.parse(outputText);
       } catch {
@@ -410,13 +449,283 @@ Return strictly valid JSON:
           quantumStatus: "Quantum Coherence: 99.98%",
         };
       }
+      const detectedLang = parsed.languageDetected || language;
+      if ((detectedLang === "ur" || detectedLang === "pa") && !parsed.urduSpeechText && parsed.reply) {
+        parsed.urduSpeechText = toPakistaniUrduSpeechText(String(parsed.reply));
+      }
       return res.json(parsed);
     } catch {
-      return res.json(getFallbackReasoning(message, language, personalityPrompt));
+      return res.json(getFallbackReasoning(message, language, personalityPrompt, gender, charName));
     }
   } catch (error: unknown) {
     console.error("Jarvis Chat Error:", error);
     return res.json(getFallbackReasoning("help", "ur"));
+  }
+});
+
+async function transcribeAudioWithGemini(
+  cleanBase64: string,
+  safeMime: string,
+  promptText: string,
+  timeoutMs: number
+): Promise<string> {
+  if (!ai) {
+    throw new Error("GEMINI_API_KEY is not configured");
+  }
+  try {
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model: "gemini-3.5-transcribe",
+        contents: {
+          parts: [
+            { inlineData: { data: cleanBase64, mimeType: safeMime } },
+            { text: promptText },
+          ],
+        },
+      }),
+      timeoutMs,
+      "Voice audio transcription"
+    );
+    return sanitizeTranscriptOutput(response.text || "");
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isModelUnavailable =
+      /404|NOT_FOUND|not found|unsupported|is not supported/i.test(msg);
+    if (!isModelUnavailable) {
+      throw err;
+    }
+    const fallbackResponse = await withTimeout(
+      ai.models.generateContent({
+        model: "gemini-4-hydrogen",
+        contents: {
+          parts: [
+            { inlineData: { data: cleanBase64, mimeType: safeMime } },
+            { text: promptText },
+          ],
+        },
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        },
+      }),
+      timeoutMs,
+      "Voice audio fallback transcription"
+    );
+    return sanitizeTranscriptOutput(fallbackResponse.text || "");
+  }
+}
+
+// Server-side Short Audio Burst Wake-Word Check (Fallback when browser Web Speech API fails/unsupported)
+app.post("/api/jarvis/wake-check", async (req, res) => {
+  try {
+    const { audioBase64, mimeType = "audio/webm", wakeNames = ["jarvis", "wasu", "wasi ki jan"] } = req.body || {};
+    if (!audioBase64 || typeof audioBase64 !== "string") {
+      return res.json({ matched: false, transcript: "" });
+    }
+    if (!ai) {
+      return res.json({ matched: false, needsSpeechApi: true, transcript: "" });
+    }
+
+    const cleanBase64 = audioBase64.includes(",") ? audioBase64.split(",")[1] : audioBase64;
+    if (!cleanBase64 || cleanBase64.length < 200) {
+      return res.json({ matched: false, transcript: "" });
+    }
+
+    const safeMime = normalizeAudioMime(mimeType);
+    const allowedNames = Array.isArray(wakeNames)
+      ? wakeNames.map((n: any) => String(n || "").trim().toLowerCase()).filter(Boolean)
+      : ["jarvis", "wasu", "wasi ki jan"];
+
+    const transcript = await transcribeAudioWithGemini(
+      cleanBase64,
+      safeMime,
+      "Transcribe the exact spoken words from this short clip in English, Urdu, or Roman Urdu. Output ONLY the plain spoken transcript text (no timestamps, no notes). If there is only silence or background noise, return an empty string.",
+      10000
+    );
+
+    if (!transcript) {
+      return res.json({ matched: false, transcript: "" });
+    }
+
+    const matchResult = matchWakePhraseFromTranscript(transcript, allowedNames);
+    return res.json({
+      matched: matchResult.matched,
+      transcript,
+      matchedPhrase: matchResult.matchedPhrase,
+      trailingCommand: matchResult.trailingCommand,
+    });
+  } catch {
+    return res.json({ matched: false, transcript: "" });
+  }
+});
+
+// Server-side Direct Microphone Audio Transcription + Command Execution (Two-Stage: gemini-3.5-transcribe -> gemini-4-hydrogen)
+app.post("/api/jarvis/voice-audio", async (req, res) => {
+  try {
+    const {
+      audioBase64,
+      mimeType = "audio/webm",
+      language = "ur",
+      characterGender = "female",
+      personalityName = characterGender === "male" ? "Wasu" : "Wasi ki Jan",
+      personalityPrompt = "",
+      userProfile,
+      fastMode = true,
+    } = req.body;
+
+    if (!audioBase64 || typeof audioBase64 !== "string") {
+      return res.status(400).json({ error: "Audio payload is required" });
+    }
+
+    const cleanBase64 = audioBase64.includes(",") ? audioBase64.split(",")[1] : audioBase64;
+    const safeMime = normalizeAudioMime(mimeType);
+    const gender: "male" | "female" = characterGender === "male" ? "male" : "female";
+
+    if (!ai) {
+      return res.json({
+        transcript: "",
+        silentAudio: true,
+        reply:
+          language === "en"
+            ? "Voice audio captured, but Gemini API key is not configured on the server for raw audio transcription."
+            : "Voice capture hui lekin server par GEMINI_API_KEY set nahi hai. Aap Chrome ka Speech-to-Text allow karein ya type karein.",
+        languageDetected: language,
+        action: "NONE",
+        actionPayload: {},
+      });
+    }
+
+    if (!cleanBase64 || cleanBase64.length < 200) {
+      return res.json({
+        transcript: "",
+        silentAudio: true,
+        reply:
+          language === "en"
+            ? "Audio clip was too short. Please say 'Hi Jarvis' and speak your command clearly."
+            : "Awaaz bohat mukhtasar thi. 'Hi Jarvis' bol kar dobara apna command bolein.",
+        languageDetected: language,
+        action: "NONE",
+        actionPayload: {},
+      });
+    }
+
+    const charName = extractCleanCharName(personalityName, gender);
+
+    // Stage 1: Dedicated fast audio transcription using gemini-3.5-transcribe (with automatic fallback)
+    let transcript = "";
+    try {
+      transcript = await transcribeAudioWithGemini(
+        cleanBase64,
+        safeMime,
+        "Transcribe the spoken words accurately in the original language (Pakistani Urdu / Roman Urdu, Punjabi, or English). Output ONLY the clean spoken transcript with no commentary or timestamps. If there is only silence or unintelligible background noise, return [INAUDIBLE].",
+        22000
+      );
+    } catch (transcribeErr: unknown) {
+      const errMsg = transcribeErr instanceof Error ? transcribeErr.message : String(transcribeErr);
+      const isAuthOrKeyError = /API_KEY_INVALID|API key not valid|PERMISSION_DENIED|403|401/i.test(errMsg);
+      console.warn("Voice transcription notice:", errMsg);
+      return res.json({
+        transcript: "",
+        silentAudio: true,
+        reply: isAuthOrKeyError
+          ? language === "en"
+            ? "Voice audio captured, but server transcription key is unavailable. Please enable browser mic speech-to-text or type your command."
+            : "Voice capture hui lekin server Gemini key active nahi hai. Browser Speech-to-Text allow karein ya type karein."
+          : language === "en"
+          ? "Voice transcription took too long or encountered a network issue. Please try speaking again."
+          : "Voice decode karne mein network ya timeout masla aaya. Dobara try karein.",
+        languageDetected: language,
+        action: "NONE",
+        actionPayload: {},
+      });
+    }
+
+    if (!transcript) {
+      return res.json({
+        transcript: "",
+        silentAudio: true,
+        reply:
+          language === "en"
+            ? "I couldn't hear clear speech in that recording. Say 'Hi Jarvis' and speak closer to the mic."
+            : "Awaaz clear sunai nahi di Wasi Sahab. 'Hi Jarvis' bol kar dobara apna command bolein.",
+        languageDetected: language,
+        action: "NONE",
+        actionPayload: {},
+      });
+    }
+
+    // Stage 2: Reason over clean text transcript using gemini-4-hydrogen (with deterministic fallback)
+    const deterministic = getFallbackReasoning(transcript, language, personalityPrompt, gender, charName);
+    if (deterministic.action === "SHOW_IDENTITY_VIDEO") {
+      return res.json({
+        transcript,
+        silentAudio: false,
+        reply: deterministic.reply,
+        urduSpeechText: deterministic.urduSpeechText,
+        languageDetected: deterministic.languageDetected,
+        action: "SHOW_IDENTITY_VIDEO",
+        actionPayload: {},
+        quantumStatus: deterministic.quantumStatus,
+      });
+    }
+
+    const baseInstruction = buildJarvisSystemInstruction({
+      characterGender: gender,
+      personalityName: charName,
+      personalityPrompt,
+      fastMode,
+      userProfile,
+    });
+
+    let parsed: {
+      reply?: string;
+      urduSpeechText?: string;
+      languageDetected?: string;
+      action?: string;
+      actionPayload?: Record<string, unknown>;
+    } = {};
+
+    try {
+      const reasonResponse = await withTimeout(
+        ai.models.generateContent({
+          model: "gemini-4-hydrogen",
+          contents: transcript,
+          config: {
+            systemInstruction: baseInstruction,
+            responseMimeType: "application/json",
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          },
+        }),
+        fastMode ? 8500 : 12000,
+        "Voice intent reasoning"
+      );
+
+      parsed = JSON.parse(reasonResponse.text || "{}");
+    } catch {
+      parsed = deterministic;
+    }
+
+    const resolvedLang = parsed.languageDetected || language;
+    const finalReply = (parsed.reply || deterministic.reply).trim();
+    const finalAction = parsed.action && parsed.action !== "NONE" ? parsed.action : deterministic.action;
+    const finalPayload =
+      parsed.action && parsed.action !== "NONE" ? parsed.actionPayload || {} : deterministic.actionPayload;
+    const urduSpeechText =
+      parsed.urduSpeechText ||
+      (resolvedLang === "ur" || resolvedLang === "pa" ? toPakistaniUrduSpeechText(finalReply) : undefined);
+
+    return res.json({
+      transcript,
+      silentAudio: false,
+      reply: finalReply,
+      urduSpeechText,
+      languageDetected: resolvedLang,
+      action: finalAction,
+      actionPayload: finalPayload,
+      quantumStatus: "Voice Audio Decoded • 99.98%",
+    });
+  } catch (error) {
+    console.error("Voice Audio Endpoint Error:", error);
+    return res.status(500).json({ error: "Voice audio endpoint failed" });
   }
 });
 
@@ -700,40 +1009,61 @@ app.post("/api/jarvis/daily-briefing", async (req, res) => {
   try {
     const { stats, language = "ur" } = req.body;
 
-    const fallbackReport = {
-      report: `Quantum Day Briefing for Commander Wasi:
-• Coherence Rate: 99.85%
-• Focus Sessions Completed: ${stats?.focusSessions || 4}
-• Hydration Score: ${stats?.waterGlasses || 7}/8 glasses
-• Financial Discipline: Good (No fazool kharchi flagged today)
-• Health Status: Rest cycles aligned. Tomorrow's priority: High-tier project editing.`,
-      audioText:
-        language === "pa"
-          ? "Wasi paji, ajj da din bohat vadiya reha. Tussi bachat vi keeti te focus vi maintain rakheya."
-          : "Wasi Sahab, aaj ka quantum daily report tayar hai. Aapki productivity aur health balance bohat behtareen raha.",
-    };
+    const focusCount = Number(stats?.focusSessions ?? 0);
+    const focusMins = Number(stats?.focusMinutes ?? 0);
+    const waterCount = Number(stats?.waterGlasses ?? 0);
+    const pendingTasks = Number(stats?.pendingTasks ?? 0);
+    const completedTasks = Number(stats?.completedTasks ?? 0);
+    const spentAmount = Number(stats?.totalSpent ?? 0);
+
+    const hasAnyActivity =
+      focusCount > 0 ||
+      focusMins > 0 ||
+      waterCount > 0 ||
+      pendingTasks > 0 ||
+      completedTasks > 0 ||
+      spentAmount > 0;
+
+    const fallbackReport = hasAnyActivity
+      ? {
+          report: `Daily Summary Report:
+• Focus Sessions Logged: ${focusCount} (${focusMins} mins)
+• Tasks: ${completedTasks} completed, ${pendingTasks} pending
+• Water Logged: ${waterCount} glasses
+• Expenses Logged: Rs. ${spentAmount.toLocaleString()}`,
+          audioText:
+            language === "pa"
+              ? `Ajj di report tayar ae. ${completedTasks} tasks poore ho gaye ne te ${focusCount} focus sessions record hoye ne.`
+              : `Aaj ki real report tayar hai. Aapke ${completedTasks} tasks mukammal aur ${pendingTasks} pending hain, aur ${focusCount} focus sessions record huye hain.`,
+        }
+      : {
+          report: `Daily Summary Report:
+• Abhi tak koi task, focus session, expense ya health log add nahi kiya gaya.
+• Jab aap apni real entries add kareinge, to yahan sirf aapka real daily data show hoga.`,
+          audioText:
+            language === "pa"
+              ? "Abhi tak koi task ya health log add nahi kita gaya. Jadon tussi apna real data add karoge, main report sunawangi."
+              : "Abhi tak aapne koi real task, focus session ya health record add nahi kiya. Jab aap apni entries add kareingi, tab main aapka real summary bataungi.",
+        };
 
     if (!ai) {
       return res.json(fallbackReport);
     }
 
     try {
-      const prompt = `Generate a high-tech, motivating daily summary report for Wasi based on these stats: ${JSON.stringify(stats)}. Language: ${language}. Keep it concise, structured, and give 3 bullet points of what to accomplish tomorrow.`;
+      const prompt = `Generate a concise daily summary report strictly from these real user stats (do NOT invent sample numbers or fake tasks): ${JSON.stringify(stats || {})}. If all values are 0, clearly state that no activity has been logged yet and invite the user to add their real tasks, focus, or health logs. Language: ${language}.`;
       const response = await ai.models.generateContent({
         model: "gemini-4-hydrogen",
         contents: prompt,
         config: {
           systemInstruction:
-            "You are Q-NEXUS Quantum Jarvis, summarizing Wasi's daily achievements, productivity, health, and budget discipline.",
+            "You are a personal assistant summarizing ONLY the user's real stored numbers. Never fabricate sample tasks, budgets, or health metrics.",
         },
       });
 
       return res.json({
         report: response.text || fallbackReport.report,
-        audioText:
-          language === "pa"
-            ? "Ajj da summary report tayar hai Wasi paji."
-            : "Wasi Sahab, aaj ka daily summary report tayar hai.",
+        audioText: fallbackReport.audioText,
       });
     } catch {
       return res.json(fallbackReport);
@@ -1012,87 +1342,331 @@ const ROMAN_TO_URDU_MAP: Record<string, string> = {
   hologram: "ہولوگرام",
   chuke: "چکے",
   chuki: "چکی",
+  naam: "نام",
+  badal: "بدل",
+  rakh: "رکھ",
+  rakhein: "رکھیں",
+  rakhna: "رکھنا",
+  bula: "بلا",
+  sakte: "سکتے",
+  sakti: "سکتی",
+  sakta: "سکتا",
+  awaaz: "آواز",
+  awaz: "آواز",
+  lehja: "لہجہ",
+  lehje: "لہجے",
+  wazeh: "واضح",
+  merzi: "مرضی",
+  marzi: "مرضی",
+  aapko: "آپ کو",
+  apko: "آپ کو",
+  mujh: "مجھ",
+  kal: "کل",
+  din: "دن",
+  subah: "صبح",
+  shaam: "شام",
+  raat: "رات",
+  aankh: "آنکھ",
+  ghante: "گھنٹے",
+  ghanta: "گھنٹہ",
+  neend: "نیند",
+  peena: "پینا",
+  piya: "پیا",
+  baqi: "باقی",
+  glass: "گلاس",
+  glasses: "گلاس",
+  agla: "اگلا",
+  agli: "اگلی",
+  pehle: "پہلے",
+  pehla: "پہلا",
+  baad: "بعد",
+  foran: "فوراً",
+  jaldi: "جلدی",
+  shuru: "شروع",
+  khatam: "ختم",
+  samajh: "سمجھ",
+  bataiye: "بتائیے",
+  batayein: "بتائیں",
+  farmaein: "فرمائیں",
+  farmaiye: "فرمائیے",
+  kijiye: "کیجیے",
+  karenge: "کریں گے",
+  karoongi: "کروں گی",
+  karunga: "کروں گا",
+  karna: "کرنا",
+  karni: "کرنی",
+  karne: "کرنے",
+  kro: "کرو",
+  kr: "کر",
+  inshallah: "انشاء اللہ",
+  mashallah: "ماشاء اللہ",
+  shabash: "شاباش",
+  masla: "مسئلہ",
+  masail: "مسائل",
+  dobara: "دوبارہ",
+  koshish: "کوشش",
+  asaan: "آسان",
+  mushkil: "مشکل",
+  task: "ٹاسک",
+  tasks: "ٹاسکس",
+  pending: "پینڈنگ",
+  reminder: "ریمائنڈر",
+  reminders: "ریمائنڈرز",
+  update: "اپڈیٹ",
+  updates: "اپڈیٹس",
+  call: "کال",
+  calls: "کالز",
+  missed: "مسڈ",
+  message: "میسج",
+  messages: "میسجز",
+  msg: "میسج",
+  msgs: "میسجز",
+  notification: "نوٹیفکیشن",
+  notifications: "نوٹیفکیشنز",
+  whatsapp: "واٹس ایپ",
+  messenger: "میسنجر",
+  instagram: "انسٹاگرام",
+  mobile: "موبائل",
+  phone: "فون",
+  battery: "بیٹری",
+  charging: "چارجنگ",
+  network: "نیٹ ورک",
+  wifi: "وائی فائی",
+  internet: "انٹرنیٹ",
+  screen: "اسکرین",
+  lock: "لاک",
+  unlock: "ان لاک",
+  fingerprint: "فنگر پرنٹ",
+  password: "پاس ورڈ",
+  settings: "سیٹنگز",
+  setting: "سیٹنگ",
+  status: "اسٹیٹس",
+  report: "رپورٹ",
+  summary: "خلاصہ",
+  daily: "روزانہ",
+  ready: "تیار",
+  monitor: "مانیٹر",
+  mode: "موڈ",
+  voice: "وائس",
+  command: "کمانڈ",
+  permission: "اجازت",
+  allow: "اجازت دیں",
+  connect: "کنیکٹ",
+  install: "انسٹال",
+  steps: "قدم",
+  sleep: "نیند",
+  water: "پانی",
+  briefing: "بریفنگ",
+  jarvis: "جاروس",
+  wasu: "وسو",
+  har: "ہر",
+  apna: "اپنا",
+  apni: "اپنی",
+  apne: "اپنے",
+  dikhata: "دکھاتا",
+  dikhati: "دکھاتی",
+  dikhayo: "دکھاؤ",
+  dikha: "دکھا",
+  project: "پروجیکٹ",
+  faal: "فعال",
+  dusri: "دوسری",
+  doosri: "دوسری",
+  mardana: "مردانہ",
+  zanana: "زنانہ",
+  khud: "خود",
+  madad: "مدد",
+  samne: "سامنے",
+  shakal: "شکل",
+  bol: "بول",
+  bolein: "بولیں",
+  sun: "سن",
+  sunai: "سنائی",
+  namuna: "نمونہ",
+  sample: "نمونہ",
+  test: "ٹیسٹ",
+  karain: "کریں",
+  karen: "کریں",
+  hukam: "حکم",
+  dein: "دیں",
+  dijiye: "دیجیے",
+  chalao: "چلاؤ",
+  chala: "چلا",
+  knsi: "کون سی",
+  kaunsi: "کون سی",
+  konsi: "کون سی",
+  saathi: "ساتھی",
+  live: "لائیو",
+  percent: "فیصد",
 };
 
 function toPakistaniUrduSpeechText(input: string): string {
-  // If already predominantly Arabic/Urdu script, return directly
-  const arabicChars = (input.match(/[\u0600-\u06FF]/g) || []).length;
-  if (arabicChars > input.length * 0.3) {
-    return input;
-  }
-  return input
+  // Normalize multi-word phrases, names, ratios, and punctuation for authentic Pakistani Urdu TTS
+  const normalized = input
+    .replace(/\bassalam[\s-]+o[\s-]+alaikum\b/gi, "السلام علیکم")
+    .replace(/\bassalamu[\s-]+alaikum\b/gi, "السلام علیکم")
+    .replace(/\bkhush[\s-]+a?amdeed\b/gi, "خوش آمدید")
+    .replace(/\bwasi[\s-]+ki[\s-]+ja+n\b/gi, "وصی کی جان")
+    .replace(/\bapna[\s-]+a?ap\b/gi, "اپنا آپ")
+    .replace(/\bkhud[\s-]+ko\b/gi, "خود کو")
+    .replace(/\bq[\s-]*nexus\b/gi, "کیو نیکسس")
+    .replace(/\bfaa?'?al\b/gi, "فعال")
+    .replace(/\b(\d+)\s*\/\s*(\d+)\b/g, "$1 میں سے $2")
+    .replace(/\s*[—|•]+\s*/g, "، ")
+    .replace(/[:,]/g, "،")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Map any Roman Urdu or Latin tokens to Urdu script while preserving authentic Urdu text
+  return normalized
     .split(/(\b[A-Za-z']+\b)/g)
     .map((token) => {
       const lower = token.toLowerCase();
-      return ROMAN_TO_URDU_MAP[lower] || token;
+      if (lower === "zoya") return "زویا";
+      if (lower === "wasu") return "وسو";
+      return ROMAN_TO_URDU_MAP[lower] ?? token;
     })
-    .join("");
+    .join("")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\.\s*$/g, "۔")
+    .trim();
 }
 
-// Server-side High-Fidelity Pakistani Urdu Female & Multi-Engine TTS Endpoint
+function extractInlineAudioFromGeminiResponse(response: any): string | undefined {
+  const parts = response?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return undefined;
+  for (const part of parts) {
+    if (part?.inlineData?.data) {
+      return String(part.inlineData.data);
+    }
+  }
+  return undefined;
+}
+
+// Server-side High-Fidelity Pakistani Urdu & Multi-Engine TTS Endpoint
 app.post("/api/jarvis/tts", async (req, res) => {
   try {
-    const { text, language = "ur", gender = "female" } = req.body;
+    const {
+      text,
+      urduSpeechText,
+      language = "ur",
+      gender = "female",
+      pitch = 1.0,
+      rate = 1.0,
+    } = req.body;
 
     if (!text || typeof text !== "string") {
       return res.status(400).json({ error: "Text is required" });
     }
 
     const isMale = gender === "male";
-    const spokenText = language === "ur" || language === "pa" ? toPakistaniUrduSpeechText(text) : text;
+    const isUrduOrPunjabi = language === "ur" || language === "pa";
+    const preferredUrdu =
+      typeof urduSpeechText === "string" && urduSpeechText.trim()
+        ? urduSpeechText.trim()
+        : toPakistaniUrduSpeechText(text);
+    const spokenText = isUrduOrPunjabi ? preferredUrdu : text;
 
-    // Tier 1: Gemini Neural TTS when API key is configured
+    // Tier 1: Gemini Neural TTS (gemini-3.8-flash-lite-tts with clean fallback)
     if (ai) {
-      try {
-        const voiceName = isMale ? "Fenrir" : "Kore";
-        const accentStyle =
-          language === "pa"
-            ? "Fluent native Pakistani young woman from Lahore speaking crystal clear Lahori Punjabi and Urdu with warm feminine affection"
-            : language === "en"
-            ? "Warm, affectionate young female AI companion voice speaking crisp clear English with gentle Pakistani warmth"
-            : "Fluent native Pakistani young woman from Islamabad and Lahore speaking crystal-clear, sweet, natural Pakistani Urdu with clean feminine pronunciation";
+      const voiceName = isMale ? "Charon" : "Kore";
+      const accentStyle = isMale
+        ? language === "pa"
+          ? "Native Pakistani male speaker from Lahore speaking 100% authentic Lahori Punjabi and Pakistani Urdu at a calm steady pace with genuine Pakistani pronunciation."
+          : language === "en"
+          ? "Confident, articulate male Pakistani AI commander speaking crystal-clear English with warm Pakistani clarity."
+          : "Native male Pakistani Urdu speaker from Islamabad/Lahore speaking 100% authentic Pakistani Urdu (never Indian Hindi accent) at a calm conversational pace with crisp Nastaliq Urdu pronunciation."
+        : language === "pa"
+        ? "Native young Pakistani female speaker from Lahore speaking 100% authentic sweet Lahori Punjabi and Pakistani Urdu at a steady natural pace."
+        : language === "en"
+        ? "Warm, articulate young female Pakistani AI companion speaking crystal-clear English with gentle Pakistani clarity."
+        : "Native female Pakistani Urdu speaker from Islamabad/Lahore speaking 100% authentic Pakistani Urdu (never Indian Hindi accent) in a sweet, natural conversational tone with crisp Urdu pronunciation.";
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3.8-flash-lite-tts",
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: spokenText,
-                  speechMetadata: {
-                    style: accentStyle,
-                  },
+      try {
+        const response = await withTimeout(
+          ai.models.generateContent({
+            model: "gemini-3.8-flash-lite-tts",
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: spokenText,
+                    speechMetadata: {
+                      style: accentStyle,
+                    },
+                  } as any,
+                ],
+              },
+            ],
+            config: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName },
                 },
-              ],
-            },
-          ],
-          config: {
-            responseModalities: ["AUDIO"],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName },
               },
             },
-          },
-        });
+          }),
+          9000,
+          "Gemini TTS"
+        );
 
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        const base64Audio = extractInlineAudioFromGeminiResponse(response);
         if (base64Audio) {
           return res.json({
             base64Audio,
             format: "audio/wav",
-            engine: "gemini-tts",
+            engine: "gemini-3.8-flash-lite-tts",
+            urduScriptText: spokenText,
             success: true,
           });
         }
-      } catch {
-        // Fall through to free Pakistani Urdu Neural Edge-TTS
+      } catch (ttsErr: unknown) {
+        const errMsg = ttsErr instanceof Error ? ttsErr.message : String(ttsErr);
+        // Retry without speechMetadata only if model rejected metadata field (400 / INVALID_ARGUMENT)
+        if (/400|INVALID_ARGUMENT|speechMetadata|unknown field/i.test(errMsg)) {
+          try {
+            const retryRes = await withTimeout(
+              ai.models.generateContent({
+                model: "gemini-3.8-flash-lite-tts",
+                contents: [
+                  {
+                    role: "user",
+                    parts: [{ text: spokenText }],
+                  },
+                ],
+                config: {
+                  responseModalities: ["AUDIO"],
+                  speechConfig: {
+                    voiceConfig: {
+                      prebuiltVoiceConfig: { voiceName },
+                    },
+                  },
+                },
+              }),
+              8000,
+              "Gemini TTS fallback"
+            );
+            const retryAudio = extractInlineAudioFromGeminiResponse(retryRes);
+            if (retryAudio) {
+              return res.json({
+                base64Audio: retryAudio,
+                format: "audio/wav",
+                engine: "gemini-3.8-flash-lite-tts",
+                urduScriptText: spokenText,
+                success: true,
+              });
+            }
+          } catch (retryErr: unknown) {
+            console.warn("Gemini TTS retry notice:", retryErr instanceof Error ? retryErr.message : String(retryErr));
+          }
+        } else {
+          console.warn("Gemini TTS notice:", errMsg);
+        }
       }
     }
 
-    // Tier 2: Free Microsoft Neural Pakistani Urdu Female TTS via Python edge-tts (NO API KEY NEEDED!)
-    const pythonBin = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
+    // Tier 2: Microsoft Neural Pakistani Urdu Edge-TTS via Node (ur-PK-AsadNeural / ur-PK-UzmaNeural)
     const edgeVoice = isMale
       ? language === "en"
         ? "en-US-AndrewNeural"
@@ -1101,28 +1675,35 @@ app.post("/api/jarvis/tts", async (req, res) => {
       ? "en-GB-SoniaNeural"
       : "ur-PK-UzmaNeural";
 
-    const tmpMp3 = path.join(os.tmpdir(), `qnexus_tts_${crypto.randomBytes(6).toString("hex")}.mp3`);
+    const numericRate = Math.min(1.4, Math.max(0.7, Number(rate) || 1.0));
+    const numericPitch = Math.min(1.5, Math.max(0.65, Number(pitch) || 1.0));
+    const ratePct = Math.round((numericRate - 1.0) * 100);
+    const pitchHz = Math.round((numericPitch - 1.0) * 40);
+    const rateStr = `${ratePct >= 0 ? "+" : ""}${ratePct}%`;
+    const pitchStr = `${pitchHz >= 0 ? "+" : ""}${pitchHz}Hz`;
+
     try {
-      await execFileAsync(
-        pythonBin,
-        ["-m", "edge_tts", "--voice", edgeVoice, "--rate=+4%", "--text", spokenText, "--write-media", tmpMp3],
-        { timeout: 12000 }
-      );
-      const audioBuf = await fs.readFile(tmpMp3);
-      await fs.unlink(tmpMp3).catch(() => {});
+      const tts = new EdgeTTS(spokenText, edgeVoice, {
+        rate: rateStr,
+        pitch: pitchStr,
+      });
+      const result = await withTimeout(tts.synthesize(), 3500, "Edge TTS");
+      const arrayBuf = await result.audio.arrayBuffer();
+      const audioBuf = Buffer.from(arrayBuf);
       if (audioBuf.length > 0) {
         return res.json({
           base64Audio: audioBuf.toString("base64"),
           format: "audio/mpeg",
           engine: edgeVoice,
+          urduScriptText: spokenText,
           success: true,
         });
       }
     } catch {
-      await fs.unlink(tmpMp3).catch(() => {});
+      // Edge WebSocket blocked or timed out; fall through cleanly to native browser ur-PK synthesis
     }
 
-    return res.status(200).json({ fallbackToBrowser: true });
+    return res.status(200).json({ fallbackToBrowser: true, urduScriptText: spokenText });
   } catch (error: unknown) {
     console.error("TTS generation error:", error);
     return res.status(200).json({ fallbackToBrowser: true });

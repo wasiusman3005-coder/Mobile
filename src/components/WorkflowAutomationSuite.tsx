@@ -111,12 +111,6 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
           actionLabel: "Auto-Apply Patch to VS Code",
         });
       }
-
-      const vocalPrompt =
-        language === "pa"
-          ? "Screen analyze ho gayi ae Wasi paji! Issues te auto-fix ready ne."
-          : "Screen context scan complete. Actionable fixes and workflow triggers ready.";
-      speechService.speak(vocalPrompt, { lang: language, gender: voiceGender });
     }, 1100);
   };
 
@@ -128,81 +122,41 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
       id: "conn-1",
       name: "Gmail",
       category: "communication",
-      connected: true,
-      statusText: "Synced (3 Unread Client Inquiries)",
-      lastSync: "Just now",
-      activeItemsCount: 3,
-      quickActionLabel: "Draft Quick Reply",
+      connected: false,
+      statusText: "Not connected yet",
+      lastSync: "Never",
+      activeItemsCount: 0,
+      quickActionLabel: "Connect Gmail",
     },
     {
       id: "conn-2",
       name: "Slack",
       category: "communication",
-      connected: true,
-      statusText: "#production-team (5 unread mentions)",
-      lastSync: "2m ago",
-      activeItemsCount: 5,
-      quickActionLabel: "Send Standup Summary",
+      connected: false,
+      statusText: "Not connected yet",
+      lastSync: "Never",
+      activeItemsCount: 0,
+      quickActionLabel: "Connect Slack",
     },
     {
       id: "conn-3",
       name: "GitHub",
       category: "development",
-      connected: true,
-      statusText: "q-nexus-core repo (2 open PRs, all CI green)",
-      lastSync: "5m ago",
-      activeItemsCount: 2,
-      quickActionLabel: "Review Recent Commits",
+      connected: false,
+      statusText: "Not connected yet",
+      lastSync: "Never",
+      activeItemsCount: 0,
+      quickActionLabel: "Connect GitHub",
     },
     {
       id: "conn-4",
       name: "Google Calendar",
       category: "productivity",
-      connected: true,
-      statusText: "Next: Sprint Demo at 04:30 PM",
-      lastSync: "Just now",
-      activeItemsCount: 1,
-      quickActionLabel: "Check Meeting Conflicts",
-    },
-    {
-      id: "conn-5",
-      name: "Notion",
-      category: "productivity",
-      connected: true,
-      statusText: "Master Roadmap & Habits Database connected",
-      lastSync: "12m ago",
-      activeItemsCount: 8,
-      quickActionLabel: "Append Today's Notes",
-    },
-    {
-      id: "conn-6",
-      name: "Jira",
-      category: "project",
       connected: false,
-      statusText: "Disconnected (OAuth ready)",
+      statusText: "Not connected yet",
       lastSync: "Never",
       activeItemsCount: 0,
-      quickActionLabel: "Connect Jira Workspace",
-    },
-    {
-      id: "conn-7",
-      name: "Trello",
-      category: "project",
-      connected: true,
-      statusText: "Video Projects Board (3 cards in Review)",
-      lastSync: "25m ago",
-      activeItemsCount: 3,
-      quickActionLabel: "Move Card to Done",
-    },
-    {
-      id: "conn-8",
-      name: "Asana",
-      category: "project",
-      connected: false,
-      statusText: "Standby for API token",
-      lastSync: "Never",
-      activeItemsCount: 0,
-      quickActionLabel: "Authenticate Asana",
+      quickActionLabel: "Connect Calendar",
     },
   ]);
 
@@ -226,58 +180,11 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
   // 3. SHELL COMMANDS & DOCKER CONSOLE STATE
   // ----------------------------------------------------
   const [terminalHistory, setTerminalHistory] = useState<string[]>([
-    "Q-NEXUS Kernel Shell v2.6 [Windows 11 Pro - Direct Socket Bridge]",
-    "Type 'help' or click presets below to execute host system operations.",
-    "> docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'",
-    "NAMES             STATUS         PORTS",
-    "q-nexus-db        Up 4 hours     0.0.0.0:5432->5432/tcp",
-    "redis-cache       Up 4 hours     0.0.0.0:6379->6379/tcp",
-    "ollama-local-llm  Up 2 hours     0.0.0.0:11434->11434/tcp",
+    "Q-NEXUS Live Diagnostic Console ready. Run 'systeminfo' to inspect live device telemetry.",
   ]);
   const [cmdInput, setCmdInput] = useState("");
 
-  const [dockerContainers, setDockerContainers] = useState<DockerContainerItem[]>([
-    {
-      id: "c-1",
-      name: "q-nexus-db",
-      image: "postgres:16-alpine",
-      status: "running",
-      uptime: "4h 28m",
-      cpuPercent: 1.4,
-      memUsageMb: 142,
-      ports: "5432:5432",
-    },
-    {
-      id: "c-2",
-      name: "redis-cache",
-      image: "redis:7.2-alpine",
-      status: "running",
-      uptime: "4h 28m",
-      cpuPercent: 0.6,
-      memUsageMb: 68,
-      ports: "6379:6379",
-    },
-    {
-      id: "c-3",
-      name: "ollama-local-llm",
-      image: "ollama/ollama:latest",
-      status: "running",
-      uptime: "2h 15m",
-      cpuPercent: 4.8,
-      memUsageMb: 2450,
-      ports: "11434:11434",
-    },
-    {
-      id: "c-4",
-      name: "q-nexus-worker",
-      image: "node:22-bullseye-slim",
-      status: "stopped",
-      uptime: "Exited (0) 1h ago",
-      cpuPercent: 0.0,
-      memUsageMb: 0,
-      ports: "3001:3001",
-    },
-  ]);
+  const [dockerContainers, setDockerContainers] = useState<DockerContainerItem[]>([]);
 
   const runShellCommand = async (cmdToRun?: string) => {
     const command = (cmdToRun || cmdInput).trim();
@@ -330,49 +237,7 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
   // ----------------------------------------------------
   // 4. SCHEDULED ROUTINES & WORKFLOWS STATE
   // ----------------------------------------------------
-  const [routines, setRoutines] = useState<ScheduledRoutineItem[]>([
-    {
-      id: "r-1",
-      title: "09:00 AM Morning Briefing & Workstation Setup",
-      schedule: "Every Day @ 09:00 AM",
-      category: "workflow",
-      steps: [
-        "Pull latest git changes across active development repositories",
-        "Inspect Google Calendar and compile daily meeting timetable",
-        "Check 3 unread client Gmail threads and draft summaries",
-        "Vocal morning briefing hands-free with Pakistani Urdu/Punjabi greeting",
-      ],
-      enabled: true,
-      lastExecuted: "Today, 09:00 AM [Completed 100%]",
-    },
-    {
-      id: "r-2",
-      title: "Daily Cache Purge & Premiere Temp Cleanup",
-      schedule: "Every Night @ 11:30 PM",
-      category: "maintenance",
-      steps: [
-        "Purge Adobe Premiere Pro & After Effects disk media cache",
-        "Prune unused Docker images & prune dangling build volumes",
-        "Run TRIM on 2TB NVMe PCIe 5.0 SSD storage",
-        "Generate encrypted local JSON backup snapshot",
-      ],
-      enabled: true,
-      lastExecuted: "Yesterday, 11:30 PM [Completed 100%]",
-    },
-    {
-      id: "r-3",
-      title: "Ergonomic 45-Min Screen Rest & Hydration Enforcer",
-      schedule: "Every 45 Minutes of Continuous Screen Use",
-      category: "health",
-      steps: [
-        "Lock screen for mandatory 5-minute eye relaxation",
-        "Trigger spoken hydration notification: 'Drink 300ml fresh water'",
-        "Log 20-20-20 distance vision relaxation metric",
-      ],
-      enabled: true,
-      lastExecuted: "32 mins ago",
-    },
-  ]);
+  const [routines, setRoutines] = useState<ScheduledRoutineItem[]>([]);
 
   const toggleRoutine = (id: string) => {
     soundEffects.playClick();
@@ -381,12 +246,8 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
     );
   };
 
-  const executeRoutineNow = (routine: ScheduledRoutineItem) => {
-    soundEffects.playBeepConfirm();
-    speechService.speak(
-      `Running scheduled routine: ${routine.title}. All steps initiated autonomously.`,
-      { lang: language, gender: voiceGender }
-    );
+  const executeRoutineNow = (_routine: ScheduledRoutineItem) => {
+    // Silent UI execution
   };
 
   return (
@@ -612,11 +473,7 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
                 <button
                   type="button"
                   onClick={() => {
-                    soundEffects.playBeepConfirm();
-                    speechService.speak(
-                      `Executing: ${scanAnalysis.actionLabel}. Workspace updated.`,
-                      { lang: language, gender: voiceGender }
-                    );
+                    // Silent execution
                   }}
                   className="w-full mt-3 py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-orbitron font-bold text-xs tracking-wider transition shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 cursor-pointer"
                 >
@@ -712,11 +569,7 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
                       type="button"
                       disabled={!connector.connected}
                       onClick={() => {
-                        soundEffects.playBeepConfirm();
-                        speechService.speak(
-                          `Triggering ${connector.name} action: ${connector.quickActionLabel}`,
-                          { lang: language, gender: voiceGender }
-                        );
+                        // Silent trigger
                       }}
                       className="w-full py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-purple-950 border border-slate-700 hover:border-purple-400 text-slate-300 hover:text-purple-200 text-[11px] font-mono transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
@@ -867,11 +720,7 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
             <button
               type="button"
               onClick={() => {
-                soundEffects.playBeepConfirm();
-                speechService.speak(
-                  "All routine schedules are verified active and running in background.",
-                  { lang: language, gender: voiceGender }
-                );
+                // Silent verification
               }}
               className="px-3 py-1.5 rounded-xl bg-amber-950 text-amber-300 border border-amber-500/40 text-xs font-mono cursor-pointer hover:bg-amber-900 transition"
             >

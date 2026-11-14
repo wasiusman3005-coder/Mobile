@@ -1,7 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Cpu, Shield, Sparkles, Volume2, Radio, Zap } from "lucide-react";
+import React, { useEffect, useState, useRef } from "react";
 import { soundEffects } from "../services/soundEffects";
-import { QUANTUM_FIELDS_DATA } from "../data/jarvisCatalog";
 
 interface QuantumLoadingScreenProps {
   isOpen: boolean;
@@ -9,13 +7,37 @@ interface QuantumLoadingScreenProps {
   commanderName?: string;
 }
 
-const BOOT_PHASES = [
-  "CALIBRATING 7 QUANTUM RESONANCE FIELDS...",
-  "MOUNTING 100 HUMANOID AVATARS & 108 OUTFITS MATRIX...",
-  "SYNCHRONIZING 116+ WAKE WORD NEURAL TRIGGERS...",
-  "CONNECTING ELEVENLABS & GEMINI FAST-TALK ENGINE...",
-  "ARMING AES-4096 ZERO-LEAK PRIVACY CLOAK...",
-  "ALL QUANTUM SYSTEMS 100% OPERATIONAL — WELCOME COMMANDER",
+const CORE_SUBSYSTEMS = [
+  {
+    name: "01. Hamiltonian Eigen-Solver",
+    detail: "Operator Hermiticity & energy spectrum bounds",
+    phaseLabel: "Calibrating Hamiltonian",
+  },
+  {
+    name: "02. Relativistic Dirac Spinor Bus",
+    detail: "Clifford gamma matrix synchronization",
+    phaseLabel: "Aligning Dirac Spinors",
+  },
+  {
+    name: "03. Cryogenic Qubit Coherence Grid",
+    detail: "Decoherence suppression & entanglement lock",
+    phaseLabel: "Cooling Qubit Lattice",
+  },
+  {
+    name: "04. Wormhole Singularity Lens",
+    detail: "4D stereographic projection matrix",
+    phaseLabel: "Focusing Singularity",
+  },
+  {
+    name: "05. WebGL2 Spatial Shader Pipeline",
+    detail: "PBR environment & equation sprite depth buffer",
+    phaseLabel: "Compiling Spatial Shaders",
+  },
+  {
+    name: "06. Jarvis Pakistani Urdu Neural Vault",
+    detail: "Hi-Jarvis Wake Engine, Pakistani Urdu Neural Voice & Acoustic Lock",
+    phaseLabel: "Quantum Core Ready",
+  },
 ];
 
 export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
@@ -24,171 +46,219 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
   commanderName = "Wasi",
 }) => {
   const [progress, setProgress] = useState(0);
-  const [phaseIdx, setPhaseIdx] = useState(0);
-  const [activeFieldIdx, setActiveFieldIdx] = useState(0);
+  const [viewportStr, setViewportStr] = useState("1920×1080");
+  const lastVerifiedRef = useRef(-1);
+  const completedRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const [isCompleted, setIsCompleted] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      completedRef.current = false;
+      setIsCompleted(false);
+      return;
+    }
+
     setProgress(0);
-    setPhaseIdx(0);
+    setIsCompleted(false);
+    lastVerifiedRef.current = -1;
+    completedRef.current = false;
+    setViewportStr(`${window.innerWidth}×${window.innerHeight}`);
     soundEffects.playQuantumStartup();
 
-    const progressTimer = setInterval(() => {
-      setProgress((prev) => (prev >= 100 ? 100 : Math.min(100, prev + 3.5)));
-    }, 65);
+    const timer = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) return 100;
+        return Math.min(100, prev + 2.4);
+      });
+    }, 45);
 
-    return () => clearInterval(progressTimer);
+    return () => clearInterval(timer);
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
-    const targetPhase = Math.min(
-      BOOT_PHASES.length - 1,
-      Math.floor((progress / 100) * BOOT_PHASES.length)
-    );
-    setPhaseIdx(targetPhase);
-    setActiveFieldIdx(Math.floor(progress / 15) % QUANTUM_FIELDS_DATA.length);
 
-    if (progress >= 100) {
-      const doneTimer = setTimeout(() => {
-        soundEffects.playBeepConfirm();
-        onComplete();
-      }, 320);
-      return () => clearTimeout(doneTimer);
+    CORE_SUBSYSTEMS.forEach((_, idx) => {
+      const threshold = ((idx + 1) / CORE_SUBSYSTEMS.length) * 95;
+      if (progress >= threshold && idx > lastVerifiedRef.current) {
+        lastVerifiedRef.current = idx;
+        soundEffects.playDiagnosticTick(idx);
+      }
+    });
+
+    if (progress >= 100 && !isCompleted) {
+      setIsCompleted(true);
     }
-  }, [isOpen, progress, onComplete]);
+  }, [isOpen, progress, isCompleted]);
+
+  useEffect(() => {
+    if (!isOpen || !isCompleted) return;
+    if (completedRef.current) return;
+    completedRef.current = true;
+    soundEffects.playSuccessChime();
+    const t = setTimeout(() => {
+      onCompleteRef.current();
+    }, 320);
+    return () => clearTimeout(t);
+  }, [isOpen, isCompleted]);
 
   if (!isOpen) return null;
 
-  const activeField = QUANTUM_FIELDS_DATA[activeFieldIdx];
+  const roundedPct = Math.round(progress);
+  const activeStep = Math.min(CORE_SUBSYSTEMS.length - 1, Math.floor((progress / 100) * CORE_SUBSYSTEMS.length));
+  const strokeDashoffset = (628.32 * (1 - progress / 100)).toFixed(2);
+
+  const theta = (progress / 100) * Math.PI * 0.5;
+  const alpha = Math.cos(theta * 0.5).toFixed(4);
+  const beta = Math.sin(theta * 0.5).toFixed(4);
+  const phi = ((progress * 0.0628) % (Math.PI * 2)).toFixed(3);
+  const fidelity = (0.991 + (progress / 100) * 0.0088).toFixed(4);
+  const cpuCores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 8 : 8;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#01030a] text-slate-100 flex flex-col items-center justify-center p-6 overflow-hidden select-none font-rajdhani">
-      {/* Radial Quantum Field Aura */}
-      <div
-        className="absolute inset-0 pointer-events-none transition-all duration-500"
-        style={{
-          background: `radial-gradient(circle at 50% 45%, ${activeField.hex}28 0%, #01030a 68%)`,
-        }}
-      />
+    <div
+      id="diagnostics"
+      className="fixed inset-0 z-[100] bg-[#04070f]/95 text-slate-100 flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto select-none font-rajdhani"
+    >
+      <div className="fixed inset-0 quantum-grid opacity-30 pointer-events-none" />
 
-      {/* Orbital Energy Rings */}
-      <div className="relative flex flex-col items-center justify-center max-w-xl w-full z-10">
-        <div className="relative w-56 h-56 flex items-center justify-center mb-6">
-          <div
-            className="absolute inset-0 rounded-full border-2 border-dashed animate-spin"
-            style={{ borderColor: `${activeField.hex}80`, animationDuration: "8s" }}
-          />
-          <div
-            className="absolute inset-4 rounded-full border-2 animate-spin-reverse"
-            style={{ borderColor: activeField.hex, boxShadow: `0 0 35px ${activeField.hex}66` }}
-          />
-          <div
-            className="absolute inset-9 rounded-full border border-dotted animate-spin"
-            style={{ borderColor: "#ffffff66", animationDuration: "5s" }}
-          />
-
-          <div
-            className="w-28 h-28 rounded-full flex flex-col items-center justify-center border-2 backdrop-blur-xl transition-all duration-300"
-            style={{
-              backgroundColor: `${activeField.hex}20`,
-              borderColor: activeField.hex,
-              boxShadow: `0 0 50px ${activeField.hex}90, inset 0 0 25px ${activeField.hex}70`,
-            }}
-          >
-            <Sparkles className="w-8 h-8 text-white animate-pulse mb-1" />
-            <span className="font-orbitron font-black text-2xl text-white tracking-wider">
-              {Math.round(progress)}%
-            </span>
+      {/* Stage 2 Top Bar */}
+      <header className="relative z-10 w-full max-w-[1220px] flex flex-wrap items-center justify-between gap-4 pb-4 mb-6 border-b border-slate-400/20">
+        <div className="flex items-center gap-3">
+          <div className="font-orbitron font-extrabold text-lg sm:text-xl tracking-[0.22em] text-slate-100 whitespace-nowrap">
+            Q-<span className="text-[#00f0ff]">DYNAMICS</span>
           </div>
+          <span className="text-xs font-mono text-slate-400 tabular">
+            · Stage 2 / 3 · System Diagnostics &amp; Boot Check · {commanderName}
+          </span>
         </div>
 
-        <div className="text-center space-y-2 mb-5">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/90 border border-cyan-500/40 text-[10px] font-mono text-cyan-300 tracking-widest uppercase">
-            <Radio className="w-3 h-3 animate-ping text-emerald-400" />
-            <span>Q-NEXUS TACHYON OS // INITIALIZING FOR {commanderName.toUpperCase()}</span>
-          </div>
-          <h1 className="font-orbitron font-extrabold text-2xl md:text-3xl tracking-widest text-white">
-            QUANTUM CORE <span style={{ color: activeField.hex }}>BOOTING</span>
-          </h1>
-          <p className="text-xs md:text-sm font-mono text-cyan-200 min-h-[20px]">
-            {BOOT_PHASES[phaseIdx]}
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (completedRef.current) return;
+            completedRef.current = true;
+            soundEffects.playKeyClick(920);
+            onComplete();
+          }}
+          className="px-4 py-2 rounded-lg bg-slate-900/80 border border-slate-400/25 hover:border-[#00f0ff] text-xs font-semibold text-slate-100 cursor-pointer transition"
+        >
+          Enter Core
+        </button>
+      </header>
 
-        {/* Glowing Linear Progress Bar */}
-        <div className="w-full h-3 rounded-full bg-slate-950 border border-slate-800 p-0.5 overflow-hidden mb-5">
-          <div
-            className="h-full rounded-full transition-all duration-100"
-            style={{
-              width: `${progress}%`,
-              background: `linear-gradient(90deg, #06b6d4, ${activeField.hex}, #a855f7)`,
-              boxShadow: `0 0 20px ${activeField.hex}`,
-            }}
-          />
-        </div>
+      {/* 2-Column Stage 2 Diagnostics Layout */}
+      <div className="relative z-10 w-full max-w-[1220px] grid grid-cols-1 lg:grid-cols-[0.92fr_1.08fr] gap-6 lg:gap-10 items-center">
+        {/* Left Card: Circular SVG Progress Ring + Live |Ψ⟩ State Vector */}
+        <div className="rounded-2xl bg-[#080e1c]/90 border border-slate-400/20 p-6 sm:p-8 flex flex-col items-center gap-6 shadow-2xl">
+          <div className="relative w-[220px] h-[220px] sm:w-[270px] sm:h-[270px] flex items-center justify-center">
+            <svg className="w-full h-full -rotate-90" viewBox="0 0 220 220" aria-hidden="true">
+              <defs>
+                <linearGradient id="qDiagGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#00f0ff" />
+                  <stop offset="100%" stopColor="#8b5cf6" />
+                </linearGradient>
+              </defs>
+              <circle cx="110" cy="110" r="100" fill="none" stroke="rgba(148,163,184,0.14)" strokeWidth="8" />
+              <circle
+                cx="110"
+                cy="110"
+                r="82"
+                fill="none"
+                stroke="rgba(139,92,246,0.35)"
+                strokeWidth="2"
+                strokeDasharray="6 8"
+              />
+              <circle
+                cx="110"
+                cy="110"
+                r="100"
+                fill="none"
+                stroke="url(#qDiagGrad)"
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray="628.32"
+                strokeDashoffset={strokeDashoffset}
+                style={{
+                  transition: "stroke-dashoffset 0.1s linear",
+                  filter: "drop-shadow(0 0 12px rgba(0, 240, 255, 0.35))",
+                }}
+              />
+            </svg>
 
-        {/* 7 Quantum Fields Calibration Grid */}
-        <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
-          {QUANTUM_FIELDS_DATA.map((field, idx) => {
-            const calibrated = progress >= ((idx + 1) / QUANTUM_FIELDS_DATA.length) * 90;
-            return (
-              <div
-                key={field.themeId}
-                className={`p-2 rounded-xl border text-[10px] font-mono transition-all ${
-                  calibrated
-                    ? "bg-slate-900/90 border-cyan-400/70 text-white"
-                    : "bg-slate-950/70 border-slate-800 text-slate-500"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-0.5">
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{
-                      backgroundColor: calibrated ? field.hex : "#334155",
-                      boxShadow: calibrated ? `0 0 8px ${field.hex}` : undefined,
-                    }}
-                  />
-                  <span className="text-[8px] opacity-75">{field.frequencyHz}</span>
-                </div>
-                <div className="font-bold truncate">{field.shortName}</div>
-                <div className="text-[8px] truncate text-cyan-300/80">{field.logo3DName}</div>
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+              <div className="font-orbitron font-extrabold text-4xl sm:text-5xl text-slate-100 tabular leading-none">
+                {roundedPct}%
               </div>
-            );
-          })}
-
-          <div className="p-2 rounded-xl border border-emerald-500/40 bg-emerald-950/30 text-[10px] font-mono flex flex-col justify-center">
-            <div className="flex items-center gap-1 text-emerald-400 font-bold">
-              <Shield className="w-3 h-3" />
-              <span>ZERO-LEAK</span>
+              <div className="mt-2 font-mono text-[11px] tracking-[0.14em] uppercase text-[#00f0ff]">
+                {CORE_SUBSYSTEMS[activeStep]?.phaseLabel || "Initializing Manifold"}
+              </div>
             </div>
-            <div className="text-[9px] text-slate-300 mt-0.5">100 Avatars Ready</div>
+          </div>
+
+          <div className="w-full border-t border-slate-400/15 pt-4 flex flex-col gap-2">
+            <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-slate-500">
+              Live Quantum State Vector |Ψ⟩
+            </div>
+            <div className="font-mono text-xs sm:text-sm text-[#00f0ff] tabular break-words">
+              |Ψ⟩ = ({alpha})|0⟩ + ({beta}e^&#123;i{phi}&#125;)|1⟩
+            </div>
+            <div className="grid grid-cols-3 gap-3 pt-2 tabular">
+              <div className="flex flex-col gap-0.5">
+                <span className="font-mono text-[10px] text-slate-500">CPU Cores</span>
+                <span className="font-mono text-xs sm:text-sm font-semibold text-slate-100">{cpuCores} Threads</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="font-mono text-[10px] text-slate-500">Viewport</span>
+                <span className="font-mono text-xs sm:text-sm font-semibold text-slate-100">{viewportStr}</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="font-mono text-[10px] text-slate-500">Fidelity</span>
+                <span className="font-mono text-xs sm:text-sm font-semibold text-slate-100">{fidelity}</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Subsystem Icons & Skip Button */}
-        <div className="w-full flex items-center justify-between text-[11px] font-mono text-slate-400">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1 text-cyan-300">
-              <Cpu className="w-3.5 h-3.5" /> 3D Humanoid
-            </span>
-            <span className="flex items-center gap-1 text-purple-300">
-              <Volume2 className="w-3.5 h-3.5" /> ElevenLabs
-            </span>
-            <span className="flex items-center gap-1 text-amber-300">
-              <Zap className="w-3.5 h-3.5" /> Fast Talk
-            </span>
+        {/* Right Card: 6 Core Subsystems Sequential Checks */}
+        <div className="rounded-2xl bg-[#080e1c]/90 border border-slate-400/20 p-6 sm:p-8 flex flex-col gap-4 shadow-2xl">
+          <h2 className="font-orbitron font-bold text-lg tracking-[0.08em] text-slate-100">
+            Core Subsystem Calibration
+          </h2>
+
+          <div className="flex flex-col divide-y divide-slate-400/10">
+            {CORE_SUBSYSTEMS.map((sub, idx) => {
+              const threshold = ((idx + 1) / CORE_SUBSYSTEMS.length) * 95;
+              const isVerified = progress >= threshold;
+              const isChecking = !isVerified && idx === activeStep;
+              return (
+                <div
+                  key={sub.name}
+                  className={`py-3.5 px-1 flex items-center justify-between gap-4 transition-opacity duration-200 ${
+                    isVerified || isChecking ? "opacity-100" : "opacity-40"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-100 truncate">{sub.name}</div>
+                    <div className="font-mono text-xs text-slate-400 mt-0.5 truncate">{sub.detail}</div>
+                  </div>
+                  <div
+                    className={`font-mono text-xs font-bold whitespace-nowrap shrink-0 tabular ${
+                      isVerified
+                        ? "text-emerald-400"
+                        : isChecking
+                        ? "text-[#00f0ff]"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {isVerified ? "[VERIFIED // OK]" : isChecking ? "CALIBRATING..." : "PENDING"}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              soundEffects.playBeepConfirm();
-              onComplete();
-            }}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-bold transition cursor-pointer"
-          >
-            ENTER COCKPIT →
-          </button>
         </div>
       </div>
     </div>

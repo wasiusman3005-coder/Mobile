@@ -168,33 +168,8 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
     };
   }, []);
 
-  // Device Command Logs
-  const [logs, setLogs] = useState<DeviceCommandLog[]>([
-    {
-      id: "log-1",
-      deviceId: "dev-mob-1",
-      deviceName: "Commander Mobile",
-      action: "Clipboard Synced: 'https://meet.google.com/qnx-wasi-demo'",
-      timestamp: "12m ago",
-      status: "success",
-    },
-    {
-      id: "log-2",
-      deviceId: "dev-light-1",
-      deviceName: "Nanoleaf RGB Light Bar",
-      action: "Preset Switched to 'Cyber Cyan #06b6d4' (85% Brightness)",
-      timestamp: "35m ago",
-      status: "success",
-    },
-    {
-      id: "log-3",
-      deviceId: "dev-mob-1",
-      deviceName: "Commander Mobile",
-      action: "Battery Health Check: 88% Fast Wireless Charging",
-      timestamp: "1h ago",
-      status: "success",
-    },
-  ]);
+  // Device Command Logs (Starts empty until user runs real commands)
+  const [logs, setLogs] = useState<DeviceCommandLog[]>([]);
 
   // Pairing Scanner State
   const [isScanningNew, setIsScanningNew] = useState(false);
@@ -204,29 +179,7 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
     type: DeviceType;
     protocol: string;
     signal: string;
-  }[]>([
-    {
-      id: "disc-1",
-      name: "Keychron Q3 Max (Bluetooth)",
-      type: "peripherals",
-      protocol: "BLE 5.2",
-      signal: "-48 dBm (Strong)",
-    },
-    {
-      id: "disc-2",
-      name: "Sony WH-1000XM5 Studio",
-      type: "audio_dac",
-      protocol: "LDAC Bluetooth",
-      signal: "-58 dBm (Good)",
-    },
-    {
-      id: "disc-3",
-      name: "Pixel 9 Pro Fold (Nearby)",
-      type: "mobile",
-      protocol: "Wi-Fi Direct",
-      signal: "-65 dBm (Good)",
-    },
-  ]);
+  }[]>([]);
 
   const [copiedText, setCopiedText] = useState(false);
   const [quickSmsDraft, setQuickSmsDraft] = useState("Assalam o Alaikum! Wasi Sahab ki taraf se Q-Nexus OS auto notification.");
@@ -278,12 +231,6 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
         return d;
       })
     );
-
-    const vocal =
-      language === "pa"
-        ? "Wasi paji, mobile te loud siren bajna shuru ho gaya ae!"
-        : "Find My Phone triggered! Loud alarm and flashlight activated on Commander's phone.";
-    speechService.speak(vocal, { lang: language, gender: voiceGender });
   };
 
   const handleToggleHotspot = (deviceId: string) => {
@@ -327,10 +274,6 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
     setCopiedText(true);
     setTimeout(() => setCopiedText(false), 2000);
     addLog(deviceId, selectedDevice.name, "Synced bidirectional clipboard buffer between PC and Mobile.");
-    speechService.speak("PC clipboard buffer synchronized with mobile device.", {
-      lang: language,
-      gender: voiceGender,
-    });
   };
 
   const handleLightColorChange = (hex: string) => {
@@ -379,13 +322,6 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
     setIsScanningNew(true);
     setTimeout(() => {
       setIsScanningNew(false);
-      soundEffects.playBeepConfirm();
-      speechService.speak(
-        language === "pa"
-          ? "Nave devices scan ho gaye ne Wasi paji! 3 devices pair karan layi ready ne."
-          : "Device discovery complete. 3 nearby Bluetooth & Wi-Fi peripherals found.",
-        { lang: language, gender: voiceGender }
-      );
     }, 1200);
   };
 
@@ -409,10 +345,6 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
     setDevices((prev) => [...prev, newDevice]);
     setDiscoveredDevices((prev) => prev.filter((d) => d.id !== disc.id));
     addLog(newDevice.id, newDevice.name, `Successfully paired via ${disc.protocol}`);
-    speechService.speak(`Paired ${newDevice.name} to Quantum Jarvis OS.`, {
-      lang: language,
-      gender: voiceGender,
-    });
   };
 
   return (
@@ -761,12 +693,7 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
                     <button
                       type="button"
                       onClick={() => {
-                        soundEffects.playBeepConfirm();
                         addLog(selectedDevice.id, selectedDevice.name, `Pushed Mobile Alert: "${quickSmsDraft}"`);
-                        speechService.speak("Notification pushed to Commander Wasi's mobile.", {
-                          lang: language,
-                          gender: voiceGender,
-                        });
                       }}
                       className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-orbitron font-bold transition cursor-pointer shrink-0"
                     >

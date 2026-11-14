@@ -108,18 +108,7 @@ export const CreativeMediaStudio: React.FC<CreativeMediaStudioProps> = ({
   const [postHashtags, setPostHashtags] = useState("#QNexus #AIJarvis #TechCreator #PakistanTech #Shorts");
   const [postDelaySec, setPostDelaySec] = useState(8);
   const [postWebhookUrl, setPostWebhookUrl] = useState("");
-  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPostItem[]>([
-    {
-      id: "post-seed-1",
-      platform: "YouTube Shorts",
-      title: "Holographic Core Reactor Demo",
-      caption: "10 real-time 3D quantum geometries reacting to voice commands.",
-      hashtags: "#QuantumUI #ThreeJS #Jarvis",
-      mediaType: "video",
-      scheduledSeconds: 0,
-      status: "Published",
-    },
-  ]);
+  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPostItem[]>([]);
 
   // Countdown tick for Auto Social Media Video Post queue
   useEffect(() => {
@@ -239,8 +228,6 @@ export const CreativeMediaStudio: React.FC<CreativeMediaStudioProps> = ({
       const data = await res.json();
       const reply = data.reply || "Screen scan complete.";
       setScreenHelpReply(reply);
-      soundEffects.playBeepConfirm();
-      speechService.speak(reply, { lang: language, gender: voiceGender, fast: true });
     } catch {
       setScreenError("Could not reach AI Vision endpoint. Please retry.");
     } finally {

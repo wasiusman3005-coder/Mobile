@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Atom, Settings, LayoutGrid, Lock, Laptop, Shield, Mic, Activity, Clock, Terminal, Cpu, Radio, Sparkles, ChevronRight } from "lucide-react";
+import { Atom, Settings, LayoutGrid, Lock, Laptop, Shield, AudioWaveform, Activity, Clock, Terminal, Cpu, Radio, Sparkles, ChevronRight } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { DashboardCustomization } from "../types";
 import { AutoMorphingQuantumLogo, QuantumThemeColor } from "./AutoMorphingQuantumLogo";
@@ -205,7 +205,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             className="w-full p-3 rounded-2xl bg-gradient-to-r from-blue-950/70 to-slate-900 border border-blue-500/40 hover:border-blue-400 text-slate-200 hover:text-blue-300 font-orbitron font-bold text-xs tracking-wider transition flex items-center justify-between cursor-pointer group shadow-lg shadow-black/50"
           >
             <span className="flex items-center gap-2.5">
-              <Mic className="w-4 h-4 text-blue-400 group-hover:scale-110 transition" />
+              <AudioWaveform className="w-4 h-4 text-blue-400 group-hover:scale-110 transition" />
               <span>VOICE JARVIS</span>
             </span>
             <span className="text-[10px] font-mono text-cyan-400 px-1.5 py-0.5 rounded bg-cyan-950/80">

@@ -6,6 +6,9 @@ export interface CustomVoiceProfile {
   id: string;
   name: string;
   gender: 'male' | 'female';
+  assignedTo?: 'male' | 'female' | 'both';
+  scheduleRule?: 'always' | 'morning' | 'evening' | 'urdu' | 'english';
+  browserVoiceURI?: string;
   audioBlobUrl?: string;
   audioBase64?: string;
   pitch: number;
@@ -14,60 +17,43 @@ export interface CustomVoiceProfile {
   dateAdded: string;
 }
 
-export type JarvisInterfaceThemeId =
-  | 'quantum_cockpit'     // Original Command Room (images_ea059939.jpg)
-  | 'vector_hud_gui'      // Vector HUD GUI 4 (vector-hud-gui-interface-004_e93adaf2.jpg)
-  | 'ironman_shield'      // Iron Man Arc Reactor & S.H.I.E.L.D. OS (images__1__d271a28a.jpg)
-  | 'carbon_industrial'   // Carbon Fiber Industrial Jarvis Console (images__2__c5f03e7f.jpg)
-  | 'stark_mark3'         // Stark Industries Mark III Tactical Defense (images__3__0fd67f24.jpg)
-  | 'cosmic_nebula'       // Deep Space Cosmic Nebula Jarvis (images__4__27575c52.jpg)
-  | 'mark_85_deck';       // Mark LXXXV Holographic Command Deck (images_be3c8b70.jpg)
+export type JarvisInterfaceThemeId = 'quantum_cockpit';
 
-export type AvatarRenderMode = '2d' | 'real_girl' | 'custom_2d' | 'custom_3d';
-export type StandbyAnimationType = 'breathe' | 'float' | 'pulse' | 'sway';
-export type HologramDisplayMode = 'face' | 'fullbody';
-export type AvatarBodyMovement =
-  | 'idle'
-  | 'showcase'
-  | 'crouch_hero'
-  | 'wave'
-  | 'dance'
-  | 'walk'
-  | 'run'
-  | 'spin'
-  | 'heart'
-  | 'hug'
-  | 'salute'
-  | 'sit'
-  | 'jump'
-  | 'kick'
-  | 'punch'
-  | 'squat'
-  | 'bow'
-  | 'stretch'
-  | 'nod'
-  | 'shake_no'
-  | 'freestyle';
+export type AssistantGender = 'male' | 'female';
+
+export interface CharacterVoiceSlotConfig {
+  pitch: number;
+  rate: number;
+  preferredBrowserVoiceURI?: string;
+  activeCustomVoiceId?: string;
+  elevenLabsVoiceId?: string;
+}
+
+export interface VoiceScheduleRule {
+  enabled: boolean;
+  mode: 'manual' | 'day_night' | 'language_split';
+  dayStartHour: number;
+  nightStartHour: number;
+  dayVoice: AssistantGender;
+  nightVoice: AssistantGender;
+  urduVoice: AssistantGender;
+  englishVoice: AssistantGender;
+}
 
 export interface AvatarStudioConfig {
-  mode: AvatarRenderMode;
-  avatarIndex: number; // 0..99 (100 2D avatars)
-  outfitIndex: number; // 0..104 (105+ outfits)
-  hairstyleIndex: number; // 0..53 (54+ hairstyles)
-  hairColor: string;
-  accessories: string[];
-  custom2DUrl: string;
-  custom3DUrl: string;
-  custom3DName: string;
-  standbyAnimation: StandbyAnimationType;
-  autoOutfitChange: boolean;
-  autoOutfitIntervalSec: number;
-  floatingAvatarEnabled: boolean;
+  characterGender: AssistantGender;
+  activeCharacterId?: string;
+  customNicknames?: Record<string, string>;
+  customFemaleName?: string;
+  customMaleName?: string;
   personalityId: string;
   fastTalkingMode: boolean;
   useElevenLabs: boolean;
   elevenLabsVoiceId: string;
   customWakeWords: string[];
+  maleVoiceSettings?: CharacterVoiceSlotConfig;
+  femaleVoiceSettings?: CharacterVoiceSlotConfig;
+  voiceSchedule?: VoiceScheduleRule;
 }
 
 export interface MobileSecurityConfig {

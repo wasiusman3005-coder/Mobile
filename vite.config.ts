@@ -20,7 +20,7 @@ export default defineConfig(() => {
           id: '/',
           name: 'Q-NEXUS: Quantum Tachyon Jarvis OS',
           short_name: 'Q-NEXUS',
-          description: 'Pakistani Urdu & English AI Companion, 3D Hologram Zoya, Phone & PC Control OS.',
+          description: 'Pakistani Urdu & English AI Companion, Wasu & Wasi ki Jan, Phone & PC Control OS.',
           theme_color: '#02050f',
           background_color: '#02050f',
           display: 'standalone',
@@ -30,9 +30,9 @@ export default defineConfig(() => {
           scope: '/',
           shortcuts: [
             {
-              name: 'Zoya Voice Assistant',
-              short_name: 'Zoya Voice',
-              description: 'Open Zoya 3D Hologram & Urdu Voice Chat',
+              name: 'Wasu & Wasi ki Jan Voice',
+              short_name: 'Voice AI',
+              description: 'Open Wasu & Wasi ki Jan Pakistani Urdu Voice Chat',
               url: '/?action=voice',
               icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
             },
@@ -66,7 +66,10 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
-          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true,
+          maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,woff,woff2}'],
           runtimeCaching: [
             {
@@ -100,8 +103,8 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
+          type: 'classic',
         },
       }),
     ],

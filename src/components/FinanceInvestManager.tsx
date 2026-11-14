@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { DollarSign, TrendingUp, AlertTriangle, ShieldCheck, Plus, Sparkles, PieChart, ArrowUpRight, CheckCircle } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
-import { storageService, defaultExpenses } from "../services/storage";
+import { storageService } from "../services/storage";
 import { ExpenseItem, LanguageCode, VoiceGender } from "../types";
 
 interface FinanceInvestManagerProps {
@@ -15,9 +15,59 @@ export const FinanceInvestManager: React.FC<FinanceInvestManagerProps> = ({
   voiceGender,
 }) => {
   const [expenses, setExpenses] = useState<ExpenseItem[]>(() => storageService.getExpenses());
-  const [monthlyBudget] = useState(150000); // 150k PKR
-  const [emergencyFund] = useState(380000); // 380k PKR saved
-  const [emergencyTarget] = useState(500000); // 500k target
+  const [monthlyBudget, setMonthlyBudget] = useState<number>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("q_nexus_finance_settings") || "{}");
+      return Number(saved.monthlyBudget) || 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [emergencyFund, setEmergencyFund] = useState<number>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("q_nexus_finance_settings") || "{}");
+      return Number(saved.emergencyFund) || 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [emergencyTarget, setEmergencyTarget] = useState<number>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("q_nexus_finance_settings") || "{}");
+      return Number(saved.emergencyTarget) || 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [investedAmount, setInvestedAmount] = useState<number>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("q_nexus_finance_settings") || "{}");
+      return Number(saved.investedAmount) || 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  const saveFinanceConfig = (next: {
+    monthlyBudget?: number;
+    emergencyFund?: number;
+    emergencyTarget?: number;
+    investedAmount?: number;
+  }) => {
+    const merged = {
+      monthlyBudget: next.monthlyBudget ?? monthlyBudget,
+      emergencyFund: next.emergencyFund ?? emergencyFund,
+      emergencyTarget: next.emergencyTarget ?? emergencyTarget,
+      investedAmount: next.investedAmount ?? investedAmount,
+    };
+    setMonthlyBudget(merged.monthlyBudget);
+    setEmergencyFund(merged.emergencyFund);
+    setEmergencyTarget(merged.emergencyTarget);
+    setInvestedAmount(merged.investedAmount);
+    try {
+      localStorage.setItem("q_nexus_finance_settings", JSON.stringify(merged));
+    } catch {}
+  };
 
   // Fazool Kharchi Advisor Tool
   const [itemQuery, setItemQuery] = useState("");
@@ -77,7 +127,6 @@ export const FinanceInvestManager: React.FC<FinanceInvestManagerProps> = ({
     }
 
     setAnalysisResult({ verdict, reason, advice, score });
-    speechService.speak(advice, { lang: language, gender: voiceGender });
   };
 
   // Add Expense
@@ -102,15 +151,6 @@ export const FinanceInvestManager: React.FC<FinanceInvestManagerProps> = ({
     setExpTitle("");
     setExpAmount("");
     setShowAddForm(false);
-
-    if (isWasteful) {
-      soundEffects.playAlert();
-      const alertText =
-        language === "pa"
-          ? "Dhyan dyo Wasi paji! Yeh fazool kharcha log hoya ae, budget balance maintain rakho."
-          : "Wasi Sahab, fazool kharchi alert! Aapka monthly budget limit se kam ho raha hai.";
-      speechService.speak(alertText, { lang: language, gender: voiceGender });
-    }
   };
 
   const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
@@ -128,7 +168,13 @@ export const FinanceInvestManager: React.FC<FinanceInvestManagerProps> = ({
               <DollarSign className="w-4 h-4 text-cyan-400" />
               MONTHLY BUDGET
             </span>
-            <span className="text-xs font-mono text-cyan-400 font-bold">150,000 PKR</span>
+            <input
+              type="number"
+              value={monthlyBudget || ""}
+              placeholder="Set PKR"
+              onChange={(e) => saveFinanceConfig({ monthlyBudget: Math.max(0, Number(e.target.value) || 0) })}
+              className="w-24 px-2 py-0.5 bg-slate-950 border border-slate-700 rounded text-right text-xs font-mono text-cyan-300"
+            />
           </div>
           <div className="text-2xl font-orbitron font-bold text-slate-100">
             {remainingBudget.toLocaleString()} <span className="text-xs font-mono text-slate-400 font-normal">PKR Left</span>
@@ -136,14 +182,14 @@ export const FinanceInvestManager: React.FC<FinanceInvestManagerProps> = ({
           <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800 mt-3">
             <div
               className={`h-full transition-all duration-500 ${
-                remainingBudget < 30000 ? "bg-red-500" : "bg-cyan-400"
+                monthlyBudget > 0 && remainingBudget < monthlyBudget * 0.2 ? "bg-red-500" : "bg-cyan-400"
               }`}
-              style={{ width: `${Math.min(100, (totalSpent / monthlyBudget) * 100)}%` }}
+              style={{ width: `${monthlyBudget > 0 ? Math.min(100, (totalSpent / monthlyBudget) * 100) : 0}%` }}
             ></div>
           </div>
           <div className="text-[10px] font-mono text-slate-500 mt-1.5 flex justify-between">
             <span>Spent: {totalSpent.toLocaleString()} PKR</span>
-            <span>{Math.round((totalSpent / monthlyBudget) * 100)}% used</span>
+            <span>{monthlyBudget > 0 ? `${Math.round((totalSpent / monthlyBudget) * 100)}% used` : "No budget set"}</span>
           </div>
         </div>
 
@@ -161,10 +207,10 @@ export const FinanceInvestManager: React.FC<FinanceInvestManagerProps> = ({
           </div>
           <div className="text-xs font-mono text-emerald-400 mt-2 flex items-center gap-1">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>4 IMPULSE PURCHASES BLOCKED</span>
+            <span>{expenses.filter((e) => e.isFazoolKharchi).length} WASTEFUL ITEMS LOGGED</span>
           </div>
           <div className="text-[10px] font-mono text-slate-500 mt-1">
-            Estimated 85,000 PKR saved this month
+            Based strictly on expenses you log below
           </div>
         </div>
 
@@ -173,43 +219,52 @@ export const FinanceInvestManager: React.FC<FinanceInvestManagerProps> = ({
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-mono text-slate-400 flex items-center gap-1.5">
               <TrendingUp className="w-4 h-4 text-emerald-400" />
-              EMERGENCY VAULT
+              SAVINGS / EMERGENCY
             </span>
-            <span className="text-xs font-mono text-emerald-400 font-bold">76% OF TARGET</span>
+            <span className="text-xs font-mono text-emerald-400 font-bold">
+              {emergencyTarget > 0 ? `${Math.round((emergencyFund / emergencyTarget) * 100)}%` : "0%"}
+            </span>
           </div>
           <div className="text-2xl font-orbitron font-bold text-slate-100">
-            {emergencyFund.toLocaleString()} <span className="text-xs font-mono text-slate-400 font-normal">/ {emergencyTarget.toLocaleString()} PKR</span>
+            {emergencyFund.toLocaleString()} <span className="text-xs font-mono text-slate-400 font-normal">PKR Saved</span>
           </div>
-          <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800 mt-3">
-            <div
-              className="bg-emerald-400 h-full transition-all duration-500"
-              style={{ width: `${(emergencyFund / emergencyTarget) * 100}%` }}
-            ></div>
-          </div>
-          <div className="text-[10px] font-mono text-slate-500 mt-1.5">
-            Safe buffer for 4 months of runway
+          <div className="grid grid-cols-2 gap-1.5 mt-2">
+            <input
+              type="number"
+              value={emergencyFund || ""}
+              placeholder="Saved PKR"
+              onChange={(e) => saveFinanceConfig({ emergencyFund: Math.max(0, Number(e.target.value) || 0) })}
+              className="px-2 py-1 bg-slate-950 border border-slate-800 rounded text-[11px] font-mono text-emerald-300"
+            />
+            <input
+              type="number"
+              value={emergencyTarget || ""}
+              placeholder="Target PKR"
+              onChange={(e) => saveFinanceConfig({ emergencyTarget: Math.max(0, Number(e.target.value) || 0) })}
+              className="px-2 py-1 bg-slate-950 border border-slate-800 rounded text-[11px] font-mono text-slate-300"
+            />
           </div>
         </div>
 
-        {/* Quantum Investment Growth */}
+        {/* Personal Investments */}
         <div className="p-5 rounded-2xl bg-slate-900/80 border border-purple-500/30">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-mono text-slate-400 flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-purple-400" />
-              PORTFOLIO COMPOUNDING
+              MY INVESTMENTS
             </span>
-            <span className="text-xs font-mono text-purple-400 font-bold">+14.2% APY</span>
+            <span className="text-xs font-mono text-purple-400 font-bold">MANUAL TRACKER</span>
           </div>
           <div className="text-2xl font-orbitron font-bold text-slate-100">
-            185,000 <span className="text-xs font-mono text-slate-400 font-normal">PKR Invested</span>
+            {investedAmount.toLocaleString()} <span className="text-xs font-mono text-slate-400 font-normal">PKR</span>
           </div>
-          <div className="text-[11px] font-mono text-purple-300 mt-2 flex items-center gap-1">
-            <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>Yielding ~2,100 PKR monthly dividend</span>
-          </div>
-          <div className="text-[10px] font-mono text-slate-500 mt-1">
-            Assets: Tech Capital, Gold, Index Fund
-          </div>
+          <input
+            type="number"
+            value={investedAmount || ""}
+            placeholder="Enter invested PKR"
+            onChange={(e) => saveFinanceConfig({ investedAmount: Math.max(0, Number(e.target.value) || 0) })}
+            className="w-full mt-2 px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-[11px] font-mono text-purple-300"
+          />
         </div>
       </div>
 
@@ -360,32 +415,38 @@ export const FinanceInvestManager: React.FC<FinanceInvestManagerProps> = ({
 
           {/* List */}
           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-            {expenses.map((exp) => (
-              <div
-                key={exp.id}
-                className={`p-3 rounded-xl border flex items-center justify-between text-xs font-mono ${
-                  exp.isFazoolKharchi
-                    ? "bg-red-950/20 border-red-500/30 text-red-200"
-                    : "bg-slate-950/80 border-slate-800 text-slate-200"
-                }`}
-              >
-                <div>
-                  <div className="font-semibold text-slate-100">{exp.title}</div>
-                  <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
-                    <span className="uppercase text-cyan-400">{exp.category}</span>
-                    <span>•</span>
-                    <span>{exp.date}</span>
-                    {exp.isFazoolKharchi && (
-                      <span className="text-red-400 font-bold">[FAZOOL KHARCHI]</span>
-                    )}
+            {expenses.length === 0 ? (
+              <div className="p-4 rounded-xl bg-slate-950/60 border border-dashed border-slate-800 text-center text-xs font-mono text-slate-400">
+                Abhi koi expense log nahi hua. &quot;LOG EXPENSE&quot; par tap karke apna kharcha add karein.
+              </div>
+            ) : (
+              expenses.map((exp) => (
+                <div
+                  key={exp.id}
+                  className={`p-3 rounded-xl border flex items-center justify-between text-xs font-mono ${
+                    exp.isFazoolKharchi
+                      ? "bg-red-950/20 border-red-500/30 text-red-200"
+                      : "bg-slate-950/80 border-slate-800 text-slate-200"
+                  }`}
+                >
+                  <div>
+                    <div className="font-semibold text-slate-100">{exp.title}</div>
+                    <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
+                      <span className="uppercase text-cyan-400">{exp.category}</span>
+                      <span>•</span>
+                      <span>{exp.date}</span>
+                      {exp.isFazoolKharchi && (
+                        <span className="text-red-400 font-bold">[FAZOOL KHARCHI]</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="font-orbitron font-bold text-slate-100 text-sm">
+                    {exp.amount.toLocaleString()} PKR
                   </div>
                 </div>
-
-                <div className="font-orbitron font-bold text-slate-100 text-sm">
-                  {exp.amount.toLocaleString()} PKR
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

@@ -3,7 +3,23 @@ import {registerSW} from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
 
-registerSW({immediate: true});
+if (import.meta.env.PROD) {
+  registerSW({
+    immediate: true,
+    onRegisterError() {},
+  });
+} else if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((regs) => {
+      regs.forEach((reg) => {
+        if (reg.active?.scriptURL?.includes('dev-sw')) {
+          reg.unregister().catch(() => {});
+        }
+      });
+    })
+    .catch(() => {});
+}
 
 // Google Maps Platform Quota Defense Handlers
 (window as any).gm_authFailure = () => {

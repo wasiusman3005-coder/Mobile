@@ -144,7 +144,6 @@ export const DesktopManager: React.FC<DesktopManagerProps> = ({
     const res = await togglePhoneFlashlight(!torchActive);
     setTorchActive(res.active);
     setStatusAlert(res.message);
-    speechService.speak(res.message, { lang: language, gender: voiceGender });
   };
 
   const handleVibrateTest = () => {
@@ -163,9 +162,7 @@ export const DesktopManager: React.FC<DesktopManagerProps> = ({
     const loc = await getCurrentPhoneLocation();
     if (loc) {
       setGpsLocation(loc);
-      soundEffects.playBeepConfirm();
       setStatusAlert(`GPS LOCKED: Lat ${loc.lat.toFixed(5)}, Lng ${loc.lng.toFixed(5)}`);
-      speechService.speak("Phone GPS location mil gayi hai.", { lang: language, gender: voiceGender });
     } else {
       setStatusAlert("Location permission denied ya phone GPS off hai.");
     }
@@ -188,19 +185,11 @@ export const DesktopManager: React.FC<DesktopManagerProps> = ({
   };
 
   const handleRingSiren = () => {
-    soundEffects.playAlert();
     triggerHaptic([150, 80, 150, 80, 200]);
-    setStatusAlert("PHONE LOCATOR SIREN ACTIVE — Zoya alert played!");
-    speechService.speak(
-      language === "pa"
-        ? "Wasi jaan, main tuhada phone ring kar rahi aan!"
-        : "Wasi jaan, aapka phone yahan hai! Q-NEXUS alert active.",
-      { lang: language, gender: voiceGender }
-    );
+    setStatusAlert("PHONE LOCATOR PULSE ACTIVE — Haptic vibration triggered!");
   };
 
   const runMobileMacro = async (macro: MobileRoutineMacro) => {
-    soundEffects.playBeepConfirm();
     triggerHaptic(30);
     setActiveMacroId(macro.id);
 
@@ -215,30 +204,17 @@ export const DesktopManager: React.FC<DesktopManagerProps> = ({
       if (loc) setGpsLocation(loc);
     }
 
-    const voicePrompt =
-      language === "pa"
-        ? macro.voicePromptPunjabi
-        : language === "en"
-        ? macro.voicePromptEnglish
-        : macro.voicePromptUrdu;
-
     setStatusAlert(`EXECUTED MOBILE ROUTINE: ${macro.title}`);
-    speechService.speak(voicePrompt, { lang: language, gender: voiceGender });
     setTimeout(() => setActiveMacroId(null), 1800);
   };
 
   const handlePickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
-    soundEffects.playBeepConfirm();
     triggerHaptic(20);
     const updated = ingestPickedMobileFiles(fileList);
     setVaultFiles(updated);
     setStatusAlert(`${fileList.length} mobile file(s) automatically sorted & indexed in Phone Vault!`);
-    speechService.speak(
-      `Aapki ${fileList.length} files mobile vault mein categorize ho gayi hain.`,
-      { lang: language, gender: voiceGender }
-    );
     e.target.value = "";
   };
 
