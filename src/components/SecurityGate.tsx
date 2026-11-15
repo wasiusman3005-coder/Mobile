@@ -6,7 +6,6 @@ import {
   KeyRound,
   Smartphone,
   User,
-  ExternalLink,
   Volume2,
   VolumeX,
   Lock,
@@ -15,7 +14,6 @@ import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
 import { storageService } from "../services/storage";
 import { readPhoneHardwareTelemetry, PhoneHardwareTelemetry } from "../services/systemTelemetry";
-import { checkBiometricCapabilities } from "../services/biometricAuth";
 import { triggerHaptic } from "../services/mobileDeviceActions";
 import { PWAInstallButton } from "./PWAInstallButton";
 import { LanguageCode } from "../types";
@@ -50,11 +48,9 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
   const passwordInputRef = useRef<HTMLInputElement>(null);
 
   const [phoneTelemetry, setPhoneTelemetry] = useState<PhoneHardwareTelemetry | null>(null);
-  const [blockedByIframe, setBlockedByIframe] = useState(false);
   const unlockingRef = useRef(false);
 
   useEffect(() => {
-    checkBiometricCapabilities().then((caps) => setBlockedByIframe(caps.blockedByIframe));
     let cancelled = false;
     const load = async () => {
       const tel = await readPhoneHardwareTelemetry();
@@ -169,11 +165,6 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
     }
   };
 
-  const directAppUrl =
-    typeof window !== "undefined"
-      ? (window.location.origin || "").replace("https://ais-dev-", "https://ais-pre-")
-      : "";
-
   return (
     <div
       id="lock"
@@ -222,18 +213,6 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
           </button>
         </div>
       </header>
-
-      {blockedByIframe && directAppUrl && (
-        <a
-          href={directAppUrl}
-          target="_top"
-          rel="noopener noreferrer"
-          className="relative z-10 w-full max-w-[1120px] mb-4 px-3.5 py-2 rounded-xl bg-amber-950/60 border border-amber-400/45 text-amber-200 text-xs font-mono flex items-center justify-between gap-2 hover:bg-amber-900/70 transition"
-        >
-          <span>Open direct app on mobile for full PWA install</span>
-          <ExternalLink className="w-3.5 h-3.5 shrink-0 text-amber-300" />
-        </a>
-      )}
 
       {/* 2-Column Lock Grid with Prismatic Lighting */}
       <div className="relative z-10 w-full max-w-[1120px] grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-center my-auto">

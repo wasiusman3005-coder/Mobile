@@ -10,8 +10,6 @@ import {
   Download,
   Settings,
   Lock,
-  ExternalLink,
-  AlertTriangle,
   X,
   Atom,
   Volume2,
@@ -187,7 +185,6 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
   detailViewNonce = 0,
   pausedByFullscreen = false,
 }) => {
-  const [dismissIframeNotice, setDismissIframeNotice] = useState(false);
   const [soundOn, setSoundOn] = useState(soundEffects.soundEnabled);
   const [sidebarDrawer, setSidebarDrawer] = useState<"none" | "characters" | "core" | "summary">("none");
   const [isIconFlightActive, setIsIconFlightActive] = useState(true);
@@ -196,7 +193,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
   useEffect(() => {
     const settleTimer = setTimeout(() => {
       setIsIconFlightActive(false);
-    }, 2850);
+    }, 2650);
     return () => clearTimeout(settleTimer);
   }, []);
 
@@ -218,11 +215,6 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       summaryScrollRef.current.scrollTop = summaryScrollRef.current.scrollHeight;
     }
   }, [cockpitSummaries, liveTranscript, sidebarDrawer]);
-
-  const directAppUrl =
-    typeof window !== "undefined"
-      ? (window.location.origin || "").replace("https://ais-dev-", "https://ais-pre-")
-      : "";
 
   const projectedTitle = activeProjectedModule
     ? MODULE_PROJECTED_TITLES[activeProjectedModule] || "Tech Hub Terminal"
@@ -528,33 +520,6 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
           secondaryHex={activeSpec.secondaryHex}
         />
       </div>
-
-      {/* Minimal Dismissible Notice ONLY inside AI Studio iframe */}
-      {typeof window !== "undefined" && window.self !== window.top && !dismissIframeNotice && (
-        <div className="q-hud-chrome fixed top-3 left-1/2 -translate-x-1/2 z-40 max-w-md w-[90%] rounded-xl bg-amber-950/90 border border-amber-500/40 px-3 py-2 flex items-center justify-between gap-2 shadow-xl backdrop-blur-md">
-          <div className="flex items-center gap-2 text-[11px] text-amber-200 min-w-0">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="truncate">Preview iframe: open standalone tab for full voice mic.</span>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <a
-              href={directAppUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-2 py-1 rounded bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center gap-1"
-            >
-              Open <ExternalLink className="w-3 h-3" />
-            </a>
-            <button
-              type="button"
-              onClick={() => setDismissIframeNotice(true)}
-              className="p-1 text-amber-300 hover:text-white cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ================================================================= */}
       {/* FULL-SCREEN STAGE: LIVING WASU & WASI KI JAN IN TECHNOLOGY HUB    */}
@@ -1042,8 +1007,10 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       <nav
         id="jarvis-orbital-dock"
         aria-label="Jarvis 3D Orbital Icon Dock"
-        className={`q-hud-chrome fixed z-30 bottom-2.5 left-1/2 -translate-x-1/2 max-w-[95vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-4 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-center gap-1.5 md:gap-1.5 p-2 md:py-3 md:px-2.5 rounded-2xl md:rounded-[34px] bg-[#040916]/65 border border-white/15 md:border-cyan-400/25 shadow-2xl transition-all duration-300 backdrop-blur-md ${
-          isIconFlightActive ? "overflow-visible" : "overflow-x-auto md:overflow-visible"
+        className={`q-hud-chrome fixed z-30 bottom-2.5 left-1/2 -translate-x-1/2 max-w-[95vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-4 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-center gap-1.5 md:gap-1.5 p-2 md:py-3 md:px-2.5 rounded-2xl md:rounded-[34px] transition-all duration-500 ${
+          isIconFlightActive
+            ? "bg-transparent border border-transparent shadow-none overflow-visible"
+            : "bg-[#040916]/65 border border-white/15 md:border-cyan-400/25 shadow-2xl backdrop-blur-md overflow-x-auto md:overflow-visible"
         }`}
         style={{ perspective: "1200px", transformStyle: "preserve-3d" }}
       >
@@ -1056,15 +1023,15 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
 
           // Screen-wide deterministic 3D flight trajectory from scattered viewport points into dock alignment
           const angle = (idx / total) * Math.PI * 2;
-          const startX = `${(-52 - Math.abs(Math.cos(angle)) * 34).toFixed(1)}vw`;
+          const startX = `${(-44 - Math.abs(Math.cos(angle)) * 38).toFixed(1)}vw`;
           const startY = `${(Math.sin(angle * 2) * 38).toFixed(1)}vh`;
-          const midX = `${(-18 - Math.abs(Math.sin(angle)) * 26).toFixed(1)}vw`;
+          const midX = `${(-16 - Math.abs(Math.sin(angle)) * 28).toFixed(1)}vw`;
           const midY = `${(Math.cos(angle * 2) * 20).toFixed(1)}vh`;
           const mobStartX = `${(Math.cos(angle) * 38).toFixed(1)}vw`;
-          const mobStartY = `${(-38 - (idx % 4) * 12).toFixed(1)}vh`;
+          const mobStartY = `${(-42 - (idx % 4) * 10).toFixed(1)}vh`;
           const mobMidX = `${(Math.sin(angle) * 18).toFixed(1)}vw`;
           const mobMidY = `${(-14 - (idx % 3) * 6).toFixed(1)}vh`;
-          const flyDelay = `${(idx * 0.045).toFixed(3)}s`;
+          const flyDelay = `${(idx * 0.04).toFixed(3)}s`;
 
           return (
             <button
@@ -1096,7 +1063,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
               }
               className={`${
                 isIconFlightActive ? "q-orbital-enter" : "q-orbital-item"
-              } group relative w-9 h-9 md:w-10 md:h-10 rounded-2xl border flex items-center justify-center shrink-0 cursor-pointer transition-[filter,transform] duration-200 hover:scale-120 hover:brightness-125`}
+              } group relative w-9 h-9 md:w-10 md:h-10 rounded-2xl border flex items-center justify-center shrink-0 cursor-pointer transition-[filter,transform] duration-200 hover:scale-[1.18] hover:brightness-125`}
             >
               {/* Glossy Top Crystal Specular Highlight */}
               <span

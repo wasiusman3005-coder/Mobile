@@ -53,6 +53,7 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   const [isCompleted, setIsCompleted] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   const dotCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const progressRef = useRef(0);
   progressRef.current = progress;
@@ -61,25 +62,33 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
     if (!isOpen) {
       completedRef.current = false;
       setIsCompleted(false);
+      setIsExiting(false);
       return;
     }
 
     setProgress(0);
     setIsCompleted(false);
+    setIsExiting(false);
     lastVerifiedRef.current = -1;
     completedRef.current = false;
     setViewportStr(`${window.innerWidth}×${window.innerHeight}`);
     soundEffects.playQuantumStartup();
     preloadVideoBlob(HUB_LIVE_VIDEOS[0]).catch(() => {});
 
-    const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) return 100;
-        return Math.min(100, prev + 2.4);
-      });
-    }, 45);
+    const startMs = performance.now();
+    const durationMs = 2000;
+    let rafProgress = 0;
 
-    return () => clearInterval(timer);
+    const stepProgress = (now: number) => {
+      const pct = Math.min(100, Math.max(0, ((now - startMs) / durationMs) * 100));
+      setProgress(pct);
+      if (pct < 100) {
+        rafProgress = requestAnimationFrame(stepProgress);
+      }
+    };
+    rafProgress = requestAnimationFrame(stepProgress);
+
+    return () => cancelAnimationFrame(rafProgress);
   }, [isOpen]);
 
   // Coalescing small quantum dots assembling into loading rings & diagnostic nodes
@@ -173,13 +182,13 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    // Failsafe guarantee: never leave loading screen open past 3.4s
+    // Failsafe guarantee: never remain stuck on loading past 3.6s
     const hardFailsafe = setTimeout(() => {
       if (!completedRef.current) {
         completedRef.current = true;
         onCompleteRef.current();
       }
-    }, 3400);
+    }, 3600);
     return () => clearTimeout(hardFailsafe);
   }, [isOpen]);
 
@@ -187,12 +196,18 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
     if (!isOpen || !isCompleted) return;
     if (completedRef.current) return;
     soundEffects.playSuccessChime();
-    const t = setTimeout(() => {
+    const exitAnimTimer = setTimeout(() => {
+      setIsExiting(true);
+    }, 150);
+    const finishTimer = setTimeout(() => {
       if (completedRef.current) return;
       completedRef.current = true;
       onCompleteRef.current();
-    }, 260);
-    return () => clearTimeout(t);
+    }, 760);
+    return () => {
+      clearTimeout(exitAnimTimer);
+      clearTimeout(finishTimer);
+    };
   }, [isOpen, isCompleted]);
 
   if (!isOpen) return null;
@@ -211,7 +226,9 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
   return (
     <div
       id="diagnostics"
-      className="fixed inset-0 z-[100] bg-[#04070f]/95 text-slate-100 flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto select-none font-rajdhani"
+      className={`fixed inset-0 z-[100] bg-[#04070f]/95 text-slate-100 flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto select-none font-rajdhani transition-all duration-600 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        isExiting ? "opacity-0 scale-110 -translate-y-6 blur-sm pointer-events-none" : "opacity-100 scale-100 translate-y-0"
+      }`}
     >
       <canvas ref={dotCanvasRef} className="fixed inset-0 pointer-events-none z-0" />
       <div className="fixed inset-0 quantum-grid opacity-30 pointer-events-none" />
