@@ -39,6 +39,7 @@ import {
 } from "./CentralQuantumCoreHologram";
 import { DualCharacterHoloStage, HubPanelNotification } from "./DualCharacterHoloStage";
 import { QDynamicsBrandLogo3D } from "./QDynamicsBrandLogo3D";
+import { PWAInstallButton } from "./PWAInstallButton";
 import { getCharacterDisplayName } from "../data/jarvisCatalog";
 import type { MatrixModuleId } from "./QuantumAppsMatrix";
 import { MobileCommsControlHub } from "./MobileCommsControlHub";
@@ -511,14 +512,19 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
   return (
     <div
       id="core"
-      className="relative flex flex-col items-center justify-center min-h-screen w-full px-3 py-4 overflow-hidden select-none"
+      className="relative flex flex-col items-center justify-center min-h-[100dvh] h-[100dvh] w-full overflow-hidden select-none"
     >
       {/* Top-Left Moving 3D Q-DYNAMICS Logo */}
-      <div className="q-hud-chrome fixed top-3 left-3 sm:top-4 sm:left-4 z-30 pointer-events-auto transition-opacity duration-300">
+      <div className="q-hud-chrome fixed top-2.5 left-2.5 sm:top-4 sm:left-4 z-30 pointer-events-auto scale-90 origin-top-left sm:scale-100 transition-transform duration-300">
         <QDynamicsBrandLogo3D
           accentHex={activeSpec.hex}
           secondaryHex={activeSpec.secondaryHex}
         />
+      </div>
+
+      {/* Top-Right Compact 1-Tap Install Trigger (Auto-hidden when already installed) */}
+      <div className="q-hud-chrome fixed top-3 right-3 sm:top-4 sm:right-4 z-30 pointer-events-auto">
+        <PWAInstallButton compact />
       </div>
 
       {/* ================================================================= */}
@@ -557,8 +563,8 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       {/* PROJECTED BIG HUB SCREEN: CHARACTERS OPEN & CONTROL ALL PANELS    */}
       {/* ================================================================= */}
       {activeProjectedModule && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-2.5 sm:p-5 bg-[#020612]/80 backdrop-blur-xl animate-fadeIn">
-          <div className="relative w-full max-w-5xl h-[89vh] rounded-3xl bg-[#040a18]/96 border border-cyan-400/45 shadow-[0_0_65px_rgba(6,182,212,0.28)] flex flex-col overflow-hidden text-slate-100">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-2 sm:p-5 bg-[#020612]/80 backdrop-blur-xl animate-fadeIn">
+          <div className="relative w-full max-w-5xl h-[88dvh] rounded-3xl bg-[#040a18]/96 border border-cyan-400/45 shadow-[0_0_65px_rgba(6,182,212,0.28)] flex flex-col overflow-hidden text-slate-100">
             {/* Characters Live Working Terminal Bar */}
             <div className="px-4 sm:px-5 py-3 bg-[#071127]/95 border-b border-cyan-500/30 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -1007,7 +1013,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       <nav
         id="jarvis-orbital-dock"
         aria-label="Jarvis 3D Orbital Icon Dock"
-        className={`q-hud-chrome fixed z-30 bottom-2.5 left-1/2 -translate-x-1/2 max-w-[95vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-4 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-center gap-1.5 md:gap-1.5 p-2 md:py-3 md:px-2.5 rounded-2xl md:rounded-[34px] transition-all duration-500 ${
+        className={`q-hud-chrome fixed z-30 bottom-[max(0.6rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 max-w-[95vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-4 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-center gap-1.5 md:gap-1.5 p-2 md:py-3 md:px-2.5 rounded-2xl md:rounded-[34px] transition-all duration-500 ${
           isIconFlightActive
             ? "bg-transparent border border-transparent shadow-none overflow-visible"
             : "bg-[#040916]/65 border border-white/15 md:border-cyan-400/25 shadow-2xl backdrop-blur-md overflow-x-auto md:overflow-visible"

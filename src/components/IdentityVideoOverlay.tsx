@@ -19,6 +19,12 @@ import { soundEffects } from "../services/soundEffects";
 import { storageService } from "../services/storage";
 import { readPhoneHardwareTelemetry, PhoneHardwareTelemetry } from "../services/systemTelemetry";
 import { MatrixModuleId } from "./QuantumAppsMatrix";
+import {
+  MOBILE_PORTRAIT_VIDEO,
+  getCachedVideoSrc,
+  getHubPlaylist,
+  isPortraitViewport,
+} from "../services/videoCache";
 
 interface IdentityVideoOverlayProps {
   isOpen: boolean;
@@ -33,13 +39,13 @@ interface IdentityVideoOverlayProps {
   onOpenSettings?: () => void;
 }
 
-export const IDENTITY_REVEAL_VIDEO_SRC = "/assets/aistudio/gemini_generated_video_0cd468c8_a6b6456c.mp4";
+export const IDENTITY_REVEAL_VIDEO_SRC = MOBILE_PORTRAIT_VIDEO;
 export const FULL_VIEW_VIDEOS = [
   "/assets/aistudio/gemini_generated_video_77029aae_66787b62.mp4",
   "/assets/aistudio/1_73e6d4cd.mp4",
   "/assets/aistudio/2_f462292e.mp4",
   "/assets/aistudio/3_7bd03cf9.mp4",
-  "/assets/aistudio/gemini_generated_video_0cd468c8_a6b6456c.mp4",
+  MOBILE_PORTRAIT_VIDEO,
 ] as const;
 
 const HOLO_AURAS = [
@@ -72,6 +78,9 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  const [isPortrait, setIsPortrait] = useState<boolean>(() => isPortraitViewport());
+  const activePlaylist = getHubPlaylist(isPortrait);
+
   const [isMuted, setIsMuted] = useState(false);
   const [fullVideoIdx, setFullVideoIdx] = useState(0);
   const [autoplayAudioBlocked, setAutoplayAudioBlocked] = useState(false);
@@ -87,6 +96,19 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
       tag: "LIVE",
     },
   ]);
+
+  useEffect(() => {
+    const syncOrientation = () => {
+      const next = isPortraitViewport();
+      setIsPortrait((prev) => (prev === next ? prev : next));
+    };
+    window.addEventListener("resize", syncOrientation);
+    window.addEventListener("orientationchange", syncOrientation);
+    return () => {
+      window.removeEventListener("resize", syncOrientation);
+      window.removeEventListener("orientationchange", syncOrientation);
+    };
+  }, []);
 
   // Initialize and play full MP4 continuously ONLY when overlay opens — never reset on parent re-renders
   useEffect(() => {
@@ -275,9 +297,13 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
     onOpenModule?.(mod);
   };
 
+  const currentRawVideo = activePlaylist[fullVideoIdx % activePlaylist.length];
+  const currentVideoSrc = getCachedVideoSrc(currentRawVideo);
+  const shouldPanOnMobile = isPortrait && currentRawVideo !== MOBILE_PORTRAIT_VIDEO;
+
   return (
     <div
-      className="fixed inset-0 z-50 w-screen h-screen bg-black flex items-center justify-center overflow-hidden select-none font-rajdhani"
+      className="fixed inset-0 z-50 w-screen h-[100dvh] bg-[#020612] flex items-center justify-center overflow-hidden select-none font-rajdhani"
       role="dialog"
       aria-modal="true"
       aria-label={`${femaleName} and ${maleName} Full View Continuous Hologram`}
@@ -286,16 +312,18 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
       {/* Full-View Unobstructed Continuous Looping MP4 Video (Zero Play/Pause/Replay Buttons) */}
       <video
         ref={videoRef}
-        src={FULL_VIEW_VIDEOS[fullVideoIdx % FULL_VIEW_VIDEOS.length]}
+        src={currentVideoSrc}
         autoPlay
         playsInline
         preload="auto"
         muted={isMuted}
         disablePictureInPicture
         onEnded={() => {
-          setFullVideoIdx((prev) => (prev + 1) % FULL_VIEW_VIDEOS.length);
+          setFullVideoIdx((prev) => (prev + 1) % activePlaylist.length);
         }}
-        className="w-full h-full object-contain bg-black"
+        className={`w-full h-full min-w-full min-h-full max-w-none object-cover bg-[#020612] ${
+          shouldPanOnMobile ? "q-mobile-video-pan" : "object-[50%_20%]"
+        }`}
       />
 
       {/* Subtle Perimeter Cybernetic Holographic Energy Aura (Never blocks central video) */}
@@ -459,7 +487,7 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
 
       {/* Bottom-Edge Live Continuous Autonomous Action Feed */}
       <div
-        className="pointer-events-none fixed bottom-3 left-3 right-14 sm:left-4 sm:right-20 z-10 flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-black/55 border border-white/15 backdrop-blur-md"
+        className="pointer-events-none fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-14 sm:left-4 sm:right-20 z-10 flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-2xl bg-black/55 border border-white/15 backdrop-blur-md"
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <Activity className="w-4 h-4 shrink-0 animate-pulse" style={{ color: aura.left }} />

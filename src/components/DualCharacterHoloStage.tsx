@@ -5,7 +5,10 @@ import { LanguageCode, VoiceGender } from "../types";
 import { CockpitCorePhase } from "./CentralQuantumCoreHologram";
 import {
   HUB_LIVE_VIDEOS,
+  MOBILE_PORTRAIT_VIDEO,
   getCachedVideoSrc,
+  getHubPlaylist,
+  isPortraitViewport,
   startSequentialHubWarmup,
 } from "../services/videoCache";
 
@@ -62,21 +65,57 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
   onStartManualRecording,
   wakeReady = true,
   onPrimeWakeMic,
-  energySurge = false,
   pausedByFullscreen = false,
   activeHubNotification = null,
 }) => {
+  const [isPortrait, setIsPortrait] = useState<boolean>(() => isPortraitViewport());
+  const playlist = getHubPlaylist(isPortrait);
+
   const slotRefs = useRef<[HTMLVideoElement | null, HTMLVideoElement | null]>([null, null]);
   const [activeSlot, setActiveSlot] = useState<0 | 1>(0);
-  const [activeVideoIdx, setActiveVideoIdx] = useState(0);
+  const [, setActiveVideoIdx] = useState(0);
   const activeSlotRef = useRef<0 | 1>(0);
   const activeVideoIdxRef = useRef(0);
+  const [slotRawUrls, setSlotRawUrls] = useState<[string, string]>(() => [
+    playlist[0],
+    playlist[1 % playlist.length],
+  ]);
   const [slotSrcs, setSlotSrcs] = useState<[string, string]>(() => [
-    getCachedVideoSrc(HUB_LIVE_VIDEOS[0]),
-    getCachedVideoSrc(HUB_LIVE_VIDEOS[1]),
+    getCachedVideoSrc(playlist[0]),
+    getCachedVideoSrc(playlist[1 % playlist.length]),
   ]);
   const preloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [waveTick, setWaveTick] = useState(0);
+
+  // Track viewport orientation/resize so mobile portrait uses full-screen 9:16 playlist & framing
+  useEffect(() => {
+    const syncOrientation = () => {
+      const nextPortrait = isPortraitViewport();
+      setIsPortrait((prev) => (prev === nextPortrait ? prev : nextPortrait));
+    };
+    window.addEventListener("resize", syncOrientation);
+    window.addEventListener("orientationchange", syncOrientation);
+    return () => {
+      window.removeEventListener("resize", syncOrientation);
+      window.removeEventListener("orientationchange", syncOrientation);
+    };
+  }, []);
+
+  // Re-sync playlist cleanly when switching between mobile portrait and desktop landscape
+  const prevPortraitRef = useRef(isPortrait);
+  useEffect(() => {
+    if (prevPortraitRef.current === isPortrait) return;
+    prevPortraitRef.current = isPortrait;
+    const nextList = getHubPlaylist(isPortrait);
+    const firstRaw = nextList[0];
+    const secondRaw = nextList[1 % nextList.length];
+    activeSlotRef.current = 0;
+    activeVideoIdxRef.current = 0;
+    setActiveSlot(0);
+    setActiveVideoIdx(0);
+    setSlotRawUrls([firstRaw, secondRaw]);
+    setSlotSrcs([getCachedVideoSrc(firstRaw), getCachedVideoSrc(secondRaw)]);
+  }, [isPortrait]);
 
   // Smooth wave & speech cadence tick ONLY during active processing/speaking
   useEffect(() => {
@@ -144,9 +183,10 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
   const handleSlotEnded = (slotIdx: 0 | 1) => {
     if (slotIdx !== activeSlotRef.current) return;
 
-    const nextVideoIdx = (activeVideoIdxRef.current + 1) % HUB_LIVE_VIDEOS.length;
+    const currentList = getHubPlaylist(isPortrait);
+    const nextVideoIdx = (activeVideoIdxRef.current + 1) % currentList.length;
     const nextSlot: 0 | 1 = slotIdx === 0 ? 1 : 0;
-    const afterNextIdx = (nextVideoIdx + 1) % HUB_LIVE_VIDEOS.length;
+    const afterNextIdx = (nextVideoIdx + 1) % currentList.length;
 
     const nextVid = slotRefs.current[nextSlot];
     if (nextVid) {
@@ -164,7 +204,14 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
 
     if (preloadTimeoutRef.current) clearTimeout(preloadTimeoutRef.current);
     preloadTimeoutRef.current = setTimeout(() => {
-      const nextPreloadUrl = getCachedVideoSrc(HUB_LIVE_VIDEOS[afterNextIdx]);
+      const nextPreloadRaw = currentList[afterNextIdx];
+      const nextPreloadUrl = getCachedVideoSrc(nextPreloadRaw);
+      setSlotRawUrls((prev) => {
+        if (prev[slotIdx] === nextPreloadRaw) return prev;
+        const next: [string, string] = [prev[0], prev[1]];
+        next[slotIdx] = nextPreloadRaw;
+        return next;
+      });
       setSlotSrcs((prev) => {
         if (prev[slotIdx] === nextPreloadUrl) return prev;
         const next: [string, string] = [prev[0], prev[1]];
@@ -222,16 +269,18 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
           }
         }
       }}
-      className="fixed inset-0 w-full h-screen overflow-hidden select-none cursor-pointer bg-[#020612]"
+      className="fixed inset-0 w-screen h-[100dvh] min-h-[100dvh] overflow-hidden select-none cursor-pointer bg-[#020612]"
     >
       {/* ================================================================= */}
       {/* 2-SLOT DOUBLE-BUFFERED FULL-SCREEN LIVE VIDEO STREAM (MUTED)      */}
-      {/* Zero 4-decoder GPU contention & instant seamless preloaded swaps! */}
+      {/* Full edge-to-edge 100dvh mobile portrait + widescreen desktop     */}
       {/* ================================================================= */}
       <div className="absolute inset-0 w-full h-full">
         {([0, 1] as const).map((slotIdx) => {
           const isCurrent = slotIdx === activeSlot;
           const src = slotSrcs[slotIdx];
+          const rawUrl = slotRawUrls[slotIdx];
+          const shouldPanLandscapeOnMobile = isPortrait && rawUrl !== MOBILE_PORTRAIT_VIDEO;
           return (
             <video
               key={slotIdx}
@@ -257,7 +306,9 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
                 backfaceVisibility: "hidden",
                 willChange: "opacity, transform",
               }}
-              className={`absolute inset-0 w-full h-full object-cover object-[50%_22%] transition-opacity duration-200 ease-out ${
+              className={`absolute inset-0 w-full h-full min-w-full min-h-full max-w-none object-cover ${
+                shouldPanLandscapeOnMobile ? "q-mobile-video-pan" : "object-[50%_20%]"
+              } transition-opacity duration-200 ease-out ${
                 isCurrent ? "opacity-100 z-[2]" : "opacity-0 z-[1] pointer-events-none"
               }`}
             />
@@ -279,7 +330,7 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
       {/* Zero persistent front panel blocking the main video stage!         */}
       {/* ================================================================= */}
       {(activeHubNotification || cockpitPhase !== "galaxy") && (
-        <div className="q-hud-chrome fixed z-20 bottom-16 md:bottom-5 left-1/2 -translate-x-1/2 w-[min(460px,calc(100vw-24px))] flex flex-col items-center gap-2">
+        <div className="q-hud-chrome fixed z-20 bottom-[4.5rem] md:bottom-5 left-1/2 -translate-x-1/2 w-[min(460px,calc(100vw-24px))] flex flex-col items-center gap-2">
           {activeHubNotification && cockpitPhase === "galaxy" && (
             <div className="w-full px-3.5 py-2.5 rounded-2xl bg-[#050d1e]/92 border border-amber-400/50 shadow-2xl backdrop-blur-md flex items-start gap-2.5 animate-fadeIn">
               <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300 shrink-0 mt-0.5">

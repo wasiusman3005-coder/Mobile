@@ -4,23 +4,22 @@ import {registerSW} from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
 
-if (import.meta.env.PROD) {
-  registerSW({
-    immediate: true,
-    onRegisterError() {},
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e: Event) => {
+    e.preventDefault();
+    (window as any).__qNexusDeferredPrompt = e;
+    window.dispatchEvent(new CustomEvent('q-nexus-install-ready'));
   });
-} else if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-  navigator.serviceWorker
-    .getRegistrations()
-    .then((regs) => {
-      regs.forEach((reg) => {
-        if (reg.active?.scriptURL?.includes('dev-sw')) {
-          reg.unregister().catch(() => {});
-        }
-      });
-    })
-    .catch(() => {});
+  window.addEventListener('appinstalled', () => {
+    (window as any).__qNexusDeferredPrompt = null;
+    window.dispatchEvent(new CustomEvent('q-nexus-app-installed'));
+  });
 }
+
+registerSW({
+  immediate: true,
+  onRegisterError() {},
+});
 
 // Google Maps Platform Quota Defense Handlers
 (window as any).gm_authFailure = () => {

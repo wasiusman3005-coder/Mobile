@@ -9,6 +9,13 @@
     --q-secondary: #8b5cf6;
   }
 
+  html, body, #root {
+    width: 100%;
+    min-height: 100%;
+    min-height: 100dvh;
+    margin: 0;
+  }
+
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -441,6 +448,20 @@ body.hud-hidden .q-hud-top {
     animation-delay: var(--fly-delay, 0s);
     will-change: transform, opacity;
   }
+}
+
+/* Smooth full-bleed camera sweep on narrow mobile portrait viewports */
+@keyframes qMobilePortraitSweep {
+  0%, 100% {
+    object-position: 26% 22%;
+  }
+  50% {
+    object-position: 74% 22%;
+  }
+}
+
+.q-mobile-video-pan {
+  animation: qMobilePortraitSweep 10s ease-in-out infinite;
 }
 
 

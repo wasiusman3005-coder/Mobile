@@ -1168,7 +1168,7 @@ export default function App() {
   const activeStageSpectrum = QUANTUM_SPECTRUMS[spectrumIndex % QUANTUM_SPECTRUMS.length];
 
   return (
-    <div className="relative min-h-screen bg-[#02050f] text-slate-100 flex flex-col w-full font-rajdhani selection:bg-cyan-500 selection:text-black overflow-x-hidden">
+    <div className="relative min-h-[100dvh] bg-[#02050f] text-slate-100 flex flex-col w-full font-rajdhani selection:bg-cyan-500 selection:text-black overflow-x-hidden">
       <OfflineIndicator />
       <WormholeTransition
         active={wormholeState.active}
@@ -1186,7 +1186,7 @@ export default function App() {
       />
 
       {!isAuthenticated ? (
-        <div className="relative z-10 flex-1 min-h-screen flex items-center justify-center overflow-hidden">
+        <div className="relative z-10 flex-1 min-h-[100dvh] flex items-center justify-center overflow-hidden">
           <SecurityGate
             onAuthenticated={() => {
               triggerWormhole("Entering Quantum Diagnostics", () => {
@@ -1346,7 +1346,7 @@ export default function App() {
 
       {/* Single Active Interface: Minimalist Deep-Space Cockpit (mounts cleanly as loading completes) */}
       {!showLoadingScreen && (
-      <main className="relative z-10 flex-1 min-h-screen flex flex-col justify-center overflow-hidden">
+      <main className="relative z-10 flex-1 min-h-[100dvh] flex flex-col justify-center overflow-hidden">
         <UltraCockpitDashboard
           userProfile={userProfile}
           onUpdateProfile={setUserProfile}
