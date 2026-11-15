@@ -82,6 +82,15 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
       () => {},
       (incoming) => {
         setNotifications((prev) => [incoming, ...prev.filter((n) => n.key !== incoming.key)].slice(0, 60));
+        window.dispatchEvent(
+          new CustomEvent("q-nexus-hub-alert", {
+            detail: {
+              source: incoming.appName,
+              title: incoming.title,
+              text: incoming.text,
+            },
+          })
+        );
         if (!speechService.getListeningState() && !speechService.getSpeakingState()) {
           speechService.speak(`${incoming.appName} se ${incoming.title} ka message: ${incoming.text}`, {
             lang: language,

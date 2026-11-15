@@ -395,7 +395,7 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
         });
       }
     } catch (err) {
-      console.error("HiJarvis wave command error:", err);
+      console.warn("HiJarvis wave command fallback:", err);
       const fallback = "Wasi Sahab, command sun li hai — server connection check karein ya Full Chat kholein.";
       setReplyText(fallback);
       speakReply(fallback);

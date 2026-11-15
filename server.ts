@@ -36,10 +36,21 @@ app.use("/api", (req, res, next) => {
 
 // Server-side Google GenAI Initialization
 let ai: GoogleGenAI | null = null;
+let aiTts: GoogleGenAI | null = null;
 const configuredGeminiKey = process.env.GEMINI_API_KEY?.trim();
 if (configuredGeminiKey && configuredGeminiKey !== "MY_GEMINI_API_KEY") {
   ai = new GoogleGenAI({
     apiKey: configuredGeminiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
+    },
+  });
+  // Gemini TTS requires v1beta for responseModalities AUDIO & speechConfig
+  aiTts = new GoogleGenAI({
+    apiKey: configuredGeminiKey,
+    apiVersion: "v1beta",
     httpOptions: {
       headers: {
         "User-Agent": "aistudio-build",
@@ -70,20 +81,31 @@ function isIdentityVideoRequest(raw: string): boolean {
   );
 }
 
-// Fallback intelligent reasoning for Wasi when API key or quota is constrained
+// Fallback intelligent human-like Pakistani Urdu reasoning when API key or quota is constrained
 function getFallbackReasoning(
   message: string,
   language: string,
   personalityModifier?: string,
   characterGender: "male" | "female" = "female",
-  characterName?: string
+  characterName?: string,
+  currentContext?: any
 ) {
   const lower = message.toLowerCase();
   const isMale = characterGender === "male";
-  const charName = extractCleanCharName(characterName, characterGender);
+  const charName = extractCleanCharName(personalityNameOrFallback(characterName), characterGender);
   let reply = "";
   let action = "NONE";
   let actionPayload: Record<string, unknown> = {};
+
+  function personalityNameOrFallback(nm?: string) {
+    return nm || (isMale ? "Wasu" : "Wasi ki Jan");
+  }
+
+  const tasks = Array.isArray(currentContext?.userTasks) ? currentContext.userTasks : [];
+  const pendingTasks = tasks.filter((t: any) => !t?.completed);
+  const health = currentContext?.userHealth || {};
+  const lifeRecords = Array.isArray(currentContext?.userLifeRecords) ? currentContext.userLifeRecords : [];
+  const tel = currentContext?.phoneTelemetry || null;
 
   if (isIdentityVideoRequest(message)) {
     reply =
@@ -91,7 +113,7 @@ function getFallbackReasoning(
         ? `Ji Wasi paji! Dekho, main ${charName} aur saathi tuhade saamne hazir haan.`
         : language === "en"
         ? `Presenting Wasu and Wasi ki Jan live on your quantum display, Commander Wasi.`
-        : `Ji Wasi Sahab! Dekhein, main ${charName} aapke saamne hazir hoon.`;
+        : `Ji Wasi Sahab! Dekhein, main ${charName} aur Wasu aapke saamne bilkul hazir hain.`;
     action = "SHOW_IDENTITY_VIDEO";
     return {
       reply,
@@ -101,6 +123,117 @@ function getFallbackReasoning(
       actionPayload,
       vocalUrgency: "normal",
       quantumStatus: `Identity Holo-Stream Active [${charName}]`,
+    };
+  }
+
+  if (
+    /(sara\s*kuch|sab\s*kuch|detail\s*batao|puri\s*detail|poori\s*detail|full\s*detail|update\s*do|hal\s*chal|everything|briefing)/i.test(
+      lower
+    )
+  ) {
+    const taskLine =
+      pendingTasks.length > 0
+        ? `Aapke ${pendingTasks.length} pending tasks hain, sab se pehle ${pendingTasks[0].title} karna hai.`
+        : lifeRecords.length > 0
+        ? `Abhi koi pending task nahi hai, albata aapka saved record ${lifeRecords[0].title} maujood hai.`
+        : `Abhi aapne koi task add nahi kiya hua.`;
+    const waterCount = Number(health?.waterDrankGlasses ?? 0);
+    const sleepHrs = Number(health?.sleepHoursLastNight ?? 0);
+    const healthLine =
+      waterCount > 0 || sleepHrs > 0
+        ? `Sehat ke hisab se aapne ${waterCount} glass pani piya hai aur ${sleepHrs} ghante neend li hai.`
+        : `Health mein abhi pani ya neend ka record khali hai, baraye meherbani ek glass pani zaroor pee lijiye.`;
+    const phoneLine = tel
+      ? `Aapka device ${tel.deviceName || "system"} bilkul fit chal raha hai${
+          tel.batteryPercent !== null && tel.batteryPercent !== undefined
+            ? ` aur battery ${tel.batteryPercent} percent hai`
+            : ""
+        }.`
+      : `System aur voice core bilkul active hain.`;
+
+    reply =
+      language === "en"
+        ? `Here is your complete live update, Wasi: ${taskLine} ${healthLine} ${phoneLine}`
+        : `Ji Wasi Sahab, main ${charName} aapko poori tafseel batati hoon: ${taskLine} ${healthLine} ${phoneLine}`.replace(
+            "batati hoon",
+            isMale ? "batata hoon" : "batati hoon"
+          );
+    return {
+      reply,
+      urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(reply),
+      languageDetected: language,
+      action: "NONE",
+      actionPayload: {},
+      vocalUrgency: "normal",
+      quantumStatus: `Complete Live Summary [${charName}]`,
+    };
+  }
+
+  if (/(assalam|salam|hello|hi\b|hey\b|kaise\s*ho|kesi\s*ho|kya\s*haal|kya\s*hal|theek\s*ho|tabiyat)/i.test(lower)) {
+    reply = isMale
+      ? language === "en"
+        ? `Wa Alaikum Assalam Wasi! I am ${charName}, doing great and right here with you. How can I help today?`
+        : `Wa Alaikum Assalam Wasi Sahab! Main ${charName} bilkul khairiyat se hoon, Allah ka shukar hai. Aap sunayein aap kaise hain? Batayein aaj hum mil kar kya kaam karein?`
+      : language === "en"
+      ? `Wa Alaikum Assalam Wasi! I am ${charName}, feeling wonderful and ready to chat or help you with anything.`
+      : `Wa Alaikum Assalam Wasi Sahab! Main ${charName} bilkul theek hoon, shukriya puchhne ke liye! Aap batayein aap kaise hain aur aaj main aapki kya madad karoon?`;
+    return {
+      reply,
+      urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(reply),
+      languageDetected: language,
+      action: "NONE",
+      actionPayload: {},
+      vocalUrgency: "normal",
+      quantumStatus: `Conversational Mode [${charName}]`,
+    };
+  }
+
+  if (/(kaun\s*ho|kon\s*ho|tum\s*kaun|apna\s*naam|who\s*are\s*you|tumhara\s*naam)/i.test(lower)) {
+    reply = isMale
+      ? `Main ${charName} hoon, aur mere saath Wasi ki Jan hain — hum dono aapke apne Pakistani AI saathi hain jo aapki har baat sun kar jawab dete hain aur aapke saare kaam sambhalte hain.`
+      : `Main ${charName} hoon, aur mere saath Wasu hain — hum dono aapke apne Pakistani AI saathi hain jo bilkul insanon ki tarah aapki baat sunte hain, mehsoos karte hain aur aapka har kaam karte hain.`;
+    return {
+      reply,
+      urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(reply),
+      languageDetected: language,
+      action: "NONE",
+      actionPayload: {},
+      vocalUrgency: "normal",
+      quantumStatus: `Identity Brief [${charName}]`,
+    };
+  }
+
+  if (/(waqt|time|baje|tarikh|tareekh|date|aaj\s*ka\s*din)/i.test(lower)) {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true });
+    const dateStr = now.toLocaleDateString("en-PK", { weekday: "long", day: "numeric", month: "long" });
+    reply =
+      language === "en"
+        ? `Right now it is ${timeStr}, ${dateStr}.`
+        : `Wasi Sahab, is waqt ${timeStr} ho rahe hain aur aaj ${dateStr} hai. Koi aur hukum farmaiye!`;
+    return {
+      reply,
+      urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(reply),
+      languageDetected: language,
+      action: "NONE",
+      actionPayload: {},
+      vocalUrgency: "normal",
+      quantumStatus: `Chronos Sync [${charName}]`,
+    };
+  }
+
+  if (/(shukriya|thank|thanks|zabardast|kamaal|kamal|bohat\s*accha|bohat\s*acha|great|nice)/i.test(lower)) {
+    reply = isMale
+      ? `Koi baat nahi Wasi Sahab, yeh to mera farz hai! Jab bhi zaroorat ho bas awaz de dijiyega.`
+      : `Aapka bohat shukriya Wasi Sahab! Aap khush rahein, hum hamesha aapke saath hazir hain.`;
+    return {
+      reply,
+      urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(reply),
+      languageDetected: language,
+      action: "NONE",
+      actionPayload: {},
+      vocalUrgency: "normal",
+      quantumStatus: `Warm Acknowledgement [${charName}]`,
     };
   }
 
@@ -279,15 +412,15 @@ function buildJarvisSystemInstruction(params: {
     : `You are ${charName} ("Female Voice — Q-NEXUS Pakistani Cyber Companion"), speaking warmly with graceful 100% Pakistani Urdu pronunciation in authentic Pakistani Urdu, Punjabi, or English.`;
 
   return `${identity}
-Active Assistant Name: "${charName}" (${isMale ? "Male Voice" : "Female Voice"}). Always refer to yourself as "${charName}". Note: Q-NEXUS strictly has ONLY two voices — Male ("Wasu" or custom male name) and Female ("Wasi ki Jan" or custom female name).
-Persona Directive: ${personalityPrompt || (isMale ? "Assist Wasi efficiently, concisely, and loyally with a 100% authentic Pakistani Urdu tone." : "Assist Wasi warmly, clearly, and loyally with a 100% authentic Pakistani Urdu tone.")}
-${fastMode ? "FAST RESPONSE: Keep reply crisp and natural (1-2 short sentences max) so voice response plays instantaneously." : ""}
+Active Assistant Name: "${charName}" (${isMale ? "Male Voice" : "Female Voice"}). Always refer to yourself as "${charName}". Note: Q-NEXUS strictly has ONLY two characters/voices — Male ("Wasu" or custom male name) and Female ("Wasi ki Jan" or custom female name) — appearing together as real human-like companions.
+Persona Directive: ${personalityPrompt || (isMale ? "Talk warmly, respectfully, and naturally like a real Pakistani brother/partner helping Wasi with everything." : "Talk warmly, expressively, and naturally like a caring real Pakistani companion helping Wasi with everything.")}
+${fastMode ? "CONVERSATIONAL PACE: Keep reply natural, warm, and human-like (1-3 clear sentences) with genuine emotion so speech sounds smooth." : ""}
 
 Core Rules:
-- Always answer the user's exact question or request directly first! Never give generic canned filler if the user asked a real question.
-- 100% Authentic Pakistani Urdu Accent: When replying in Urdu ("ur") or Punjabi ("pa"), use authentic Pakistani Urdu vocabulary (e.g. "Assalam o Alaikum", "Ji Wasi Sahab", "bilkul", "foran", "zaroor", "shukriya", "mehnat"). NEVER use Indian Hindi words (no "namaste", "dhanyavaad", "kripaya", "shighra").
-- Avoid SMS shorthand like 'kr', 'bht', 'mn', 'hy' so speech synthesis sounds natural.
-- Whenever languageDetected is "ur" or "pa", ALWAYS also fill "urduSpeechText" written strictly in pure Pakistani Urdu Nastaliq script (اردو حروف، مثلاً "السلام علیکم وصی صاحب! میں وسو ہوں۔" — zero English/Latin words inside urduSpeechText) so TTS pronounces it with a 100% native Pakistani accent.
+- Talk like a REAL HUMAN! Express natural warmth, empathy, curiosity, and attentiveness. Directly answer whatever Wasi asks about life, tasks, health, phone info, science, or casual chat.
+- 100% Authentic Pakistani Urdu Accent: When replying in Urdu ("ur") or Punjabi ("pa"), use natural spoken Pakistani Urdu phrasing (e.g. "Assalam o Alaikum", "Ji Wasi Sahab", "bilkul", "foran", "zaroor", "shukriya", "khairiyat", "Allah ka shukar"). NEVER use Indian Hindi words ("namaste", "dhanyavaad", "kripaya", "shighra").
+- Write words clearly in full (never SMS shorthand like 'kr', 'bht', 'mn', 'hy').
+- CRITICAL FOR CLEAR URDU VOICE: Whenever languageDetected is "ur" or "pa", ALWAYS fill "urduSpeechText" written 100% in pure Pakistani Urdu Nastaliq script (اردو حروف، مثلاً "السلام علیکم وصی صاحب! میں بالکل ٹھیک ہوں، بتائیے آج آپ کے لیے کیا کروں؟"). NEVER put ANY English/Latin letters or numbers inside "urduSpeechText" (write numbers/tech words phonetically in Urdu letters like بیٹری، فیصد، ٹاسک، ہیلتھ، واٹس ایپ، وسو، وصی کی جان) so TTS never switches to an English accent!
 - Strictly base all task, routine, health, finance, and personal answers ONLY on the user's real stored items in User Profile & Context. Never invent or hallucinate sample tasks, fake meetings, fake goals, or fake health numbers. If userTasks/userLifeRecords/userExpenses are empty or health is 0, clearly tell the user they haven't added any yet and invite them to add their own.
 - If the user says "mjy apna ap dikhao", "apna aap dikhao", "khud ko dikhao", "show yourself", or asks to see you, set action = "SHOW_IDENTITY_VIDEO".
 - If user asks about WhatsApp/messages/calls/notifications, set action = "OPEN_COMMS".
@@ -405,7 +538,7 @@ app.post("/api/jarvis/chat", async (req, res) => {
     const charName = extractCleanCharName(personalityName, gender);
 
     if (isIdentityVideoRequest(message)) {
-      return res.json(getFallbackReasoning(message, language, personalityPrompt, gender, charName));
+      return res.json(getFallbackReasoning(message, language, personalityPrompt, gender, charName, currentContext));
     }
 
     const sysInstruction = buildJarvisSystemInstruction({
@@ -418,7 +551,7 @@ app.post("/api/jarvis/chat", async (req, res) => {
     });
 
     if (!ai) {
-      return res.json(getFallbackReasoning(message, language, personalityPrompt, gender, charName));
+      return res.json(getFallbackReasoning(message, language, personalityPrompt, gender, charName, currentContext));
     }
 
     try {
@@ -450,15 +583,17 @@ app.post("/api/jarvis/chat", async (req, res) => {
         };
       }
       const detectedLang = parsed.languageDetected || language;
-      if ((detectedLang === "ur" || detectedLang === "pa") && !parsed.urduSpeechText && parsed.reply) {
-        parsed.urduSpeechText = toPakistaniUrduSpeechText(String(parsed.reply));
+      if ((detectedLang === "ur" || detectedLang === "pa") && parsed.reply) {
+        parsed.urduSpeechText = parsed.urduSpeechText
+          ? toPakistaniUrduSpeechText(String(parsed.urduSpeechText))
+          : toPakistaniUrduSpeechText(String(parsed.reply));
       }
       return res.json(parsed);
     } catch {
-      return res.json(getFallbackReasoning(message, language, personalityPrompt, gender, charName));
+      return res.json(getFallbackReasoning(message, language, personalityPrompt, gender, charName, currentContext));
     }
   } catch (error: unknown) {
-    console.error("Jarvis Chat Error:", error);
+    console.warn("Jarvis Chat fallback:", error instanceof Error ? error.message : String(error));
     return res.json(getFallbackReasoning("help", "ur"));
   }
 });
@@ -1497,11 +1632,244 @@ const ROMAN_TO_URDU_MAP: Record<string, string> = {
   saathi: "ساتھی",
   live: "لائیو",
   percent: "فیصد",
+  cockpit: "کاک پٹ",
+  quantum: "کوانٹم",
+  nexus: "نیکسس",
+  calibrated: "تیار ہے",
+  back: "واپس",
+  say: "بولیں",
+  anytime: "کبھی بھی",
+  summon: "بلانے کے لیے",
+  me: "مجھے",
+  khairiyat: "خیریت",
+  alhamdulillah: "الحمدللہ",
+  shukar: "شکر",
+  haal: "حال",
+  hal: "حال",
+  tabiyat: "طبیعت",
+  puchhne: "پوچھنے",
+  tafseel: "تفصیل",
+  tafseelat: "تفصیلات",
+  maloomat: "معلومات",
+  maujood: "موجود",
+  albata: "البتہ",
+  saved: "محفوظ",
+  add: "ایڈ",
+  added: "ایڈ شدہ",
+  logged: "لاگ",
+  log: "لاگ",
+  hub: "ہب",
+  cpu: "سی پی یو",
+  gpu: "جی پی یو",
+  ram: "ریم",
+  cores: "کورز",
+  core: "کور",
+  device: "ڈیوائس",
+  detail: "تفصیل",
+  details: "تفصیلات",
+  view: "ویو",
+  full: "فل",
+  records: "ریکارڈز",
+  record: "ریکارڈ",
+  meals: "کھانے",
+  meal: "کھانا",
+  hours: "گھنٹے",
+  hour: "گھنٹہ",
+  minutes: "منٹ",
+  minute: "منٹ",
+  mins: "منٹ",
+  seconds: "سیکنڈز",
+  second: "سیکنڈ",
+  alert: "الرٹ",
+  alerts: "الرٹس",
+  error: "ایرر",
+  failed: "ناکام",
+  hello: "ہیلو",
+  hey: "ہے",
+  ok: "اوکے",
+  okay: "اوکے",
+  yes: "جی ہاں",
+  no: "نہیں",
+  sorry: "معذرت",
+  please: "برائے مہربانی",
+  good: "اچھا",
+  morning: "صبح",
+  evening: "شام",
+  night: "رات",
+  today: "آج",
+  custom: "کسٹم",
+  frequency: "فریکوئنسی",
+  speed: "اسپیڈ",
+  accent: "لہجہ",
+  mil: "مل",
+  farz: "فرض",
+  rahein: "رہیں",
+  insanon: "انسانوں",
+  tarah: "طرح",
+  mehsoos: "محسوس",
+  karte: "کرتے",
+  sunte: "سنتے",
+  dete: "دیتے",
+  sambhalte: "سنبھالتے",
+  fit: "فٹ",
+  hisab: "حساب",
+  khali: "خالی",
+  jisme: "جس میں",
+  tak: "تک",
+  karengi: "کریں گی",
+  dilaungi: "دلاؤں گی",
+  dilaunga: "دلاؤں گا",
+  doongi: "دوں گی",
+  dunga: "دوں گا",
+  bataungi: "بتاؤں گی",
+  bataunga: "بتاؤں گا",
+  batati: "بتاتی",
+  batata: "بتاتا",
+  poore: "پورے",
+  poori: "پوری",
+  saari: "ساری",
+  saare: "سارے",
+  hogaya: "ہو گیا",
+  hogayi: "ہو گئی",
+  hui: "ہوئی",
+  hue: "ہوئے",
+  aayi: "آئی",
+  aaya: "آیا",
+  aaye: "آئے",
+  di: "دی",
+  sunayein: "سنائیں",
+  sunawangi: "سناؤں گی",
+  sunawanga: "سناؤں گا",
+  word: "ورڈ",
+  docx: "ورڈ فائل",
+  excel: "ایکسل",
+  xlsx: "ایکسل شیٹ",
+  pptx: "پاور پوائنٹ",
+  powerpoint: "پاور پوائنٹ",
+  pdf: "پی ڈی ایف",
+  study: "اسٹڈی",
+  homework: "ہوم ورک",
+  assignment: "اسائنمنٹ",
+  lab: "لیب",
+  labs: "لیبز",
+  simulation: "سمولیشن",
+  research: "ریسرچ",
+  book: "کتاب",
+  books: "کتابیں",
+  exam: "امتحان",
+  exams: "امتحانات",
+  business: "بزنس",
+  karobar: "کاروبار",
+  idea: "آئیڈیا",
+  ideas: "آئیڈیاز",
+  profit: "منافع",
+  loss: "نقصان",
+  expense: "خرچہ",
+  expenses: "اخراجات",
+  fazool: "فضول",
+  kharchi: "خرچی",
+  zaroorat: "ضرورت",
+  zarurat: "ضرورت",
+  bachat: "بچت",
+  budget: "بجٹ",
+  monthly: "ماہانہ",
+  yearly: "سالانہ",
+  weekly: "ہفتہ وار",
+  terminal: "ٹرمینل",
+  terminals: "ٹرمینلز",
+  panel: "پینل",
+  panels: "پینلز",
+  spaceship: "اسپیس شپ",
+  earth: "زمین",
+  cube: "کیوب",
+  android: "اینڈرائیڈ",
+  iphone: "آئی فون",
+  chrome: "کروم",
+  laptop: "لیپ ٹاپ",
+  chair: "کرسی",
+  chairs: "کرسیاں",
+  walking: "واکنگ",
+  talking: "بات چیت",
+  working: "کام",
+  led: "ایل ای ڈی",
+  sunein: "سنیں",
+  cheet: "چیت",
 };
+
+// Fallback phonetic Roman-to-Urdu script converter so NO raw Latin/English word forces English TTS accent
+function transliterateAsciiWordToUrdu(word: string): string {
+  const clean = word.replace(/[^a-zA-Z]/g, "").toLowerCase();
+  if (!clean) return word;
+  const digraphs: [string, string][] = [
+    ["sh", "ش"],
+    ["ch", "چ"],
+    ["kh", "خ"],
+    ["gh", "غ"],
+    ["th", "تھ"],
+    ["ph", "ف"],
+    ["zh", "ژ"],
+    ["ee", "ی"],
+    ["oo", "و"],
+    ["aa", "ا"],
+    ["ai", "ے"],
+    ["au", "و"],
+    ["ou", "و"],
+  ];
+  const singles: Record<string, string> = {
+    a: "ا",
+    b: "ب",
+    c: "ک",
+    d: "ڈ",
+    e: "ے",
+    f: "ف",
+    g: "گ",
+    h: "ہ",
+    i: "ی",
+    j: "ج",
+    k: "ک",
+    l: "ل",
+    m: "م",
+    n: "ن",
+    o: "و",
+    p: "پ",
+    q: "ق",
+    r: "ر",
+    s: "س",
+    t: "ٹ",
+    u: "و",
+    v: "و",
+    w: "و",
+    x: "کس",
+    y: "ی",
+    z: "ز",
+  };
+
+  let out = "";
+  let i = 0;
+  while (i < clean.length) {
+    const pair = clean.slice(i, i + 2);
+    const matchPair = digraphs.find(([k]) => k === pair);
+    if (matchPair) {
+      out += matchPair[1];
+      i += 2;
+    } else {
+      const ch = clean[i];
+      // Skip medial short vowels except initial 'a'/'i'/'o'/'u' so Urdu phonetics read naturally
+      if (i > 0 && i < clean.length - 1 && (ch === "a" || ch === "e" || ch === "u") && clean[i - 1] !== clean[i]) {
+        i += 1;
+        continue;
+      }
+      out += singles[ch] || "";
+      i += 1;
+    }
+  }
+  return out || word;
+}
 
 function toPakistaniUrduSpeechText(input: string): string {
   // Normalize multi-word phrases, names, ratios, and punctuation for authentic Pakistani Urdu TTS
   const normalized = input
+    .replace(/\bwa[\s-]+alaikum[\s-]+assalam\b/gi, "وعلیکم السلام")
     .replace(/\bassalam[\s-]+o[\s-]+alaikum\b/gi, "السلام علیکم")
     .replace(/\bassalamu[\s-]+alaikum\b/gi, "السلام علیکم")
     .replace(/\bkhush[\s-]+a?amdeed\b/gi, "خوش آمدید")
@@ -1511,19 +1879,22 @@ function toPakistaniUrduSpeechText(input: string): string {
     .replace(/\bq[\s-]*nexus\b/gi, "کیو نیکسس")
     .replace(/\bfaa?'?al\b/gi, "فعال")
     .replace(/\b(\d+)\s*\/\s*(\d+)\b/g, "$1 میں سے $2")
+    .replace(/\b(\d+)\s*%/g, "$1 فیصد")
+    .replace(/\b(\d+)\s*h\b/gi, "$1 گھنٹے")
     .replace(/\s*[—|•]+\s*/g, "، ")
     .replace(/[:,]/g, "،")
     .replace(/\s+/g, " ")
     .trim();
 
-  // Map any Roman Urdu or Latin tokens to Urdu script while preserving authentic Urdu text
+  // Map every Roman Urdu & Latin word cleanly into pure Pakistani Urdu Nastaliq script
   return normalized
     .split(/(\b[A-Za-z']+\b)/g)
     .map((token) => {
-      const lower = token.toLowerCase();
+      if (!/^[A-Za-z']+$/.test(token)) return token;
+      const lower = token.toLowerCase().replace(/'/g, "");
       if (lower === "zoya") return "زویا";
       if (lower === "wasu") return "وسو";
-      return ROMAN_TO_URDU_MAP[lower] ?? token;
+      return ROMAN_TO_URDU_MAP[lower] ?? transliterateAsciiWordToUrdu(lower);
     })
     .join("")
     .replace(/\s{2,}/g, " ")
@@ -1540,6 +1911,72 @@ function extractInlineAudioFromGeminiResponse(response: any): string | undefined
     }
   }
   return undefined;
+}
+
+let edgeTtsCooldownUntil = 0;
+
+function splitTextIntoTtsChunks(input: string, maxLen = 175): string[] {
+  const clean = input.replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  if (clean.length <= maxLen) return [clean];
+
+  const sentences = clean.split(/(?<=[۔.!?،,])\s+/);
+  const chunks: string[] = [];
+  let current = "";
+  for (const part of sentences) {
+    if (!part) continue;
+    if ((current + " " + part).trim().length <= maxLen) {
+      current = (current + " " + part).trim();
+    } else {
+      if (current) chunks.push(current);
+      if (part.length <= maxLen) {
+        current = part;
+      } else {
+        const words = part.split(/\s+/);
+        let sub = "";
+        for (const w of words) {
+          if ((sub + " " + w).trim().length <= maxLen) {
+            sub = (sub + " " + w).trim();
+          } else {
+            if (sub) chunks.push(sub);
+            sub = w;
+          }
+        }
+        current = sub;
+      }
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+async function synthesizeGoogleTranslateUrduMp3(spokenText: string, tl = "ur"): Promise<Buffer | null> {
+  const chunks = splitTextIntoTtsChunks(spokenText, 175);
+  if (chunks.length === 0) return null;
+
+  const buffers: Buffer[] = [];
+  for (const chunk of chunks.slice(0, 6)) {
+    const url = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(
+      tl
+    )}&q=${encodeURIComponent(chunk)}`;
+    const resp = await withTimeout(
+      fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+          Referer: "https://translate.google.com/",
+        },
+      }),
+      4500,
+      "Urdu TTS"
+    );
+    if (!resp.ok) return null;
+    const arr = await resp.arrayBuffer();
+    if (arr.byteLength > 0) {
+      buffers.push(Buffer.from(arr));
+    }
+  }
+  return buffers.length > 0 ? Buffer.concat(buffers) : null;
 }
 
 // Server-side High-Fidelity Pakistani Urdu & Multi-Engine TTS Endpoint
@@ -1562,150 +1999,144 @@ app.post("/api/jarvis/tts", async (req, res) => {
     const isUrduOrPunjabi = language === "ur" || language === "pa";
     const preferredUrdu =
       typeof urduSpeechText === "string" && urduSpeechText.trim()
-        ? urduSpeechText.trim()
+        ? toPakistaniUrduSpeechText(urduSpeechText.trim())
         : toPakistaniUrduSpeechText(text);
     const spokenText = isUrduOrPunjabi ? preferredUrdu : text;
 
-    // Tier 1: Gemini Neural TTS (gemini-3.8-flash-lite-tts with clean fallback)
-    if (ai) {
+    const tryGeminiTtsV1Beta = async () => {
+      if (!aiTts) return null;
+      // Match video identity voices: Kore (warm, clear female Wasi ki Jan) & Charon (deep confident male Wasu)
       const voiceName = isMale ? "Charon" : "Kore";
-      const accentStyle = isMale
-        ? language === "pa"
-          ? "Native Pakistani male speaker from Lahore speaking 100% authentic Lahori Punjabi and Pakistani Urdu at a calm steady pace with genuine Pakistani pronunciation."
-          : language === "en"
-          ? "Confident, articulate male Pakistani AI commander speaking crystal-clear English with warm Pakistani clarity."
-          : "Native male Pakistani Urdu speaker from Islamabad/Lahore speaking 100% authentic Pakistani Urdu (never Indian Hindi accent) at a calm conversational pace with crisp Nastaliq Urdu pronunciation."
-        : language === "pa"
-        ? "Native young Pakistani female speaker from Lahore speaking 100% authentic sweet Lahori Punjabi and Pakistani Urdu at a steady natural pace."
+      const voiceStyle = isUrduOrPunjabi
+        ? isMale
+          ? "Deep, confident, warm native Pakistani Urdu male baritone from Islamabad/Lahore, natural conversational Pakistani Urdu diction, calm assured studio delivery"
+          : "Warm, poised, gentle, crystal-clear native Pakistani Urdu female voice from Islamabad/Lahore, natural conversational Pakistani Urdu diction, calm caring studio delivery"
+        : isMale
+        ? "Deep, confident, warm conversational male studio voice"
+        : "Warm, poised, clear conversational female studio voice";
+
+      const candidateModels = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"];
+      for (const ttsModel of candidateModels) {
+        try {
+          const response = await withTimeout(
+            aiTts.models.generateContent({
+              model: ttsModel,
+              contents: [
+                {
+                  role: "user",
+                  parts: [
+                    {
+                      text: spokenText,
+                      speechMetadata: {
+                        style: voiceStyle,
+                      },
+                    } as any,
+                  ],
+                },
+              ],
+              config: {
+                responseModalities: ["AUDIO"],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName },
+                  },
+                },
+              },
+            }),
+            8000,
+            `Gemini TTS (${ttsModel})`
+          );
+          const base64Audio = extractInlineAudioFromGeminiResponse(response);
+          if (base64Audio) {
+            return {
+              base64Audio,
+              format: "audio/wav",
+              engine: ttsModel,
+              voiceName,
+              singleGenderEngine: false,
+              urduScriptText: spokenText,
+              success: true,
+            };
+          }
+        } catch {
+          // Try next Gemini TTS tier silently
+        }
+      }
+      return null;
+    };
+
+    const tryEdgeTts = async () => {
+      if (Date.now() <= edgeTtsCooldownUntil) return null;
+      const edgeVoice = isMale
+        ? language === "en"
+          ? "en-US-AndrewNeural"
+          : "ur-PK-AsadNeural"
         : language === "en"
-        ? "Warm, articulate young female Pakistani AI companion speaking crystal-clear English with gentle Pakistani clarity."
-        : "Native female Pakistani Urdu speaker from Islamabad/Lahore speaking 100% authentic Pakistani Urdu (never Indian Hindi accent) in a sweet, natural conversational tone with crisp Urdu pronunciation.";
+        ? "en-GB-SoniaNeural"
+        : "ur-PK-UzmaNeural";
+
+      const numericRate = Math.min(1.4, Math.max(0.7, Number(rate) || 1.0));
+      const numericPitch = Math.min(1.5, Math.max(0.65, Number(pitch) || 1.0));
+      const ratePct = Math.round((numericRate - 1.0) * 100);
+      const pitchHz = Math.round((numericPitch - 1.0) * 40);
+      const rateStr = `${ratePct >= 0 ? "+" : ""}${ratePct}%`;
+      const pitchStr = `${pitchHz >= 0 ? "+" : ""}${pitchHz}Hz`;
 
       try {
-        const response = await withTimeout(
-          ai.models.generateContent({
-            model: "gemini-3.8-flash-lite-tts",
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  {
-                    text: spokenText,
-                    speechMetadata: {
-                      style: accentStyle,
-                    },
-                  } as any,
-                ],
-              },
-            ],
-            config: {
-              responseModalities: ["AUDIO"],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName },
-                },
-              },
-            },
-          }),
-          9000,
-          "Gemini TTS"
-        );
-
-        const base64Audio = extractInlineAudioFromGeminiResponse(response);
-        if (base64Audio) {
-          return res.json({
-            base64Audio,
-            format: "audio/wav",
-            engine: "gemini-3.8-flash-lite-tts",
+        const tts = new EdgeTTS(spokenText, edgeVoice, {
+          rate: rateStr,
+          pitch: pitchStr,
+        });
+        const result = await withTimeout(tts.synthesize(), 1600, "Edge TTS");
+        const arrayBuf = await result.audio.arrayBuffer();
+        const audioBuf = Buffer.from(arrayBuf);
+        if (audioBuf.length > 0) {
+          return {
+            base64Audio: audioBuf.toString("base64"),
+            format: "audio/mpeg",
+            engine: edgeVoice,
+            singleGenderEngine: false,
             urduScriptText: spokenText,
             success: true,
-          });
+          };
         }
-      } catch (ttsErr: unknown) {
-        const errMsg = ttsErr instanceof Error ? ttsErr.message : String(ttsErr);
-        // Retry without speechMetadata only if model rejected metadata field (400 / INVALID_ARGUMENT)
-        if (/400|INVALID_ARGUMENT|speechMetadata|unknown field/i.test(errMsg)) {
-          try {
-            const retryRes = await withTimeout(
-              ai.models.generateContent({
-                model: "gemini-3.8-flash-lite-tts",
-                contents: [
-                  {
-                    role: "user",
-                    parts: [{ text: spokenText }],
-                  },
-                ],
-                config: {
-                  responseModalities: ["AUDIO"],
-                  speechConfig: {
-                    voiceConfig: {
-                      prebuiltVoiceConfig: { voiceName },
-                    },
-                  },
-                },
-              }),
-              8000,
-              "Gemini TTS fallback"
-            );
-            const retryAudio = extractInlineAudioFromGeminiResponse(retryRes);
-            if (retryAudio) {
-              return res.json({
-                base64Audio: retryAudio,
-                format: "audio/wav",
-                engine: "gemini-3.8-flash-lite-tts",
-                urduScriptText: spokenText,
-                success: true,
-              });
-            }
-          } catch (retryErr: unknown) {
-            console.warn("Gemini TTS retry notice:", retryErr instanceof Error ? retryErr.message : String(retryErr));
-          }
-        } else {
-          console.warn("Gemini TTS notice:", errMsg);
+      } catch {
+        // 5-minute cooldown when sandbox blocks WebSocket to EdgeTTS
+        edgeTtsCooldownUntil = Date.now() + 5 * 60 * 1000;
+      }
+      return null;
+    };
+
+    const tryGoogleUrduTts = async () => {
+      try {
+        const tlCode = language === "en" ? "en" : "ur";
+        const audioBuf = await synthesizeGoogleTranslateUrduMp3(spokenText, tlCode);
+        if (audioBuf && audioBuf.length > 0) {
+          return {
+            base64Audio: audioBuf.toString("base64"),
+            format: "audio/mpeg",
+            engine: tlCode === "ur" ? "google-urdu-tts" : "google-en-tts",
+            singleGenderEngine: true,
+            urduScriptText: spokenText,
+            success: true,
+          };
         }
-      }
-    }
+      } catch {}
+      return null;
+    };
 
-    // Tier 2: Microsoft Neural Pakistani Urdu Edge-TTS via Node (ur-PK-AsadNeural / ur-PK-UzmaNeural)
-    const edgeVoice = isMale
-      ? language === "en"
-        ? "en-US-AndrewNeural"
-        : "ur-PK-AsadNeural"
-      : language === "en"
-      ? "en-GB-SoniaNeural"
-      : "ur-PK-UzmaNeural";
+    // Always prioritize Gemini 3.8 Neural TTS with Voice Design first (crisp video-matched male & female voices)
+    const geminiPayload = await tryGeminiTtsV1Beta();
+    if (geminiPayload) return res.json(geminiPayload);
 
-    const numericRate = Math.min(1.4, Math.max(0.7, Number(rate) || 1.0));
-    const numericPitch = Math.min(1.5, Math.max(0.65, Number(pitch) || 1.0));
-    const ratePct = Math.round((numericRate - 1.0) * 100);
-    const pitchHz = Math.round((numericPitch - 1.0) * 40);
-    const rateStr = `${ratePct >= 0 ? "+" : ""}${ratePct}%`;
-    const pitchStr = `${pitchHz >= 0 ? "+" : ""}${pitchHz}Hz`;
+    const edgePayload = await tryEdgeTts();
+    if (edgePayload) return res.json(edgePayload);
 
-    try {
-      const tts = new EdgeTTS(spokenText, edgeVoice, {
-        rate: rateStr,
-        pitch: pitchStr,
-      });
-      const result = await withTimeout(tts.synthesize(), 3500, "Edge TTS");
-      const arrayBuf = await result.audio.arrayBuffer();
-      const audioBuf = Buffer.from(arrayBuf);
-      if (audioBuf.length > 0) {
-        return res.json({
-          base64Audio: audioBuf.toString("base64"),
-          format: "audio/mpeg",
-          engine: edgeVoice,
-          urduScriptText: spokenText,
-          success: true,
-        });
-      }
-    } catch {
-      // Edge WebSocket blocked or timed out; fall through cleanly to native browser ur-PK synthesis
-    }
+    const googlePayload = await tryGoogleUrduTts();
+    if (googlePayload) return res.json(googlePayload);
 
     return res.status(200).json({ fallbackToBrowser: true, urduScriptText: spokenText });
-  } catch (error: unknown) {
-    console.error("TTS generation error:", error);
+  } catch {
     return res.status(200).json({ fallbackToBrowser: true });
   }
 });
@@ -2214,6 +2645,151 @@ Provide a comprehensive, crystal clear academic solution or study summary. Struc
   }
 });
 
+// Interactive Topic Simulation Builder Endpoint
+app.post("/api/jarvis/study-simulation", async (req, res) => {
+  try {
+    const { topic = "", subject = "Physics", language = "ur" } = req.body || {};
+    if (!topic || typeof topic !== "string") {
+      return res.status(400).json({ error: "Topic is required" });
+    }
+    const lower = topic.toLowerCase();
+    const detectedPreset =
+      lower.includes("orbit") || lower.includes("gravity") || lower.includes("planet") || lower.includes("space")
+        ? "orbital"
+        : lower.includes("projectile") || lower.includes("motion") || lower.includes("trajectory") || lower.includes("angle")
+        ? "projectile"
+        : lower.includes("sort") || lower.includes("array") || lower.includes("algo") || lower.includes("tree") || lower.includes("code")
+        ? "algorithm"
+        : lower.includes("supply") || lower.includes("demand") || lower.includes("profit") || lower.includes("market") || lower.includes("curve")
+        ? "growth"
+        : "wave";
+
+    const fallbackSim = {
+      title: `${topic} — Interactive Simulation`,
+      preset: detectedPreset,
+      formula:
+        detectedPreset === "orbital"
+          ? "F = G·M·m / r²  |  v = √(G·M / r)"
+          : detectedPreset === "projectile"
+          ? "x(t) = v₀cos(θ)·t  |  y(t) = v₀sin(θ)·t − ½g·t²"
+          : detectedPreset === "algorithm"
+          ? "Time Complexity: O(n log n) / O(n²) Live Pass Visualizer"
+          : detectedPreset === "growth"
+          ? "Net Value(t) = Revenue(t) − FixedCost − VariableCost(t)"
+          : "Ψ(x,t) = A·sin(k·x − ω·t) + Harmonic Damping",
+      paramALabel: detectedPreset === "projectile" ? "Launch Angle / Speed" : detectedPreset === "orbital" ? "Orbital Radius" : "Frequency / Speed",
+      paramBLabel: detectedPreset === "projectile" ? "Gravity (g)" : detectedPreset === "algorithm" ? "Element Count" : "Amplitude / Scale",
+      explanation:
+        language === "en"
+          ? `Live interactive visual model generated for "${topic}" in ${subject}. Adjust the sliders below to observe real-time physics/logic behavior.`
+          : `Wasi Sahab! "${topic}" (${subject}) ke liye live interactive simulation tayar hai. Neeche sliders adjust kar ke real-time asar aur graph dekhein.`,
+      urduSpeechText: toPakistaniUrduSpeechText(
+        `"${topic}" ke liye interactive simulation tayar ho gayi hai. Aap sliders se iski values badal kar live nateeja dekh sakte hain.`
+      ),
+    };
+
+    if (!ai) {
+      return res.json(fallbackSim);
+    }
+
+    try {
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: "gemini-4-hydrogen",
+          contents: `Create an interactive study simulation spec for student Wasi. Topic: "${topic}", Subject: "${subject}", Language: "${language}". Pick best visual preset from: "wave", "projectile", "orbital", "algorithm", "growth".`,
+          config: {
+            responseMimeType: "application/json",
+            systemInstruction:
+              'Return strict JSON: {"title":"...","preset":"wave"|"projectile"|"orbital"|"algorithm"|"growth","formula":"...","paramALabel":"...","paramBLabel":"...","explanation":"Concise practical explanation in user language (no SMS shorthand)"}',
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          },
+        }),
+        8500,
+        "Study simulation"
+      );
+      const parsed = JSON.parse(response.text || "{}");
+      return res.json({
+        title: parsed.title || fallbackSim.title,
+        preset: ["wave", "projectile", "orbital", "algorithm", "growth"].includes(parsed.preset)
+          ? parsed.preset
+          : detectedPreset,
+        formula: parsed.formula || fallbackSim.formula,
+        paramALabel: parsed.paramALabel || fallbackSim.paramALabel,
+        paramBLabel: parsed.paramBLabel || fallbackSim.paramBLabel,
+        explanation: parsed.explanation || fallbackSim.explanation,
+        urduSpeechText:
+          language === "en" ? undefined : toPakistaniUrduSpeechText(parsed.explanation || fallbackSim.explanation),
+      });
+    } catch {
+      return res.json(fallbackSim);
+    }
+  } catch {
+    return res.status(500).json({ error: "Simulation failed" });
+  }
+});
+
+// Business Command & Advisory AI Endpoint
+app.post("/api/jarvis/business-advise", async (req, res) => {
+  try {
+    const {
+      query = "",
+      ventures = [],
+      mode = "problem",
+      language = "ur",
+      characterGender = "male",
+    } = req.body || {};
+
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({ error: "Business query is required" });
+    }
+
+    const fallbackAdvice =
+      mode === "idea"
+        ? `Wasi Sahab, aapke skills aur resources ke mutabiq 3 high-potential business ideas:\n1. AI Video Editing & Automation Agency (Low investment, recurring monthly retainers)\n2. Digital Commerce & Smart Tech Reselling Hub with WhatsApp order automation\n3. Specialized Consulting / Digital Templates Store with 75%+ gross margin.\nSab se pehle 1 niche chunein aur 7 din mein MVP test karein.`
+        : `Wasi Sahab, is business challenge ("${query}") ko hal karne ka action plan:\n1. Root Cause Control: Pehle rozana ke cashflow leakages aur slow bottlenecks ko alag track karein.\n2. Quality & Speed Boost: Customer follow-up aur delivery cycle ko 2x tez karein.\n3. Margin Guard: Non-essential overhead kam kar ke high-profit clients/products par focus karein.`;
+
+    if (!ai) {
+      return res.json({
+        advice: fallbackAdvice,
+        urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(fallbackAdvice),
+      });
+    }
+
+    try {
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: "gemini-4-hydrogen",
+          contents: `Commander Wasi asks about business (${mode}): "${query}". Real tracked ventures JSON: ${JSON.stringify(
+            Array.isArray(ventures) ? ventures.slice(0, 8) : []
+          )}. Language: ${language}.`,
+          config: {
+            systemInstruction: `You are ${
+              characterGender === "male" ? "Wasu" : "Wasi ki Jan"
+            }, Wasi's sharp Pakistani business strategist & operations partner. Give clear, actionable, realistic guidance in ${
+              language === "pa" ? "Punjabi" : language === "en" ? "English" : "clear Pakistani Urdu / Roman Urdu (full words, zero Indian Hindi terms)"
+            }. Identify problems directly, give concrete fixes, profit controls, and step-by-step actions.`,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          },
+        }),
+        9500,
+        "Business advisor"
+      );
+      const out = (response.text || fallbackAdvice).trim();
+      return res.json({
+        advice: out,
+        urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(out),
+      });
+    } catch {
+      return res.json({
+        advice: fallbackAdvice,
+        urduSpeechText: language === "en" ? undefined : toPakistaniUrduSpeechText(fallbackAdvice),
+      });
+    }
+  } catch {
+    return res.status(500).json({ error: "Business advice failed" });
+  }
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, status: "online" });
 });
@@ -2225,6 +2801,15 @@ async function startServer() {
 
   let viteMiddleware: ((req: express.Request, res: express.Response, next: express.NextFunction) => void) | null = null;
   let viteInitPromise: Promise<void> | null = null;
+
+  // Fast byte-range + cached static media streaming for uploaded HD videos & portraits
+  app.use(
+    "/assets",
+    express.static(path.join(__dirname, "public/assets"), {
+      maxAge: "1d",
+      acceptRanges: true,
+    })
+  );
 
   if (process.env.NODE_ENV !== "production") {
     viteInitPromise = (async () => {

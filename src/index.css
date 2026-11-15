@@ -286,3 +286,156 @@ body.hud-hidden .q-hud-top {
   pointer-events: none !important;
   transform: translateY(-16px);
 }
+
+@keyframes qOrbitalFloat {
+  0%, 100% {
+    transform: translate3d(var(--orb-x, 0px), 0px, 0px) rotateY(-10deg);
+  }
+  50% {
+    transform: translate3d(calc(var(--orb-x, 0px) - 3px), -4px, 8px) rotateY(-4deg);
+  }
+}
+
+@media (min-width: 768px) {
+  .q-orbital-item {
+    animation: qOrbitalFloat 3.6s ease-in-out infinite;
+    animation-delay: var(--orb-delay, 0s);
+    will-change: transform;
+  }
+}
+
+@keyframes qHubPanA {
+  0%, 100% {
+    transform: scale(1.03) translate3d(0px, 0px, 0px);
+  }
+  50% {
+    transform: scale(1.075) translate3d(-1.4%, -0.8%, 0px);
+  }
+}
+
+@keyframes qHubPanB {
+  0%, 100% {
+    transform: scale(1.04) translate3d(-1%, 0.4%, 0px);
+  }
+  50% {
+    transform: scale(1.08) translate3d(1.2%, -0.6%, 0px);
+  }
+}
+
+@keyframes qHubWalkSweep {
+  0%, 100% {
+    transform: scale(1.05) translate3d(1.6%, 0.3%, 0px);
+  }
+  50% {
+    transform: scale(1.085) translate3d(-1.6%, -0.5%, 0px);
+  }
+}
+
+.q-hub-pan-a {
+  animation: qHubPanA 14s ease-in-out infinite;
+  will-change: transform;
+}
+
+.q-hub-pan-b {
+  animation: qHubPanB 16s ease-in-out infinite;
+  will-change: transform;
+}
+
+.q-hub-walk {
+  animation: qHubWalkSweep 13s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* ================================================================
+   LOCK SCREEN CHARACTER ORBITAL RINGS
+   ================================================================ */
+@keyframes qGyroOrbitA {
+  0% {
+    transform: rotateX(68deg) rotateY(22deg) rotateZ(0deg);
+  }
+  100% {
+    transform: rotateX(68deg) rotateY(22deg) rotateZ(360deg);
+  }
+}
+
+@keyframes qGyroOrbitB {
+  0% {
+    transform: rotateX(-64deg) rotateY(-28deg) rotateZ(360deg);
+  }
+  100% {
+    transform: rotateX(-64deg) rotateY(-28deg) rotateZ(0deg);
+  }
+}
+
+.q-gyro-ring-a {
+  animation: qGyroOrbitA 7.5s linear infinite;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.q-gyro-ring-b {
+  animation: qGyroOrbitB 10.5s linear infinite;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* ================================================================
+   MAIN COCKPIT 3D SCREEN-SPANNING ICON FLIGHT -> DOCK ALIGNMENT
+   ================================================================ */
+@keyframes qIcon3DFlightDesktop {
+  0% {
+    opacity: 0;
+    transform: translate3d(var(--fly-x0, -58vw), var(--fly-y0, -24vh), 160px)
+      rotateX(48deg) rotateY(-210deg) rotateZ(-28deg) scale(1.65);
+  }
+  42% {
+    opacity: 1;
+    transform: translate3d(var(--fly-x1, -24vw), var(--fly-y1, 14vh), 95px)
+      rotateX(-18deg) rotateY(155deg) rotateZ(14deg) scale(1.32);
+  }
+  78% {
+    opacity: 1;
+    transform: translate3d(calc(var(--orb-x, 0px) - 24px), -8px, 34px)
+      rotateX(8deg) rotateY(22deg) rotateZ(-4deg) scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(var(--orb-x, 0px), 0px, 0px)
+      rotateX(0deg) rotateY(-10deg) rotateZ(0deg) scale(1);
+  }
+}
+
+@keyframes qIcon3DFlightMobile {
+  0% {
+    opacity: 0;
+    transform: translate3d(var(--fly-mx0, 0vw), var(--fly-my0, -55vh), 140px)
+      rotateX(42deg) rotateY(180deg) scale(1.55);
+  }
+  55% {
+    opacity: 1;
+    transform: translate3d(var(--fly-mx1, 8vw), var(--fly-my1, -20vh), 60px)
+      rotateX(-12deg) rotateY(30deg) scale(1.2);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0px, 0px, 0px)
+      rotateX(0deg) rotateY(0deg) scale(1);
+  }
+}
+
+.q-orbital-enter {
+  animation: qIcon3DFlightMobile 1.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--fly-delay, 0s);
+  will-change: transform, opacity;
+}
+
+@media (min-width: 768px) {
+  .q-orbital-enter {
+    animation: qIcon3DFlightDesktop 1.95s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--fly-delay, 0s);
+    will-change: transform, opacity;
+  }
+}
+
+
+

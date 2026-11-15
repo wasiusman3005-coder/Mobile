@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 interface QuantumBackground3DProps {
   intensity?: number;
@@ -9,14 +10,6 @@ interface QuantumBackground3DProps {
   show3D?: boolean;
   customBgUrl?: string;
 }
-
-const QUANTUM_EQUATIONS = [
-  { title: "SCHRÖDINGER EQUATION", formula: "iℏ ∂Ψ/∂t = [ -ℏ²/(2m)∇² + V(r,t) ] Ψ" },
-  { title: "DIRAC RELATIVISTIC EQUATION", formula: "( iγᵘ ∂ᵤ - mc/ℏ ) ψ = 0" },
-  { title: "HEISENBERG UNCERTAINTY", formula: "σₓ · σₚ ≥ ℏ / 2" },
-  { title: "QED LAGRANGIAN DENSITY", formula: "ℒ = ψ̄(iγᵘDᵤ - m)ψ - ¼ F_μν F^μν" },
-  { title: "FEYNMAN PATH INTEGRAL", formula: "K(b,a) = ∫ 𝒟[x(t)] exp( i S[x] / ℏ )" },
-];
 
 function createGlowSpriteTexture(): THREE.CanvasTexture | null {
   if (typeof document === "undefined") return null;
@@ -28,8 +21,8 @@ function createGlowSpriteTexture(): THREE.CanvasTexture | null {
 
   const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
   grad.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
-  grad.addColorStop(0.18, "rgba(210, 240, 255, 0.85)");
-  grad.addColorStop(0.45, "rgba(96, 165, 250, 0.25)");
+  grad.addColorStop(0.2, "rgba(186, 230, 253, 0.82)");
+  grad.addColorStop(0.5, "rgba(56, 189, 248, 0.24)");
   grad.addColorStop(1.0, "rgba(0, 0, 0, 0.0)");
 
   ctx.fillStyle = grad;
@@ -40,110 +33,182 @@ function createGlowSpriteTexture(): THREE.CanvasTexture | null {
   return texture;
 }
 
-function createEquationTexture(
-  title: string,
-  formula: string,
+function drawPanoramicLedScreen(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  phase: number,
   accentHex: string,
-  maxAniso: number
-): THREE.CanvasTexture | null {
-  if (typeof document === "undefined") return null;
-  const canvas = document.createElement("canvas");
-  canvas.width = 768;
-  canvas.height = 192;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  secondaryHex: string
+) {
+  ctx.clearRect(0, 0, w, h);
 
-  ctx.strokeStyle = "rgba(148, 163, 184, 0.22)";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, "#020b1c");
+  bg.addColorStop(0.5, "#041229");
+  bg.addColorStop(1, "#020714");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
 
-  ctx.strokeStyle = accentHex;
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(8, 30);
-  ctx.lineTo(8, 8);
-  ctx.lineTo(36, 8);
-  ctx.moveTo(canvas.width - 36, 8);
-  ctx.lineTo(canvas.width - 8, 8);
-  ctx.lineTo(canvas.width - 8, 30);
-  ctx.moveTo(8, canvas.height - 30);
-  ctx.lineTo(8, canvas.height - 8);
-  ctx.lineTo(36, canvas.height - 8);
-  ctx.moveTo(canvas.width - 36, canvas.height - 8);
-  ctx.lineTo(canvas.width - 8, canvas.height - 8);
-  ctx.lineTo(canvas.width - 8, canvas.height - 30);
-  ctx.stroke();
-
-  ctx.font = "600 18px 'JetBrains Mono', monospace";
-  ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
-  ctx.fillText(title, 32, 48);
-
-  ctx.font = "700 30px 'JetBrains Mono', monospace";
-  ctx.shadowColor = accentHex;
-  ctx.shadowBlur = 14;
-  ctx.fillStyle = "#f8fafc";
-  ctx.fillText(formula, 32, 122);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = maxAniso;
-  return tex;
-}
-
-function createSpiralGalaxy(
-  starCount: number,
-  radius: number,
-  branches: number,
-  spinFactor: number,
-  coreColorHex: number,
-  armColorHex: number,
-  spriteTex: THREE.CanvasTexture | null
-): { points: THREE.Points; geo: THREE.BufferGeometry; mat: THREE.PointsMaterial } {
-  const geo = new THREE.BufferGeometry();
-  const positions = new Float32Array(starCount * 3);
-  const colors = new Float32Array(starCount * 3);
-
-  const coreColor = new THREE.Color(coreColorHex);
-  const armColor = new THREE.Color(armColorHex);
-  const mixed = new THREE.Color();
-
-  for (let i = 0; i < starCount; i++) {
-    const i3 = i * 3;
-    const r = Math.pow(Math.random(), 1.55) * radius;
-    const branchAngle = ((i % branches) / branches) * Math.PI * 2;
-    const spinAngle = r * spinFactor;
-
-    const scatter = Math.pow(Math.random(), 2.2) * (Math.random() < 0.5 ? 1 : -1) * (0.28 * r + 0.55);
-    const scatterY = (Math.random() - 0.5) * (0.14 * r + 0.35);
-    const scatterZ = Math.pow(Math.random(), 2.2) * (Math.random() < 0.5 ? 1 : -1) * (0.28 * r + 0.55);
-
-    positions[i3] = Math.cos(branchAngle + spinAngle) * r + scatter;
-    positions[i3 + 1] = scatterY;
-    positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * r + scatterZ;
-
-    mixed.copy(coreColor).lerp(armColor, Math.min(1, r / radius));
-    colors[i3] = mixed.r;
-    colors[i3 + 1] = mixed.g;
-    colors[i3 + 2] = mixed.b;
+  // Clean subtle tech grid (zero formulas!)
+  ctx.strokeStyle = "rgba(56, 189, 248, 0.09)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= w; x += 64) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= h; y += 64) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
   }
 
-  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  // Outer LED bezel glow
+  ctx.strokeStyle = accentHex;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(10, 10, w - 20, h - 20);
 
-  const mat = new THREE.PointsMaterial({
-    size: 0.55,
-    map: spriteTex || undefined,
-    alphaTest: 0.001,
-    sizeAttenuation: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.9,
+  // Header bar
+  ctx.fillStyle = "rgba(0, 240, 255, 0.14)";
+  ctx.fillRect(18, 18, w - 36, 46);
+  ctx.font = "700 22px 'Orbitron', sans-serif";
+  ctx.fillStyle = "#e0f2fe";
+  ctx.fillText("WASI'S TECHNOLOGY HUB • COMMAND WALL TELEMETRY", 36, 49);
+
+  // Left Panel: Live Radar Sweep Circle
+  const rx = 185;
+  const ry = 255;
+  ctx.strokeStyle = accentHex;
+  ctx.lineWidth = 2;
+  [120, 82, 44].forEach((r) => {
+    ctx.beginPath();
+    ctx.arc(rx, ry, r, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  ctx.save();
+  ctx.translate(rx, ry);
+  ctx.rotate(phase * 1.3);
+  const sweepGrad = ctx.createLinearGradient(0, 0, 120, 0);
+  sweepGrad.addColorStop(0, "rgba(0,240,255,0.45)");
+  sweepGrad.addColorStop(1, "rgba(0,240,255,0.0)");
+  ctx.fillStyle = sweepGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, 118, -0.32, 0.32);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Center Panel: Network Matrix Arc & Bars
+  ctx.strokeStyle = secondaryHex;
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(350, 96, 330, 340);
+  ctx.font = "600 16px 'JetBrains Mono', monospace";
+  ctx.fillStyle = "#cbd5e1";
+  ctx.fillText("ACTIVE HUB NODES", 374, 132);
+  ctx.fillText("VOICE // URDU NEURAL LINK", 374, 162);
+  ctx.fillText("STUDY / BUSINESS / MOBILE", 374, 192);
+
+  for (let i = 0; i < 16; i++) {
+    const bh = 28 + Math.round((Math.sin(phase * 3 + i * 0.65) * 0.5 + 0.5) * 145);
+    ctx.fillStyle = i % 2 === 0 ? accentHex : secondaryHex;
+    ctx.fillRect(374 + i * 18, 405 - bh, 11, bh);
+  }
+
+  // Right Panel: Dual System Load Gauges
+  ctx.strokeStyle = accentHex;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(710, 96, 278, 340);
+  const metrics = [
+    { label: "STUDY VAULTS & LABS", pct: 0.86 },
+    { label: "FINANCE GUARD", pct: 0.74 },
+    { label: "BUSINESS TELEMETRY", pct: 0.91 },
+    { label: "MOBILE BRIDGE LINK", pct: 0.96 },
+  ];
+  metrics.forEach((m, idx) => {
+    const my = 148 + idx * 70;
+    ctx.font = "600 14px 'JetBrains Mono', monospace";
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText(m.label, 730, my);
+    ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+    ctx.fillRect(730, my + 10, 236, 14);
+    const waveOffset = Math.sin(phase * 1.8 + idx) * 0.04;
+    ctx.fillStyle = idx % 2 === 0 ? accentHex : secondaryHex;
+    ctx.fillRect(730, my + 10, Math.round(236 * Math.min(1, m.pct + waveOffset)), 14);
+  });
+}
+
+function drawSideHologramScreen(
+  ctx: CanvasRenderingContext2D,
+  title: string,
+  accentHex: string,
+  phase: number
+) {
+  ctx.clearRect(0, 0, 512, 320);
+  ctx.fillStyle = "rgba(4, 12, 28, 0.92)";
+  ctx.fillRect(0, 0, 512, 320);
+  ctx.strokeStyle = accentHex;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(6, 6, 500, 308);
+  ctx.font = "700 20px 'Orbitron', sans-serif";
+  ctx.fillStyle = "#f1f5f9";
+  ctx.fillText(title, 24, 42);
+
+  for (let row = 0; row < 5; row++) {
+    const y = 78 + row * 44;
+    ctx.fillStyle = "rgba(30, 41, 59, 0.85)";
+    ctx.fillRect(24, y, 464, 24);
+    const fillW = 180 + Math.round((Math.sin(phase * 2.1 + row) * 0.5 + 0.5) * 260);
+    ctx.fillStyle = accentHex;
+    ctx.fillRect(24, y, fillW, 24);
+  }
+}
+
+function buildExecutiveChair(accentMat: THREE.Material, seatMat: THREE.Material, metalMat: THREE.Material): THREE.Group {
+  const chair = new THREE.Group();
+
+  // Star base & pneumatic piston
+  const baseGeo = new THREE.CylinderGeometry(0.95, 1.15, 0.14, 5);
+  const base = new THREE.Mesh(baseGeo, metalMat);
+  base.position.y = 0.08;
+  chair.add(base);
+
+  const pistonGeo = new THREE.CylinderGeometry(0.14, 0.16, 0.9, 10);
+  const piston = new THREE.Mesh(pistonGeo, metalMat);
+  piston.position.y = 0.56;
+  chair.add(piston);
+
+  // Seat cushion + trim
+  const seatGeo = new THREE.BoxGeometry(1.55, 0.24, 1.45);
+  const seat = new THREE.Mesh(seatGeo, seatMat);
+  seat.position.y = 1.05;
+  chair.add(seat);
+
+  // Contoured high backrest + glowing cyan/amber strip
+  const backGeo = new THREE.BoxGeometry(1.38, 2.35, 0.24);
+  const back = new THREE.Mesh(backGeo, seatMat);
+  back.position.set(0, 2.22, -0.62);
+  back.rotation.x = -0.08;
+  chair.add(back);
+
+  const trimGeo = new THREE.BoxGeometry(1.44, 2.25, 0.06);
+  const trim = new THREE.Mesh(trimGeo, accentMat);
+  trim.position.set(0, 2.24, -0.74);
+  trim.rotation.x = -0.08;
+  chair.add(trim);
+
+  // Armrests
+  const armGeo = new THREE.BoxGeometry(0.18, 0.12, 1.05);
+  [-0.86, 0.86].forEach((ax) => {
+    const arm = new THREE.Mesh(armGeo, metalMat);
+    arm.position.set(ax, 1.48, -0.1);
+    chair.add(arm);
   });
 
-  return { points: new THREE.Points(geo, mat), geo, mat };
+  return chair;
 }
 
 export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
@@ -179,10 +244,10 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
     const height = window.innerHeight;
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x01030b, 0.0085);
+    scene.fog = new THREE.FogExp2(0x020614, 0.015);
 
-    const camera = new THREE.PerspectiveCamera(58, width / height, 0.1, 400);
-    camera.position.z = 26;
+    const camera = new THREE.PerspectiveCamera(56, width / height, 0.1, 220);
+    camera.position.set(0, 1.5, 13.5);
 
     const isSoftwareGl =
       typeof navigator !== "undefined" && (navigator.hardwareConcurrency || 4) <= 2;
@@ -206,236 +271,197 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
 
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.18;
     renderer.setSize(width, height);
     renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
     container.innerHTML = "";
     container.appendChild(canvas);
 
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const roomEnv = new RoomEnvironment();
+    const envRT = pmrem.fromScene(roomEnv, 0.04);
+    scene.environment = envRT.texture;
+
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
     const glowSprite = createGlowSpriteTexture();
 
-    // =========================================================================
-    // 1. DEEP COSMOS MULTI-SPECTRAL STARFIELD
-    // =========================================================================
-    const starCount = isSoftwareGl ? 1200 : 2400;
+    // Lighting for Technology Hub Chamber
+    const ambient = new THREE.AmbientLight(0x93c5fd, 0.7);
+    scene.add(ambient);
+    const keyLight = new THREE.DirectionalLight(0xe0f2fe, 1.8);
+    keyLight.position.set(6, 14, 12);
+    scene.add(keyLight);
+    const hubCyanLight = new THREE.PointLight(0x00f0ff, 18, 42);
+    hubCyanLight.position.set(-6, 4, 2);
+    scene.add(hubCyanLight);
+    const hubVioletLight = new THREE.PointLight(0x8b5cf6, 16, 42);
+    hubVioletLight.position.set(6, 3, 2);
+    scene.add(hubVioletLight);
+
+    // 1. Subtle Orbital Skylight Starfield (upper dome only, no formulas)
+    const starCount = isSoftwareGl ? 500 : 1050;
     const starGeo = new THREE.BufferGeometry();
     const starPos = new Float32Array(starCount * 3);
-    const starColors = new Float32Array(starCount * 3);
-    const starSpeeds = new Float32Array(starCount);
-
-    const spectralPalette = [
-      new THREE.Color(0xe0f2fe),
-      new THREE.Color(0x93c5fd),
-      new THREE.Color(0xfef3c7),
-      new THREE.Color(0xc4b5fd),
-      new THREE.Color(0xfda4af),
-      new THREE.Color(0x67e8f9),
-    ];
-
     for (let i = 0; i < starCount; i++) {
-      const i3 = i * 3;
-      starPos[i3] = (Math.random() - 0.5) * 180;
-      starPos[i3 + 1] = (Math.random() - 0.5) * 130;
-      starPos[i3 + 2] = (Math.random() - 0.5) * 140 - 20;
-      starSpeeds[i] = 0.015 + Math.random() * 0.045;
-
-      const c = spectralPalette[Math.floor(Math.random() * spectralPalette.length)];
-      const brightness = 0.55 + Math.random() * 0.45;
-      starColors[i3] = c.r * brightness;
-      starColors[i3 + 1] = c.g * brightness;
-      starColors[i3 + 2] = c.b * brightness;
+      starPos[i * 3] = (Math.random() - 0.5) * 140;
+      starPos[i * 3 + 1] = 2 + Math.random() * 55;
+      starPos[i * 3 + 2] = -25 - Math.random() * 80;
     }
-
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-    starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3));
-
     const starMat = new THREE.PointsMaterial({
-      size: 0.42,
+      size: 0.35,
       map: glowSprite || undefined,
-      vertexColors: true,
+      color: 0xbae6fd,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.72,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const deepStars = new THREE.Points(starGeo, starMat);
-    scene.add(deepStars);
+    const skylightStars = new THREE.Points(starGeo, starMat);
+    scene.add(skylightStars);
 
-    // =========================================================================
-    // 2. DISTANT GRAND SPIRAL GALAXIES
-    // =========================================================================
-    const galaxyPrimary = createSpiralGalaxy(
-      isSoftwareGl ? 700 : 1450,
-      26,
-      4,
-      0.34,
-      0xfef08a,
-      0x38bdf8,
-      glowSprite
-    );
-    galaxyPrimary.points.position.set(-22, 13, -46);
-    galaxyPrimary.points.rotation.set(0.95, 0.28, -0.35);
-    scene.add(galaxyPrimary.points);
+    // 2. Technology Hub Chamber Deck Floor & Hex Rings
+    const floorGeo = new THREE.CircleGeometry(28, 48);
+    floorGeo.rotateX(-Math.PI / 2);
+    const floorMat = new THREE.MeshStandardMaterial({
+      color: 0x050b18,
+      metalness: 0.82,
+      roughness: 0.24,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    });
+    const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    floorMesh.position.y = -4.0;
+    scene.add(floorMesh);
 
-    const galaxySecondary = createSpiralGalaxy(
-      isSoftwareGl ? 500 : 950,
-      20,
-      3,
-      0.42,
-      0xf5d0fe,
-      0x818cf8,
-      glowSprite
-    );
-    galaxySecondary.points.position.set(24, -14, -56);
-    galaxySecondary.points.rotation.set(1.12, -0.45, 0.42);
-    scene.add(galaxySecondary.points);
+    const floorRingGeo = new THREE.RingGeometry(4.4, 4.55, 64);
+    floorRingGeo.rotateX(-Math.PI / 2);
+    const floorRingMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.48,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    const floorRingMesh = new THREE.Mesh(floorRingGeo, floorRingMat);
+    floorRingMesh.position.set(0, -3.98, -2.5);
+    scene.add(floorRingMesh);
 
-    const milkyWay = createSpiralGalaxy(
-      isSoftwareGl ? 600 : 1100,
-      58,
-      2,
-      0.16,
-      0x38bdf8,
-      0x6366f1,
-      glowSprite
-    );
-    milkyWay.points.position.set(2, -4, -75);
-    milkyWay.points.rotation.set(1.32, 0.1, 0.65);
-    milkyWay.mat.opacity = 0.42;
-    scene.add(milkyWay.points);
+    // 3. Arched Structural Steel Bay Ribs
+    const ribMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      metalness: 0.88,
+      roughness: 0.28,
+    });
+    const ribGeo = new THREE.TorusGeometry(13.5, 0.24, 10, 48, Math.PI);
+    const ribZPositions = [-14, -8.5, -3];
+    ribZPositions.forEach((rz) => {
+      const rib = new THREE.Mesh(ribGeo, ribMat);
+      rib.position.set(0, -4.0, rz);
+      scene.add(rib);
+    });
 
-    // =========================================================================
-    // 3. DRIFTING 3D QUANTUM PHYSICS FORMULAS WITH PARALLAX DEPTH (Q-DYNAMICS)
-    // =========================================================================
-    const formulaGroup = new THREE.Group();
-    scene.add(formulaGroup);
-    const formulaPlaneGeo = new THREE.PlaneGeometry(8.6, 2.15);
-    const formulaTextures: THREE.CanvasTexture[] = [];
-    const formulaMats: THREE.MeshBasicMaterial[] = [];
-    const formulaCards: {
-      mesh: THREE.Mesh;
-      mat: THREE.MeshBasicMaterial;
-      baseY: number;
-      speedX: number;
-      bobAmp: number;
-      bobFreq: number;
-      phase: number;
-    }[] = [];
-
-    for (let i = 0; i < 15; i++) {
-      const eq = QUANTUM_EQUATIONS[i % QUANTUM_EQUATIONS.length];
-      const tex = createEquationTexture(eq.title, eq.formula, "#00f0ff", maxAniso);
-      if (!tex) continue;
-      formulaTextures.push(tex);
-      const mat = new THREE.MeshBasicMaterial({
-        map: tex,
-        transparent: true,
-        opacity: 0.34 + (i % 3) * 0.1,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-        color: new THREE.Color("#ffffff"),
-      });
-      formulaMats.push(mat);
-
-      const mesh = new THREE.Mesh(formulaPlaneGeo, mat);
-      const depthLayer = -2 - (i % 5) * 6.5;
-      const spreadX = (Math.random() - 0.5) * 52;
-      const spreadY = (Math.random() - 0.5) * 26;
-      mesh.position.set(spreadX, spreadY, depthLayer);
-      mesh.rotation.y = (Math.random() - 0.5) * 0.24;
-      const scale = 0.68 + (1 - Math.abs(depthLayer) / 36) * 0.52;
-      mesh.scale.setScalar(scale);
-
-      formulaGroup.add(mesh);
-      formulaCards.push({
-        mesh,
-        mat,
-        baseY: spreadY,
-        speedX: (0.65 + Math.random() * 0.85) * (i % 2 === 0 ? 1 : -1),
-        bobAmp: 0.35 + Math.random() * 0.4,
-        bobFreq: 0.45 + Math.random() * 0.45,
-        phase: Math.random() * Math.PI * 2,
-      });
+    // 4. Giant Panoramic Curved LED Wall Panel at Center-Back (ZERO math formulas!)
+    const ledCanvas = document.createElement("canvas");
+    ledCanvas.width = 1024;
+    ledCanvas.height = 512;
+    const ledCtx = ledCanvas.getContext("2d");
+    if (ledCtx) {
+      drawPanoramicLedScreen(ledCtx, 1024, 512, 0, customAccentHex, customSecondaryHex);
     }
+    const ledTex = new THREE.CanvasTexture(ledCanvas);
+    ledTex.colorSpace = THREE.SRGBColorSpace;
+    ledTex.anisotropy = maxAniso;
 
-    // =========================================================================
-    // 4. LUMINOUS COSMIC NEBULA CLOUDS
-    // =========================================================================
-    const nebulaColors = [0x1d4ed8, 0x7e22ce, 0x0e7490, 0xbe185d, 0x4338ca];
-    const nebulaSprites: { sprite: THREE.Sprite; baseX: number; baseY: number; speed: number; phase: number }[] = [];
-    const nebulaMats: THREE.SpriteMaterial[] = [];
+    const ledGeo = new THREE.CylinderGeometry(16, 16, 7.6, 40, 1, true, Math.PI * 0.72, Math.PI * 0.56);
+    const ledMat = new THREE.MeshBasicMaterial({
+      map: ledTex,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.88,
+    });
+    const ledWallMesh = new THREE.Mesh(ledGeo, ledMat);
+    ledWallMesh.position.set(0, 1.5, 2.2);
+    scene.add(ledWallMesh);
 
-    if (glowSprite) {
-      for (let i = 0; i < 10; i++) {
-        const mat = new THREE.SpriteMaterial({
-          map: glowSprite,
-          color: nebulaColors[i % nebulaColors.length],
-          transparent: true,
-          opacity: 0.14 + (i % 3) * 0.04,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        });
-        nebulaMats.push(mat);
-        const sprite = new THREE.Sprite(mat);
-        const bx = (Math.random() - 0.5) * 70;
-        const by = (Math.random() - 0.5) * 44;
-        const bz = -35 - Math.random() * 45;
-        const scale = 22 + Math.random() * 24;
-        sprite.position.set(bx, by, bz);
-        sprite.scale.set(scale, scale * 0.72, 1);
-        scene.add(sprite);
-        nebulaSprites.push({
-          sprite,
-          baseX: bx,
-          baseY: by,
-          speed: 0.08 + Math.random() * 0.08,
-          phase: Math.random() * Math.PI * 2,
-        });
-      }
-    }
+    // 5. Left & Right Backside Angled Terminal Panels
+    const sideCanvasA = document.createElement("canvas");
+    sideCanvasA.width = 512;
+    sideCanvasA.height = 320;
+    const sideCtxA = sideCanvasA.getContext("2d");
+    if (sideCtxA) drawSideHologramScreen(sideCtxA, "MOBILE & ALERT MATRIX", customAccentHex, 0);
+    const sideTexA = new THREE.CanvasTexture(sideCanvasA);
+    sideTexA.colorSpace = THREE.SRGBColorSpace;
 
-    // =========================================================================
-    // 5. OCCASIONAL SHOOTING STARS
-    // =========================================================================
-    interface MeteorItem {
-      line: THREE.Line;
-      geo: THREE.BufferGeometry;
-      mat: THREE.LineBasicMaterial;
-      active: boolean;
-      vx: number;
-      vy: number;
-      vz: number;
-      life: number;
-      cooldown: number;
-    }
+    const sideCanvasB = document.createElement("canvas");
+    sideCanvasB.width = 512;
+    sideCanvasB.height = 320;
+    const sideCtxB = sideCanvasB.getContext("2d");
+    if (sideCtxB) drawSideHologramScreen(sideCtxB, "STUDY & BUSINESS SYNC", customSecondaryHex, 0);
+    const sideTexB = new THREE.CanvasTexture(sideCanvasB);
+    sideTexB.colorSpace = THREE.SRGBColorSpace;
 
-    const meteors: MeteorItem[] = [];
-    for (let i = 0; i < 4; i++) {
-      const mGeo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(2.4, 1.3, 0),
-      ]);
-      const mMat = new THREE.LineBasicMaterial({
-        color: i % 2 === 0 ? 0xe0f2fe : 0xa5f3fc,
-        transparent: true,
-        opacity: 0,
-      });
-      const mLine = new THREE.Line(mGeo, mMat);
-      scene.add(mLine);
-      meteors.push({
-        line: mLine,
-        geo: mGeo,
-        mat: mMat,
-        active: false,
-        vx: -0.65,
-        vy: -0.35,
-        vz: 0.08,
-        life: 0,
-        cooldown: 1.5 + i * 2.4,
-      });
-    }
+    const sidePlaneGeo = new THREE.PlaneGeometry(5.6, 3.5);
+    const sideMatA = new THREE.MeshBasicMaterial({
+      map: sideTexA,
+      transparent: true,
+      opacity: 0.76,
+      side: THREE.DoubleSide,
+    });
+    const sideMatB = new THREE.MeshBasicMaterial({
+      map: sideTexB,
+      transparent: true,
+      opacity: 0.76,
+      side: THREE.DoubleSide,
+    });
+    const sidePanelA = new THREE.Mesh(sidePlaneGeo, sideMatA);
+    sidePanelA.position.set(-9.2, 0.8, -8.5);
+    sidePanelA.rotation.y = 0.52;
+    const sidePanelB = new THREE.Mesh(sidePlaneGeo, sideMatB);
+    sidePanelB.position.set(9.2, 0.8, -8.5);
+    sidePanelB.rotation.y = -0.52;
+    scene.add(sidePanelA, sidePanelB);
+
+    // 6. Dual Ergonomic 3D Command Chairs + Curved Holographic Desk Consoles
+    const seatLeatherMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      metalness: 0.35,
+      roughness: 0.45,
+    });
+    const cyanTrimMat = new THREE.MeshStandardMaterial({
+      color: 0x00f0ff,
+      emissive: 0x00f0ff,
+      emissiveIntensity: 1.3,
+    });
+    const amberTrimMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 1.3,
+    });
+
+    const leftChair = buildExecutiveChair(cyanTrimMat, seatLeatherMat, ribMat);
+    leftChair.position.set(-3.2, -3.98, -4.6);
+    leftChair.rotation.y = 0.26;
+    const rightChair = buildExecutiveChair(amberTrimMat, seatLeatherMat, ribMat);
+    rightChair.position.set(3.2, -3.98, -4.6);
+    rightChair.rotation.y = -0.26;
+    scene.add(leftChair, rightChair);
+
+    // Curved glass desk front rim
+    const deskGeo = new THREE.TorusGeometry(4.2, 0.14, 10, 40, Math.PI * 0.55);
+    deskGeo.rotateX(Math.PI / 2);
+    const deskMat = new THREE.MeshPhysicalMaterial({
+      color: 0x38bdf8,
+      metalness: 0.25,
+      roughness: 0.12,
+      transparent: true,
+      opacity: 0.48,
+    });
+    const deskMesh = new THREE.Mesh(deskGeo, deskMat);
+    deskMesh.position.set(0, -2.55, -2.6);
+    deskMesh.rotation.z = Math.PI * 0.22;
+    scene.add(deskMesh);
 
     let targetMouseX = 0;
     let targetMouseY = 0;
@@ -443,8 +469,8 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
     let mouseY = 0;
 
     const handleMouseMove = (e: MouseEvent) => {
-      targetMouseX = (e.clientX / window.innerWidth - 0.5) * 3.4;
-      targetMouseY = -(e.clientY / window.innerHeight - 0.5) * 2.4;
+      targetMouseX = (e.clientX / window.innerWidth - 0.5) * 2.2;
+      targetMouseY = -(e.clientY / window.innerHeight - 0.5) * 1.1;
     };
     window.addEventListener("mousemove", handleMouseMove);
 
@@ -461,6 +487,7 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
     const clock = new THREE.Clock();
     const liveAccent = new THREE.Color(customAccentHex);
     const liveSecondary = new THREE.Color(customSecondaryHex);
+    let lastRedraw = 0;
 
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
@@ -472,74 +499,41 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
       liveAccent.lerp(accentRef.current, cDamp);
       liveSecondary.lerp(secondaryRef.current, cDamp);
 
-      galaxyPrimary.points.rotation.y = 0.28 + t * 0.032 * surgeMult;
-      galaxySecondary.points.rotation.y = -0.45 - t * 0.038 * surgeMult;
-      milkyWay.points.rotation.y = 0.1 + t * 0.012;
+      hubCyanLight.color.copy(liveAccent);
+      hubVioletLight.color.copy(liveSecondary);
+      floorRingMat.color.copy(liveAccent);
+      floorRingMesh.rotation.z = t * 0.08 * surgeMult;
 
-      const posArr = starGeo.attributes.position.array as Float32Array;
-      for (let i = 0; i < starCount; i++) {
-        posArr[i * 3 + 2] += starSpeeds[i] * 0.85 * surgeMult;
-        if (posArr[i * 3 + 2] > 28) {
-          posArr[i * 3 + 2] = -110;
-          posArr[i * 3] = (Math.random() - 0.5) * 180;
-          posArr[i * 3 + 1] = (Math.random() - 0.5) * 130;
+      // Refresh live LED panels smoothly ~6fps so telemetry bars & radar sweep move without heavy CPU use
+      if (t - lastRedraw > 0.16) {
+        lastRedraw = t;
+        const aHex = `#${liveAccent.getHexString()}`;
+        const sHex = `#${liveSecondary.getHexString()}`;
+        if (ledCtx) {
+          drawPanoramicLedScreen(ledCtx, 1024, 512, t * surgeMult, aHex, sHex);
+          ledTex.needsUpdate = true;
+        }
+        if (sideCtxA) {
+          drawSideHologramScreen(sideCtxA, "MOBILE & ALERT MATRIX", aHex, t * surgeMult);
+          sideTexA.needsUpdate = true;
+        }
+        if (sideCtxB) {
+          drawSideHologramScreen(sideCtxB, "STUDY & BUSINESS SYNC", sHex, t * surgeMult);
+          sideTexB.needsUpdate = true;
         }
       }
-      starGeo.attributes.position.needsUpdate = true;
-      deepStars.rotation.z = t * 0.008;
 
-      // Drifting 3D Background Quantum Physics Formulas with Parallax
-      formulaGroup.position.x = THREE.MathUtils.damp(formulaGroup.position.x, -targetMouseX * 0.85, 3.2, delta);
-      formulaGroup.position.y = THREE.MathUtils.damp(formulaGroup.position.y, -targetMouseY * 0.55, 3.2, delta);
-      for (let i = 0; i < formulaCards.length; i++) {
-        const fc = formulaCards[i];
-        fc.mesh.position.x += fc.speedX * delta * surgeMult;
-        fc.mesh.position.y = fc.baseY + Math.sin(t * fc.bobFreq + fc.phase) * fc.bobAmp;
-        fc.mat.color.copy(i % 2 === 0 ? liveAccent : liveSecondary);
-        if (fc.mesh.position.x > 30) fc.mesh.position.x = -30;
-        if (fc.mesh.position.x < -30) fc.mesh.position.x = 30;
-      }
+      skylightStars.rotation.z = t * 0.005;
 
-      nebulaSprites.forEach((n) => {
-        n.sprite.position.x = n.baseX + Math.sin(t * n.speed + n.phase) * 2.2;
-        n.sprite.position.y = n.baseY + Math.cos(t * n.speed + n.phase) * 1.4;
-      });
+      // Gentle swivel idle motion on background chairs
+      leftChair.rotation.y = 0.26 + Math.sin(t * 0.35) * 0.06;
+      rightChair.rotation.y = -0.26 - Math.sin(t * 0.35 + 1.2) * 0.06;
 
-      meteors.forEach((m) => {
-        if (!m.active) {
-          m.cooldown -= delta;
-          if (m.cooldown <= 0) {
-            m.active = true;
-            m.life = 0;
-            m.line.position.set(
-              (Math.random() - 0.1) * 44,
-              10 + Math.random() * 18,
-              -12 - Math.random() * 25
-            );
-            m.vx = -0.6 - Math.random() * 0.45;
-            m.vy = -0.32 - Math.random() * 0.25;
-            m.vz = 0.1;
-          }
-        } else {
-          m.life += delta;
-          m.line.position.x += m.vx;
-          m.line.position.y += m.vy;
-          m.line.position.z += m.vz;
-          const progress = m.life / 0.85;
-          m.mat.opacity = Math.sin(Math.min(1, progress) * Math.PI) * 0.85;
-          if (progress >= 1) {
-            m.active = false;
-            m.mat.opacity = 0;
-            m.cooldown = 3.5 + Math.random() * 5.5;
-          }
-        }
-      });
-
-      mouseX += (targetMouseX - mouseX) * 0.035;
-      mouseY += (targetMouseY - mouseY) * 0.035;
+      mouseX = THREE.MathUtils.damp(mouseX, targetMouseX, 3.0, delta);
+      mouseY = THREE.MathUtils.damp(mouseY, targetMouseY, 3.0, delta);
       camera.position.x = mouseX;
-      camera.position.y = mouseY;
-      camera.lookAt(0, 0, -25);
+      camera.position.y = 1.5 + mouseY;
+      camera.lookAt(0, 0.2, -10);
 
       renderer.render(scene, camera);
     };
@@ -551,25 +545,40 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
       canvas.removeEventListener("webglcontextlost", onLost);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", handleResize);
-      renderer.dispose();
 
       starGeo.dispose();
       starMat.dispose();
-      galaxyPrimary.geo.dispose();
-      galaxyPrimary.mat.dispose();
-      galaxySecondary.geo.dispose();
-      galaxySecondary.mat.dispose();
-      milkyWay.geo.dispose();
-      milkyWay.mat.dispose();
-      formulaPlaneGeo.dispose();
-      formulaTextures.forEach((tx) => tx.dispose());
-      formulaMats.forEach((m) => m.dispose());
-      nebulaMats.forEach((m) => m.dispose());
-      meteors.forEach((m) => {
-        m.geo.dispose();
-        m.mat.dispose();
-      });
+      floorGeo.dispose();
+      floorMat.dispose();
+      floorRingGeo.dispose();
+      floorRingMat.dispose();
+      ribGeo.dispose();
+      ribMat.dispose();
+      ledGeo.dispose();
+      ledMat.dispose();
+      ledTex.dispose();
+      sidePlaneGeo.dispose();
+      sideMatA.dispose();
+      sideMatB.dispose();
+      sideTexA.dispose();
+      sideTexB.dispose();
+      seatLeatherMat.dispose();
+      cyanTrimMat.dispose();
+      amberTrimMat.dispose();
+      deskGeo.dispose();
+      deskMat.dispose();
       glowSprite?.dispose();
+      [leftChair, rightChair].forEach((grp) => {
+        grp.traverse((obj) => {
+          if (obj instanceof THREE.Mesh) {
+            obj.geometry?.dispose();
+          }
+        });
+      });
+      envRT.dispose();
+      roomEnv.dispose();
+      pmrem.dispose();
+      renderer.dispose();
 
       if (container.contains(canvas)) {
         container.removeChild(canvas);
@@ -582,12 +591,12 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
       className="fixed inset-0 z-0 pointer-events-none overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at 22% 18%, rgba(29, 78, 216, 0.22) 0%, transparent 52%), radial-gradient(ellipse at 78% 76%, rgba(109, 40, 217, 0.18) 0%, transparent 52%), radial-gradient(circle at 50% 48%, rgba(14, 116, 144, 0.12) 0%, #02040a 78%)",
+          "radial-gradient(ellipse at 50% 35%, rgba(6, 182, 212, 0.14) 0%, rgba(2, 6, 20, 0.96) 75%)",
       }}
     >
       {customBgUrl && (
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-30 transition-opacity duration-1000"
+          className="absolute inset-0 bg-cover bg-center opacity-25 transition-opacity duration-1000"
           style={{ backgroundImage: `url(${customBgUrl})` }}
         />
       )}

@@ -147,10 +147,17 @@ export const QDynamicsBrandLogo3D: React.FC<QDynamicsBrandLogo3DProps> = ({
       renderer.render(scene, camera);
     };
 
+    const canvas = renderer.domElement;
+    const onLost = (e: Event) => {
+      e.preventDefault();
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
+
     animate();
 
     return () => {
       cancelAnimationFrame(rafId);
+      canvas.removeEventListener("webglcontextlost", onLost);
       renderer.dispose();
       coreGeo.dispose();
       coreMat.dispose();
@@ -160,8 +167,8 @@ export const QDynamicsBrandLogo3D: React.FC<QDynamicsBrandLogo3DProps> = ({
       ringMat2.dispose();
       satGeo.dispose();
       satMat.dispose();
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
+      if (container.contains(canvas)) {
+        container.removeChild(canvas);
       }
     };
   }, []);

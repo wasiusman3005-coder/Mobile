@@ -7,6 +7,7 @@ import { QuantumBackground3D } from "./components/QuantumBackground3D";
 import { SecurityGate } from "./components/SecurityGate";
 import { QuantumLoadingScreen } from "./components/QuantumLoadingScreen";
 import { UltraCockpitDashboard, CockpitSummaryItem } from "./components/UltraCockpitDashboard";
+import { HubPanelNotification } from "./components/DualCharacterHoloStage";
 import { CockpitCorePhase, QUANTUM_SPECTRUMS } from "./components/CentralQuantumCoreHologram";
 import { WormholeTransition } from "./components/WormholeTransition";
 import { QuantumAppsMatrix, MatrixModuleId } from "./components/QuantumAppsMatrix";
@@ -68,9 +69,17 @@ export default function App() {
 
   // Modal & Stage States
   const [showLoadingScreen, setShowLoadingScreen] = useState(false);
+  const [projectedHubModule, setProjectedHubModule] = useState<MatrixModuleId | null>(null);
+  const [activeHubNotification, setActiveHubNotification] = useState<HubPanelNotification | null>(null);
+  const hubPresenterTurnRef = useRef<"female" | "male">("female");
+  const hubNotifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isAppsMatrixOpen, setIsAppsMatrixOpen] = useState(false);
   const [appsMatrixInitialModule, setAppsMatrixInitialModule] = useState<MatrixModuleId | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<
+    "appearance" | "voice" | "security" | "screensaver" | "health" | "data"
+  >("appearance");
+  const [detailViewNonce, setDetailViewNonce] = useState(0);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [voiceAutoListenTrigger, setVoiceAutoListenTrigger] = useState(0);
   const [voiceInitialCommand, setVoiceInitialCommand] = useState<{ id: number; text: string } | null>(null);
@@ -109,6 +118,7 @@ export default function App() {
   const [isProcessingCockpit, setIsProcessingCockpit] = useState(false);
   const [cockpitAudioLevel, setCockpitAudioLevel] = useState(0);
   const [cockpitLiveTranscript, setCockpitLiveTranscript] = useState("");
+  const [cockpitLiveReply, setCockpitLiveReply] = useState("");
   const [cockpitRecordingSeconds, setCockpitRecordingSeconds] = useState(0);
   const [cockpitWaBars, setCockpitWaBars] = useState<number[]>(() => Array(34).fill(18));
   const [cockpitSummaries, setCockpitSummaries] = useState<CockpitSummaryItem[]>([]);
@@ -153,6 +163,24 @@ export default function App() {
     ]);
   };
 
+  const projectHubAlert = (title: string, text: string, source = "SYSTEM HUB") => {
+    const nextPresenter = hubPresenterTurnRef.current;
+    hubPresenterTurnRef.current = nextPresenter === "female" ? "male" : "female";
+    const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    setActiveHubNotification({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      title,
+      text,
+      source,
+      presenterGender: nextPresenter,
+      timeStr,
+    });
+    if (hubNotifTimerRef.current) clearTimeout(hubNotifTimerRef.current);
+    hubNotifTimerRef.current = setTimeout(() => {
+      setActiveHubNotification(null);
+    }, 9000);
+  };
+
   const handleUpdateAvatarConfig = (nextAvatar: AvatarStudioConfig) => {
     const updated: DashboardCustomization = {
       ...customization,
@@ -166,20 +194,24 @@ export default function App() {
     const cleaned = newName.trim();
     if (!cleaned) return;
     const currentGender = avatarConfig.characterGender === "male" ? "male" : "female";
-    const activeCharId = avatarConfig.activeCharacterId || "aurora";
+    handleRenameGenderName(currentGender, cleaned);
+    showToast(`Name updated: ${cleaned}`);
+  };
+
+  const handleRenameGenderName = (gender: "male" | "female", newName: string) => {
+    const activeCharId = avatarConfig.activeCharacterId || "wasi_ki_jan";
     handleUpdateAvatarConfig({
       ...avatarConfig,
-      ...(currentGender === "male"
-        ? { customMaleName: cleaned }
+      ...(gender === "male"
+        ? { customMaleName: newName }
         : {
-            customFemaleName: cleaned,
+            customFemaleName: newName,
             customNicknames: {
               ...(avatarConfig.customNicknames || {}),
-              [activeCharId]: cleaned,
+              [activeCharId]: newName,
             },
           }),
     });
-    showToast(`Name updated: ${cleaned}`);
   };
 
   // Sync dynamic wake words, custom voice profiles & schedules with SpeechService
@@ -264,6 +296,7 @@ export default function App() {
       const spkGender = voiceOverride?.gender || charGender;
       const spkPitch = voiceOverride?.pitch ?? activePersona.pitch;
       const spkRate = voiceOverride?.rate ?? activePersona.rate;
+      setCockpitLiveReply(reply);
       appendCockpitSummary("assistant", voiceOverride?.speakerName || charName, reply);
       const fast = cfg?.fastTalkingMode ?? true;
       speechService.speak(reply, {
@@ -275,6 +308,7 @@ export default function App() {
         useElevenLabs: voiceOverride?.useElevenLabs ?? cfg?.useElevenLabs,
         elevenLabsVoiceId: cfg?.elevenLabsVoiceId,
         urduSpeechText: voiceOverride?.urduSpeechText,
+        onEnd: () => setCockpitLiveReply(""),
       });
     };
 
@@ -387,10 +421,58 @@ export default function App() {
         return;
       }
 
+      if (lower.includes("open study") || lower.includes("study hub") || lower.includes("simulation hub") || lower.includes("meri study")) {
+        const msg =
+          lang === "en"
+            ? "Opening your Study, Files, Labs & Simulation Hub on the main Tech Hub screen."
+            : "Aapka Study, Word, Excel, PowerPoint, PDF aur Live Simulation Hub screen par khol diya hai.";
+        soundEffects.playBeepConfirm();
+        setProjectedHubModule("study");
+        speakCockpitReply(msg);
+        return;
+      }
+
+      if (lower.includes("open business") || lower.includes("business hub") || lower.includes("karobar")) {
+        const msg =
+          lang === "en"
+            ? "Opening your Business Command & Growth Advisor panel right now."
+            : "Aapka Business Command aur Growth Advisor panel screen par khol diya hai.";
+        soundEffects.playBeepConfirm();
+        setProjectedHubModule("business");
+        speakCockpitReply(msg);
+        return;
+      }
+
+      if (lower.includes("fazool kharchi") || lower.includes("open expense") || lower.includes("open finance") || lower.includes("kharchay") || lower.includes("budget kholo")) {
+        const msg =
+          lang === "en"
+            ? "Projecting your Daily, Monthly & Yearly Expenses Defense Shield on screen."
+            : "Aapka Daily, Monthly aur Yearly Kharcha Defense panel hub screen par open kar diya hai.";
+        soundEffects.playBeepConfirm();
+        setProjectedHubModule("finance");
+        speakCockpitReply(msg);
+        return;
+      }
+
+      if (
+        lower.includes("sara kuch") ||
+        lower.includes("sab kuch") ||
+        lower.includes("sub kuch") ||
+        lower.includes("poori detail") ||
+        lower.includes("full detail") ||
+        lower.includes("briefing") ||
+        lower.includes("brief me")
+      ) {
+        soundEffects.playBeepConfirm();
+        await speakProactiveBriefing("full");
+        return;
+      }
+
       const userTasks = storageService.getTasks();
       const userHealth = storageService.getHealth();
       const userExpenses = storageService.getExpenses();
       const userLifeRecords = readLifeRecords();
+      const phoneTelemetry = await readPhoneHardwareTelemetry().catch(() => null);
 
       const res = await fetch("/api/jarvis/chat", {
         method: "POST",
@@ -410,6 +492,7 @@ export default function App() {
             userLifeRecords,
             userHealth,
             userExpenses,
+            phoneTelemetry,
           },
         }),
       });
@@ -499,12 +582,14 @@ export default function App() {
             speechService.cancelSpeech();
             handleExecuteVoiceAction("SHOW_IDENTITY_VIDEO", data.actionPayload);
           } else {
+            setCockpitLiveReply(msg);
             speechService.speak(msg, {
               lang: data.languageDetected || lang,
               gender: charGender,
               pitch: activePersona.pitch,
               rate: activePersona.rate,
               urduSpeechText: data.urduSpeechText,
+              onEnd: () => setCockpitLiveReply(""),
             });
             if (data.action && data.action !== "NONE") {
               handleExecuteVoiceAction(data.action, data.actionPayload);
@@ -539,7 +624,12 @@ export default function App() {
       return;
     }
 
-    const unsubSpeaking = speechService.subscribeSpeaking(setIsJarvisSpeaking);
+    const unsubSpeaking = speechService.subscribeSpeaking((speaking) => {
+      setIsJarvisSpeaking(speaking);
+      if (!speaking) {
+        setCockpitLiveReply("");
+      }
+    });
     const unsubListening = speechService.subscribeListening(setIsJarvisListening);
 
     speechService.setWakeCallbacks({
@@ -595,18 +685,28 @@ export default function App() {
       (notif) => {
         const alertLine = `${notif.appName} par ${notif.title} ka message aaya hai: ${notif.text}`;
         appendCockpitSummary("reminder", `${notif.appName} Alert`, `${notif.title}: ${notif.text}`);
+        projectHubAlert(notif.title, notif.text, notif.appName);
         if (!speechService.getListeningState()) {
           speechService.speak(alertLine, {
             lang: languageRef.current,
-            gender: voiceCharRef.current,
+            gender: hubPresenterTurnRef.current === "female" ? "male" : "female",
           });
         }
       }
     );
 
+    const onCustomHubAlert = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ title?: string; text?: string; source?: string }>).detail;
+      if (!detail?.text) return;
+      projectHubAlert(detail.title || "Mobile Alert", detail.text, detail.source || "PHONE BRIDGE");
+    };
+    window.addEventListener("q-nexus-hub-alert", onCustomHubAlert);
+
     return () => {
       window.removeEventListener("pointerdown", armOnceOnTouch);
+      window.removeEventListener("q-nexus-hub-alert", onCustomHubAlert);
       if (heardClearTimerRef.current) clearTimeout(heardClearTimerRef.current);
+      if (hubNotifTimerRef.current) clearTimeout(hubNotifTimerRef.current);
       speechService.enableWakeWord(false);
       unsubNative();
       unsubSpeaking();
@@ -621,7 +721,13 @@ export default function App() {
   const speakProactiveBriefing = async (mode: "full" | "tasks" | "health" | "comms" = "full") => {
     if (isJarvisListening || isWakeWaveOpen || isVoiceModalOpen || isIdentityVideoOpen) return;
 
-    const charGender = customization.avatarConfig?.characterGender === "male" ? "male" : "female";
+    const cfg = customization.avatarConfig;
+    const charGender = cfg?.characterGender === "male" ? "male" : "female";
+    const activePersona =
+      PERSONALITY_MODES.find((p) => p.id === cfg?.personalityId) ||
+      PERSONALITY_MODES.find((p) => p.voiceGender === charGender) ||
+      PERSONALITY_MODES[0];
+    const customSlot = charGender === "male" ? cfg?.maleVoiceSettings : cfg?.femaleVoiceSettings;
     const tasks = storageService.getTasks();
     const pendingTasks = tasks.filter((t) => !t.completed);
     const health = storageService.getHealth();
@@ -672,47 +778,76 @@ export default function App() {
       if (!notifPart) return;
       message = notifPart;
     } else {
+      const tel = await readPhoneHardwareTelemetry().catch(() => null);
+      const timeNow = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       const taskSummary =
         pendingTasks.length > 0
           ? language === "en"
             ? `${pendingTasks.length} pending tasks starting with ${pendingTasks[0].title}.`
             : `Aapke ${pendingTasks.length} pending tasks hain jisme sab se pehla ${pendingTasks[0].title} hai.`
-          : "";
+          : language === "en"
+          ? "No pending tasks added yet."
+          : "Abhi koi pending task add nahi hai.";
 
       const healthSummary = hasHealthLogs
         ? language === "en"
           ? `Water intake logged: ${health.waterDrankGlasses} of 8 glasses.`
           : `Health mein ab tak ${health.waterDrankGlasses} glass pani log hai.`
+        : language === "en"
+        ? "No health measurements logged yet."
+        : "Health Hub mein abhi koi measurement log nahi hui.";
+
+      const telSummary = tel
+        ? language === "en"
+          ? `Time is ${timeNow}, device ${tel.deviceName}, battery ${tel.batteryPercent !== null ? `${tel.batteryPercent}%` : "connected"}, network ${tel.networkType}.`
+          : `Is waqt ${timeNow} baje hain, system ${tel.deviceName} par battery ${tel.batteryPercent !== null ? `${tel.batteryPercent} percent` : "ready"} aur network ${tel.networkType} active hai.`
         : "";
 
-      message = [taskSummary, healthSummary, notifPart].filter(Boolean).join(" ");
+      message = [telSummary, taskSummary, healthSummary, notifPart].filter(Boolean).join(" ");
       if (!message && lifeRecordsCount === 0) {
         message =
           language === "en"
-            ? `${activeCharName} ready. No tasks or life records added yet — add your own items whenever you want reminders.`
-            : `${activeCharName} tayar hai. Abhi aapka koi sample ya personal task add nahi hai — jab aap apne tasks add karenge tab main yaad dilaungi.`;
+            ? `${activeCharName} ready. No tasks or life records added yet.`
+            : `Ji Wasi Sahab, main ${activeCharName} hazir hoon. Abhi koi task ya health log add nahi hai.`;
       }
     }
 
     if (message) {
-      appendCockpitSummary("reminder", `${activeCharName} Reminder`, message);
+      const fast = cfg?.fastTalkingMode ?? true;
+      const pitch = customSlot?.pitch ?? activePersona.pitch;
+      const rate = customSlot?.rate ?? activePersona.rate;
+      setCockpitLiveReply(message);
+      appendCockpitSummary("reminder", `${activeCharName} Briefing`, message);
       speechService.speak(message, {
         lang: language,
         gender: charGender,
+        pitch,
+        rate: fast ? Math.max(rate, 1.02) : rate,
+        fast,
+        useElevenLabs: cfg?.useElevenLabs,
+        elevenLabsVoiceId: cfg?.elevenLabsVoiceId,
+        onEnd: () => setCockpitLiveReply(""),
       });
     }
   };
 
-  // Run one initial proactive briefing after boot loading closes, then periodic smart check-ins every 10 mins
+  // Run one clean startup briefing after loading screen closes (zero voice collision)
   useEffect(() => {
-    if (!isAuthenticated || showLoadingScreen) return;
+    if (!isAuthenticated) {
+      initialBriefingDoneRef.current = false;
+      return;
+    }
+    if (showLoadingScreen) return;
 
     let initTimer: ReturnType<typeof setTimeout> | undefined;
     if (!initialBriefingDoneRef.current) {
-      initialBriefingDoneRef.current = true;
       initTimer = setTimeout(() => {
-        speakProactiveBriefing("full");
-      }, 5500);
+        if (initialBriefingDoneRef.current) return;
+        initialBriefingDoneRef.current = true;
+        if (!speechService.getSpeakingState() && !speechService.getListeningState()) {
+          speakProactiveBriefing("full");
+        }
+      }, 1200);
     }
 
     const periodicTimer = setInterval(() => {
@@ -966,6 +1101,7 @@ export default function App() {
       setIsVoiceModalOpen(false);
       setIsWakeWaveOpen(false);
       setIsAppsMatrixOpen(false);
+      setProjectedHubModule(null);
       setIsIdentityVideoOpen(true);
       showToast(
         `${getCharacterDisplayName(avatarConfig, "male")} & ${getCharacterDisplayName(
@@ -974,56 +1110,53 @@ export default function App() {
         )} Hologram Active`
       );
     } else if (action === "OPEN_MEDIA_STUDIO" || action === "SCREEN_HELP") {
-      setAppsMatrixInitialModule("studio");
-      setIsAppsMatrixOpen(true);
-      showToast("Creative Media & Auto-Post Studio Opened!");
+      setProjectedHubModule("studio");
+      showToast("Creative Media & Auto-Post Studio Projected");
     } else if (action === "OPEN_APP") {
-      setAppsMatrixInitialModule("desktop");
-      setIsAppsMatrixOpen(true);
-      showToast(`Launched: ${payload?.appName || "Application"}`);
+      setProjectedHubModule("desktop");
+      showToast(`Projected: ${payload?.appName || "Phone Manager"}`);
+    } else if (action === "OPEN_STUDY") {
+      setProjectedHubModule("study");
+      showToast("Study, Labs & Simulation Hub Projected");
+    } else if (action === "OPEN_BUSINESS") {
+      setProjectedHubModule("business");
+      showToast("Business Command & Growth Advisor Projected");
     } else if (action === "OPEN_AUTOMATION" || action === "SCAN_SCREEN") {
-      setAppsMatrixInitialModule("automation");
-      setIsAppsMatrixOpen(true);
-      showToast("Workflow Automation Engine Activated");
+      setProjectedHubModule("automation");
+      showToast("Workflow Automation Engine Projected");
     } else if (action === "OPEN_COMMS") {
-      setAppsMatrixInitialModule("comms");
-      setIsAppsMatrixOpen(true);
-      showToast("🔔 Phone Notifications, Calls & Auto-Reply Hub Opened");
+      setProjectedHubModule("comms");
+      showToast("Phone Notifications, Calls & Auto-Reply Projected");
     } else if (action === "OPEN_TASKS") {
-      setAppsMatrixInitialModule("memory");
-      setIsAppsMatrixOpen(true);
-      showToast("📋 Tasks & Reminders Hub Opened");
+      setProjectedHubModule("memory");
+      showToast("Tasks & Reminders Hub Projected");
     } else if (action === "OPEN_COMMUNICATION" || action === "SCHEDULE_MEET" || action === "DECOMPOSE_TASK") {
-      setAppsMatrixInitialModule("communication");
-      setIsAppsMatrixOpen(true);
-      showToast("Omni-Channel & Coding Copilot Activated");
+      setProjectedHubModule("communication");
+      showToast("Omni-Channel & Coding Copilot Projected");
     } else if (action === "OPEN_MAPS" || action === "GPS_TRACK") {
-      setAppsMatrixInitialModule("maps");
-      setIsAppsMatrixOpen(true);
-      showToast("Quantum Geospatial Maps & Radar Activated");
+      setProjectedHubModule("maps");
+      showToast("Quantum Geospatial Maps & Radar Projected");
     } else if (action === "OPEN_DEVICES" || action === "FIND_PHONE") {
-      setAppsMatrixInitialModule("devices");
-      setIsAppsMatrixOpen(true);
-      showToast(action === "FIND_PHONE" ? "🚨 Find My Phone Siren Triggered!" : "Digital Device Bridge Activated");
+      setProjectedHubModule("devices");
+      showToast(action === "FIND_PHONE" ? "Find My Phone Siren Triggered!" : "Digital Device Bridge Projected");
     } else if (action === "PRIVACY_CLOAK") {
       window.dispatchEvent(new CustomEvent("toggle-privacy-cloak"));
-      showToast("🔒 High-Privacy Cloak Toggled!");
+      showToast("High-Privacy Cloak Toggled!");
     } else if (action === "AIR_GAP") {
       window.dispatchEvent(new CustomEvent("toggle-air-gap"));
-      showToast("🛡️ Air-Gap Isolation Toggled!");
+      showToast("Air-Gap Isolation Toggled!");
     } else if (action === "START_FOCUS") {
-      setAppsMatrixInitialModule("focus");
-      setIsAppsMatrixOpen(true);
-      showToast("Quantum Deep Focus Activated");
+      setProjectedHubModule("focus");
+      showToast("Quantum Deep Focus Projected");
     } else if (action === "HEALTH_ALERT") {
-      setAppsMatrixInitialModule("health");
-      setIsAppsMatrixOpen(true);
-      showToast(payload?.message || "Health Alert Active");
+      setProjectedHubModule("health");
+      showToast(payload?.message || "Health Alert Projected");
     } else if (action === "LOG_EXPENSE") {
-      setAppsMatrixInitialModule("finance");
-      setIsAppsMatrixOpen(true);
-      showToast("Opened Financial Management");
+      setProjectedHubModule("finance");
+      showToast("Financial Defense Hub Projected");
     } else if (action === "LOCK_SYSTEM") {
+      speechService.cancelSpeech();
+      setProjectedHubModule(null);
       localStorage.removeItem("q_nexus_wasi_auth");
       sessionStorage.removeItem("q_nexus_session_auth");
       setIsAuthenticated(false);
@@ -1034,42 +1167,6 @@ export default function App() {
 
   const activeStageSpectrum = QUANTUM_SPECTRUMS[spectrumIndex % QUANTUM_SPECTRUMS.length];
 
-  // 1. Strictly Lock Screen Interface First - Nothing else renders before unlocking
-  if (!isAuthenticated) {
-    return (
-      <div className="relative min-h-screen bg-[#02050f] text-slate-100 font-rajdhani selection:bg-cyan-500 selection:text-black overflow-hidden flex items-center justify-center">
-        <OfflineIndicator />
-        <WormholeTransition
-          active={wormholeState.active}
-          label={wormholeState.label}
-          primaryColor={activeStageSpectrum.hex}
-          secondaryColor={activeStageSpectrum.secondaryHex}
-        />
-
-        {/* Animated Moving 3D Hologram Background on Lock Screen */}
-        <QuantumBackground3D
-          show3D={customization.show3DBackground}
-          customBgUrl={customization.customBgUrl}
-          customAccentHex="#00f0ff"
-          customSecondaryHex="#8b5cf6"
-        />
-
-        {/* Dedicated Q-DYNAMICS Stage 1 + Jarvis Security Gate */}
-        <SecurityGate
-          onAuthenticated={() => {
-            triggerWormhole("Entering Quantum Diagnostics", () => {
-              sessionStorage.setItem("q_nexus_session_auth", "active");
-              setIsAuthenticated(true);
-              setShowLoadingScreen(true);
-            });
-          }}
-          preferredLanguage={language}
-        />
-      </div>
-    );
-  }
-
-  // 2. Main Interface & Cockpit Hub - ONLY rendered AFTER unlocking
   return (
     <div className="relative min-h-screen bg-[#02050f] text-slate-100 flex flex-col w-full font-rajdhani selection:bg-cyan-500 selection:text-black overflow-x-hidden">
       <OfflineIndicator />
@@ -1079,24 +1176,35 @@ export default function App() {
         primaryColor={activeStageSpectrum.hex}
         secondaryColor={activeStageSpectrum.secondaryHex}
       />
-      {/* Visual Scanline Effect (Separate overlay so all click events work) */}
-      {customization.scanlines && <div className="scanlines-overlay" />}
 
-      {/* 3D Quantum Animated Moving Hologram Background + Drifting 3D Physics Formulas */}
-      {(customization.activeInterfaceTheme === "quantum_cockpit" ||
-        !customization.activeInterfaceTheme ||
-        Boolean(customization.customBgUrl)) && (
-        <QuantumBackground3D
-          show3D={customization.show3DBackground}
-          customBgUrl={customization.customBgUrl}
-          customAccentHex={activeStageSpectrum.hex}
-          customSecondaryHex={activeStageSpectrum.secondaryHex}
-          energySurge={energySurge}
-        />
-      )}
+      <QuantumBackground3D
+        show3D={customization.show3DBackground && (!isAuthenticated || showLoadingScreen)}
+        customBgUrl={customization.customBgUrl}
+        customAccentHex={isAuthenticated ? activeStageSpectrum.hex : "#00f0ff"}
+        customSecondaryHex={isAuthenticated ? activeStageSpectrum.secondaryHex : "#8b5cf6"}
+        energySurge={isAuthenticated ? energySurge : false}
+      />
 
-      {/* Mandatory Ergonomic Health Rest Lockdown (Blocks PC until rest timer ends) */}
-      <MandatoryHealthLockdown
+      {!isAuthenticated ? (
+        <div className="relative z-10 flex-1 min-h-screen flex items-center justify-center overflow-hidden">
+          <SecurityGate
+            onAuthenticated={() => {
+              triggerWormhole("Entering Quantum Diagnostics", () => {
+                sessionStorage.setItem("q_nexus_session_auth", "active");
+                setIsAuthenticated(true);
+                setShowLoadingScreen(true);
+              });
+            }}
+            preferredLanguage={language}
+          />
+        </div>
+      ) : (
+        <>
+          {/* Visual Scanline Effect (Separate overlay so all click events work) */}
+          {customization.scanlines && <div className="scanlines-overlay" />}
+
+          {/* Mandatory Ergonomic Health Rest Lockdown (Blocks PC until rest timer ends) */}
+          <MandatoryHealthLockdown
         isOpen={isHealthLockdownActive}
         onRestCompleted={() => {
           setIsHealthLockdownActive(false);
@@ -1143,6 +1251,10 @@ export default function App() {
         onToggleWakeWord={toggleWakeWord}
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}
+        initialTab={settingsInitialTab}
+        onOpenFullView={() => setIsIdentityVideoOpen(true)}
+        onOpenDetailView={() => setDetailViewNonce((n) => n + 1)}
+        onSpeakBriefing={() => speakProactiveBriefing("full")}
       />
 
       {/* Phone & APK Installation Guide Modal */}
@@ -1153,13 +1265,11 @@ export default function App() {
         initialTab={installModalTab}
       />
 
-      {/* Stage 2: Q-DYNAMICS System Diagnostics & Boot Check Screen */}
+      {/* Stage 2: Q-DYNAMICS System Diagnostics & Boot Check Screen -> Direct Main Hub */}
       <QuantumLoadingScreen
         isOpen={showLoadingScreen}
         onComplete={() => {
-          triggerWormhole("Initializing 3D Quantum Core", () => {
-            setShowLoadingScreen(false);
-          });
+          setShowLoadingScreen(false);
         }}
         commanderName={userProfile.displayName || userProfile.username}
       />
@@ -1234,26 +1344,43 @@ export default function App() {
         </div>
       )}
 
-      {/* Single Active Interface: Minimalist Deep-Space Cockpit */}
+      {/* Single Active Interface: Minimalist Deep-Space Cockpit (mounts cleanly as loading completes) */}
+      {!showLoadingScreen && (
       <main className="relative z-10 flex-1 min-h-screen flex flex-col justify-center overflow-hidden">
         <UltraCockpitDashboard
           userProfile={userProfile}
+          onUpdateProfile={setUserProfile}
           customization={customization}
           coherence={coherence}
           screenWorkMinutes={Math.floor(screenWorkSeconds / 60)}
           onOpenVoiceModal={() => setIsVoiceModalOpen(true)}
           onOpenAppsMatrix={() => {
+            setProjectedHubModule(null);
             setAppsMatrixInitialModule(null);
             setIsAppsMatrixOpen(true);
           }}
-          onOpenModule={(moduleId: string) => {
-            setAppsMatrixInitialModule(moduleId as MatrixModuleId);
-            setIsAppsMatrixOpen(true);
+          onOpenModule={(moduleId) => {
+            setIsAppsMatrixOpen(false);
+            setProjectedHubModule(moduleId);
           }}
-          onOpenSettings={() => setIsSettingsOpen(true)}
+          activeProjectedModule={projectedHubModule}
+          onCloseProjectedModule={() => setProjectedHubModule(null)}
+          activeHubNotification={activeHubNotification}
+          onOpenSettings={() => {
+            setSettingsInitialTab("appearance");
+            setIsSettingsOpen(true);
+          }}
+          onOpenCharacterSettings={() => {
+            setSettingsInitialTab("voice");
+            setIsSettingsOpen(true);
+          }}
+          detailViewNonce={detailViewNonce}
+          onRenameGenderName={handleRenameGenderName}
           onTriggerHealthLockdown={() => setIsHealthLockdownActive(true)}
           onLockScreen={() => {
+            speechService.cancelSpeech();
             setHudHidden(false);
+            setProjectedHubModule(null);
             triggerWormhole("Engaging Quantum Lock", () => {
               sessionStorage.removeItem("q_nexus_session_auth");
               localStorage.removeItem("q_nexus_wasi_auth");
@@ -1342,8 +1469,28 @@ export default function App() {
             });
           }}
           onShowIdentityVideo={() => setIsIdentityVideoOpen(true)}
+          liveReplyText={cockpitLiveReply}
+          pausedByFullscreen={isIdentityVideoOpen}
+          onSwitchGender={(nextGender) => {
+            const nextAvatar = {
+              ...avatarConfig,
+              characterGender: nextGender,
+              personalityId: nextGender === "male" ? "wasu_male" : "wasi_ki_jan_female",
+            };
+            const updatedCust: DashboardCustomization = {
+              ...customization,
+              activeVoiceMode: nextGender,
+              avatarConfig: nextAvatar,
+            };
+            setCustomization(updatedCust);
+            storageService.saveCustomization(updatedCust);
+            showToast(`Voice Active: ${getCharacterDisplayName(nextAvatar, nextGender)}`);
+          }}
         />
       </main>
+      )}
+        </>
+      )}
     </div>
   );
 }

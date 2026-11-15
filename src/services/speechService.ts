@@ -33,6 +33,8 @@ class SpeechService {
   private speakingWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private wakeCooldownUntil = 0;
   private currentAudioElement: HTMLAudioElement | null = null;
+  private speakSeqId = 0;
+  private activeTtsAbort: AbortController | null = null;
 
   // Tier-2 audio-burst wake fallback state (only used when Web Speech API is blocked/network-failed)
   private burstWakeActive = false;
@@ -1387,14 +1389,17 @@ class SpeechService {
     const effectiveBrowserURI = options.preferredBrowserVoiceURI || resolvedProfile.preferredBrowserVoiceURI;
 
     this.cancelSpeech();
+    const mySpeakId = ++this.speakSeqId;
 
     let finished = false;
     const finishSpeaking = () => {
       if (finished) return;
       finished = true;
-      this.notifySpeaking(false);
-      options.onEnd?.();
-      this.resumeWakeDetectorSoon();
+      if (mySpeakId === this.speakSeqId) {
+        this.notifySpeaking(false);
+        options.onEnd?.();
+        this.resumeWakeDetectorSoon();
+      }
     };
 
     // Safety timeout prevents isSpeaking from EVER hanging forever if speechSynthesis drops onend!
@@ -1418,17 +1423,22 @@ class SpeechService {
             fast,
           }),
         });
+        if (mySpeakId !== this.speakSeqId) return;
         if (elRes.ok) {
           const elData = await elRes.json();
+          if (mySpeakId !== this.speakSeqId) return;
           if (elData.base64Audio) {
             const audio = new Audio(
               `data:${elData.format || "audio/mpeg"};base64,${elData.base64Audio}`
             );
             this.currentAudioElement = audio;
             audio.playbackRate = Math.min(1.35, Math.max(0.75, effectiveRate));
-            audio.onplay = () => this.notifySpeaking(true);
+            audio.onplay = () => {
+              if (mySpeakId === this.speakSeqId) this.notifySpeaking(true);
+            };
             audio.onended = finishSpeaking;
-            audio.onerror = () =>
+            audio.onerror = () => {
+              if (mySpeakId !== this.speakSeqId) return;
               this.fallbackBrowserSpeak(
                 cleanText,
                 {
@@ -1440,6 +1450,7 @@ class SpeechService {
                 },
                 finishSpeaking
               );
+            };
             try {
               await audio.play();
               return;
@@ -1449,10 +1460,13 @@ class SpeechService {
       } catch {}
     }
 
+    if (mySpeakId !== this.speakSeqId) return;
+
     // 2. Server-side 100% Pakistani Urdu Neural TTS
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 9000);
+      this.activeTtsAbort = controller;
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       const res = await fetch("/api/jarvis/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1467,23 +1481,43 @@ class SpeechService {
         }),
       });
       clearTimeout(timeoutId);
+      if (this.activeTtsAbort === controller) {
+        this.activeTtsAbort = null;
+      }
+
+      if (mySpeakId !== this.speakSeqId) return;
 
       let serverUrduText: string | undefined = options.urduSpeechText;
       if (res.ok) {
         const data = await res.json();
+        if (mySpeakId !== this.speakSeqId) return;
         serverUrduText =
           typeof data.urduScriptText === "string" && data.urduScriptText.trim()
             ? data.urduScriptText
             : serverUrduText;
         if (data.base64Audio) {
           const audio = new Audio(
-            `data:${data.format || "audio/wav"};base64,${data.base64Audio}`
+            `data:${data.format || "audio/mpeg"};base64,${data.base64Audio}`
           );
           this.currentAudioElement = audio;
-          audio.playbackRate = fast ? Math.max(1.0, effectiveRate) : effectiveRate;
-          audio.onplay = () => this.notifySpeaking(true);
+          if (data.singleGenderEngine && effectiveGender === "male") {
+            // Shift pitch cleanly downward into a natural male register for Wasu
+            (audio as any).preservesPitch = false;
+            (audio as any).mozPreservesPitch = false;
+            (audio as any).webkitPreservesPitch = false;
+            audio.playbackRate = Math.min(0.94, Math.max(0.76, effectivePitch * 0.89));
+          } else {
+            (audio as any).preservesPitch = true;
+            (audio as any).mozPreservesPitch = true;
+            (audio as any).webkitPreservesPitch = true;
+            audio.playbackRate = Math.min(1.2, Math.max(0.86, effectiveRate));
+          }
+          audio.onplay = () => {
+            if (mySpeakId === this.speakSeqId) this.notifySpeaking(true);
+          };
           audio.onended = finishSpeaking;
-          audio.onerror = () =>
+          audio.onerror = () => {
+            if (mySpeakId !== this.speakSeqId) return;
             this.fallbackBrowserSpeak(
               cleanText,
               {
@@ -1496,12 +1530,14 @@ class SpeechService {
               },
               finishSpeaking
             );
+          };
           try {
             await audio.play();
             return;
           } catch {}
         }
       }
+      if (mySpeakId !== this.speakSeqId) return;
       this.fallbackBrowserSpeak(
         cleanText,
         {
@@ -1516,6 +1552,8 @@ class SpeechService {
       );
       return;
     } catch {}
+
+    if (mySpeakId !== this.speakSeqId) return;
 
     // 3. Browser Synthesis Fallback
     this.fallbackBrowserSpeak(
@@ -1560,7 +1598,7 @@ class SpeechService {
     const voices = liveVoices.length > 0 ? liveVoices : this.cachedVoices;
 
     const isMaleVoiceName = (name: string) =>
-      /\b(david|mark|george|daniel|alex|asad|salman|uzair|ravi|hemant|richard|guy|ryan|andrew|james|steffan|christopher|eric|roger|male)\b/i.test(
+      /\b(david|mark|george|daniel|alex|asad|salman|uzair|ravi|hemant|prabhat|madhur|richard|guy|ryan|andrew|james|steffan|christopher|eric|roger|male)\b/i.test(
         name
       ) && !/\bfemale\b/i.test(name);
 
@@ -1573,13 +1611,14 @@ class SpeechService {
     const searchPool = pool.length > 0 ? pool : voices;
 
     let selectedVoice: SpeechSynthesisVoice | null = null;
-    let isNativeUrduVoice = false;
+    let isSouthAsianVoice = false;
 
     if (preferredBrowserVoiceURI) {
       const matchedCustom = voices.find((v) => v.voiceURI === preferredBrowserVoiceURI);
       if (matchedCustom) {
         selectedVoice = matchedCustom;
-        isNativeUrduVoice = matchedCustom.lang.toLowerCase().startsWith("ur");
+        const l = matchedCustom.lang.toLowerCase();
+        isSouthAsianVoice = l.startsWith("ur") || l.startsWith("pa") || l.startsWith("hi");
       }
     }
 
@@ -1589,7 +1628,9 @@ class SpeechService {
           (v) =>
             (v.lang.toLowerCase().includes("ur-pk") ||
               v.name.toLowerCase().includes("uzma") ||
-              v.name.toLowerCase().includes("asad")) &&
+              v.name.toLowerCase().includes("asad") ||
+              v.name.toLowerCase().includes("salman") ||
+              v.name.toLowerCase().includes("gul")) &&
             (isMaleRequested ? isMaleVoiceName(v.name) : !isMaleVoiceName(v.name))
         ) ||
         searchPool.find((v) => v.lang.toLowerCase().startsWith("ur") || v.name.toLowerCase().includes("urdu")) ||
@@ -1597,14 +1638,22 @@ class SpeechService {
 
       if (pakUrduVoice) {
         selectedVoice = pakUrduVoice;
-        isNativeUrduVoice = true;
+        isSouthAsianVoice = true;
       } else {
-        selectedVoice =
+        const regionalVoice =
           searchPool.find((v) => v.lang.toLowerCase().startsWith("pa") || v.name.toLowerCase().includes("punjabi")) ||
-          searchPool.find((v) => v.lang.toLowerCase().startsWith("ur")) ||
-          searchPool.find((v) => (isMaleRequested ? isMaleVoiceName(v.name) : isFemaleVoiceName(v.name))) ||
-          searchPool[0] ||
+          searchPool.find((v) => v.lang.toLowerCase().startsWith("hi") || v.name.toLowerCase().includes("hindi")) ||
+          voices.find((v) => v.lang.toLowerCase().startsWith("ur") || v.lang.toLowerCase().startsWith("hi")) ||
           null;
+        if (regionalVoice) {
+          selectedVoice = regionalVoice;
+          isSouthAsianVoice = true;
+        } else {
+          selectedVoice =
+            searchPool.find((v) => (isMaleRequested ? isMaleVoiceName(v.name) : isFemaleVoiceName(v.name))) ||
+            searchPool[0] ||
+            null;
+        }
       }
     } else if (!selectedVoice) {
       selectedVoice =
@@ -1615,11 +1664,15 @@ class SpeechService {
     }
 
     const spokenContent =
-      isNativeUrduVoice && urduScriptText && urduScriptText.trim().length > 0 ? urduScriptText.trim() : text;
+      isSouthAsianVoice && urduScriptText && urduScriptText.trim().length > 0 ? urduScriptText.trim() : text;
 
     const utterance = new SpeechSynthesisUtterance(spokenContent);
     if (lang === "ur" || lang === "pa") {
-      utterance.lang = isNativeUrduVoice ? selectedVoice?.lang || "ur-PK" : "ur-PK";
+      utterance.lang = selectedVoice?.lang?.toLowerCase().startsWith("ur")
+        ? selectedVoice.lang
+        : selectedVoice?.lang?.toLowerCase().startsWith("hi")
+        ? selectedVoice.lang
+        : "ur-PK";
     } else {
       utterance.lang = selectedVoice?.lang || "en-US";
     }
@@ -1630,8 +1683,8 @@ class SpeechService {
       pitch !== undefined
         ? Math.min(1.5, Math.max(0.65, pitch))
         : isMaleRequested
-        ? 0.92
-        : 1.03;
+        ? 0.9
+        : 1.04;
 
     utterance.onstart = () => this.notifySpeaking(true);
     utterance.onend = () => {
@@ -1661,6 +1714,13 @@ class SpeechService {
   }
 
   public cancelSpeech() {
+    this.speakSeqId += 1;
+    if (this.activeTtsAbort) {
+      try {
+        this.activeTtsAbort.abort();
+      } catch {}
+      this.activeTtsAbort = null;
+    }
     if (this.speakingWatchdogTimer) {
       clearTimeout(this.speakingWatchdogTimer);
       this.speakingWatchdogTimer = null;

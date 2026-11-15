@@ -784,7 +784,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
         }
       }
     } catch (e) {
-      console.error(e);
+      console.warn("Voice modal chat fallback:", e);
       const fallbackReply =
         language === "pa"
           ? "Wasi paji, command receive ho gayi ae. Quantum core offline macro active kar reha ae."

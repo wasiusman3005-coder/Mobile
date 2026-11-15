@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Monitor, GraduationCap, Database, Heart, DollarSign, Target, Brain, Laptop, X, ArrowLeft, Sparkles, ChevronRight, LayoutGrid, MapPin, Smartphone, Globe, Radio } from "lucide-react";
+import { Monitor, GraduationCap, Database, Heart, DollarSign, Target, Brain, Laptop, X, ArrowLeft, Sparkles, ChevronRight, LayoutGrid, MapPin, Smartphone, Globe, Radio, Briefcase } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { DesktopManager } from "./DesktopManager";
 import { StudentStudyHub } from "./StudentStudyHub";
@@ -14,10 +14,11 @@ import { QuantumGeospatialMapSuite } from "./QuantumGeospatialMapSuite";
 import { DigitalDeviceBridgeSuite } from "./DigitalDeviceBridgeSuite";
 import { CreativeMediaStudio } from "./CreativeMediaStudio";
 import { MobileCommsControlHub } from "./MobileCommsControlHub";
+import { BusinessAdvisorHub } from "./BusinessAdvisorHub";
 import { LanguageCode, VoiceGender, UserProfile } from "../types";
 import { Film, Sparkles as SparkleIcon, Bell } from "lucide-react";
 
-export type MatrixModuleId = "comms" | "desktop" | "study" | "records" | "health" | "finance" | "focus" | "memory" | "automation" | "communication" | "maps" | "devices" | "studio";
+export type MatrixModuleId = "comms" | "desktop" | "study" | "business" | "records" | "health" | "finance" | "focus" | "memory" | "automation" | "communication" | "maps" | "devices" | "studio";
 
 interface QuantumAppsMatrixProps {
   isOpen: boolean;
@@ -80,13 +81,23 @@ export const QuantumAppsMatrix: React.FC<QuantumAppsMatrixProps> = ({
     },
     {
       id: "study",
-      title: "Student Academic & Auto-Pilot Hub",
-      subtitle: "Autonomous homework solver, exam countdown, coding, math & physics research notes",
+      title: "Student Study, Labs & Simulation Hub",
+      subtitle: "Separate Word/PPTX/Excel/PDF vaults, Labs manager, AI research agent & live topic simulation builder",
       icon: GraduationCap,
       badge: "STUDY GENIUS",
       gradient: "from-purple-950/60 to-slate-950/90",
       borderColor: "border-purple-500/40 hover:border-purple-400",
       textColor: "text-purple-300",
+    },
+    {
+      id: "business",
+      title: "Business Command & Growth Advisor",
+      subtitle: "Business ideas generator, profit/cost tracking, bottleneck diagnostics & strategic problem solver",
+      icon: Briefcase,
+      badge: "BUSINESS AI",
+      gradient: "from-amber-950/60 to-slate-950/90",
+      borderColor: "border-amber-500/40 hover:border-amber-400",
+      textColor: "text-amber-300",
     },
     {
       id: "records",
@@ -327,6 +338,9 @@ export const QuantumAppsMatrix: React.FC<QuantumAppsMatrixProps> = ({
               )}
               {activeModule === "study" && (
                 <StudentStudyHub language={language} voiceGender={voiceGender} />
+              )}
+              {activeModule === "business" && (
+                <BusinessAdvisorHub language={language} voiceGender={voiceGender} />
               )}
               {activeModule === "records" && (
                 <LifeRecordsManager language={language} voiceGender={voiceGender} />

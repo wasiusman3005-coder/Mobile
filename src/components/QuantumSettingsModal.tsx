@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Settings, X, Palette, Volume2, AudioWaveform, Image, Shield, Clock, Upload, Check, RefreshCw, Sparkles, Sliders, Globe, Radio, Play, Zap, Fingerprint, ScanFace, Lock, Trash2 } from "lucide-react";
+import { Settings, X, Palette, Volume2, AudioWaveform, Image, Shield, Clock, Upload, Check, RefreshCw, Sparkles, Sliders, Globe, Radio, Play, Zap, Fingerprint, ScanFace, Lock, Trash2, Maximize2, Eye } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
 import { storageService, defaultAvatarConfig, defaultSecurityConfig } from "../services/storage";
@@ -13,6 +13,8 @@ import { triggerHaptic } from "../services/mobileDeviceActions";
 import { DashboardCustomization, CustomVoiceProfile, AccentTheme, LanguageCode, MobileSecurityConfig } from "../types";
 import { ELEVENLABS_VOICE_PRESETS, getCharacterDisplayName } from "../data/jarvisCatalog";
 
+type SettingsTabId = "appearance" | "voice" | "security" | "screensaver" | "health" | "data";
+
 interface QuantumSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,6 +26,10 @@ interface QuantumSettingsModalProps {
   onToggleWakeWord: () => void;
   onExportBackup: () => void;
   onImportBackup: () => void;
+  initialTab?: SettingsTabId;
+  onOpenFullView?: () => void;
+  onOpenDetailView?: () => void;
+  onSpeakBriefing?: () => void;
 }
 
 export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
@@ -37,8 +43,12 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
   onToggleWakeWord,
   onExportBackup,
   onImportBackup,
+  initialTab,
+  onOpenFullView,
+  onOpenDetailView,
+  onSpeakBriefing,
 }) => {
-  const [activeTab, setActiveTab] = useState<"appearance" | "voice" | "security" | "screensaver" | "health" | "data">("appearance");
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab || "appearance");
 
   // Custom Voice Recording, Upload & Browser Voice List State
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -89,13 +99,16 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
       stopFaceCamera();
       return;
     }
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
     checkBiometricCapabilities().then(setBioCaps);
     setBrowserVoices(speechService.getAvailableBrowserVoices());
     fetch("/api/tts/elevenlabs/status")
       .then((r) => r.json())
       .then((d) => setElevenServerConfigured(Boolean(d.configured)))
       .catch(() => {});
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
 
   if (!isOpen) return null;
 
@@ -587,6 +600,67 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
           {/* 2. VOICE & CUSTOM CLONING */}
           {activeTab === "voice" && (
             <div className="space-y-6">
+              {/* Character Stage View Controls (Full View, Detail View, Live Briefing) */}
+              {(onOpenFullView || onOpenDetailView || onSpeakBriefing) && (
+                <div className="p-4 rounded-2xl bg-slate-900/75 border border-purple-500/40 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-orbitron font-bold text-sm text-purple-300 uppercase flex items-center gap-2">
+                        <Maximize2 className="w-4 h-4 text-purple-400" />
+                        <span>Character Stage View &amp; Live Modes</span>
+                      </h3>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Full View hologram, Detail View conversation summary, ya characters ki live briefing yahan se kholein.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {onOpenFullView && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEffects.playBeepConfirm();
+                          onClose();
+                          onOpenFullView();
+                        }}
+                        className="py-2.5 px-3 rounded-xl bg-purple-950/70 hover:bg-purple-900 border border-purple-400/50 text-purple-100 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                        <span>Full View</span>
+                      </button>
+                    )}
+                    {onOpenDetailView && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEffects.playClick();
+                          onClose();
+                          onOpenDetailView();
+                        }}
+                        className="py-2.5 px-3 rounded-xl bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-400/50 text-cyan-100 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Detail View</span>
+                      </button>
+                    )}
+                    {onSpeakBriefing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEffects.playBeepConfirm();
+                          onClose();
+                          onSpeakBriefing();
+                        }}
+                        className="py-2.5 px-3 rounded-xl bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-400/50 text-emerald-100 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Sara Kuch Batao</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Language Selection */}
               <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
                 <h3 className="font-orbitron font-bold text-sm text-cyan-300 uppercase flex items-center gap-2">

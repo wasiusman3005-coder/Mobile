@@ -34,6 +34,13 @@ interface IdentityVideoOverlayProps {
 }
 
 export const IDENTITY_REVEAL_VIDEO_SRC = "/assets/aistudio/gemini_generated_video_0cd468c8_a6b6456c.mp4";
+export const FULL_VIEW_VIDEOS = [
+  "/assets/aistudio/gemini_generated_video_77029aae_66787b62.mp4",
+  "/assets/aistudio/1_73e6d4cd.mp4",
+  "/assets/aistudio/2_f462292e.mp4",
+  "/assets/aistudio/3_7bd03cf9.mp4",
+  "/assets/aistudio/gemini_generated_video_0cd468c8_a6b6456c.mp4",
+] as const;
 
 const HOLO_AURAS = [
   { name: "Dual Cyber", left: "#38bdf8", right: "#f59e0b", border: "rgba(56,189,248,0.45)" },
@@ -66,6 +73,7 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
   onCloseRef.current = onClose;
 
   const [isMuted, setIsMuted] = useState(false);
+  const [fullVideoIdx, setFullVideoIdx] = useState(0);
   const [autoplayAudioBlocked, setAutoplayAudioBlocked] = useState(false);
   const [auraIndex, setAuraIndex] = useState(0);
   const [actionIndex, setActionIndex] = useState(0);
@@ -87,13 +95,14 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
     speechService.cancelSpeech();
     setAutoplayAudioBlocked(false);
     setIsMuted(false);
+    setFullVideoIdx(0);
 
     const vid = videoRef.current;
     let stallWatchdog: ReturnType<typeof setInterval> | null = null;
 
     if (vid) {
       vid.currentTime = 0;
-      vid.loop = true;
+      vid.loop = false;
       vid.muted = false;
       vid.play().catch(() => {
         vid.muted = true;
@@ -125,6 +134,30 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
       }
     };
   }, [isOpen]);
+
+  // Smoothly load & play each sequential video when fullVideoIdx advances (including wrap-around to 0)
+  const mountedIdxRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      mountedIdxRef.current = false;
+      return;
+    }
+    if (!mountedIdxRef.current) {
+      mountedIdxRef.current = true;
+      return;
+    }
+    const vid = videoRef.current;
+    if (!vid) return;
+    vid.loop = false;
+    vid.muted = isMuted;
+    vid.load();
+    vid.play().catch(() => {
+      vid.muted = true;
+      setIsMuted(true);
+      setAutoplayAudioBlocked(true);
+      vid.play().catch(() => {});
+    });
+  }, [isOpen, fullVideoIdx]);
 
   // Continuous Autonomous Multi-Action Engine performing real live checks while video loops
   useEffect(() => {
@@ -253,13 +286,15 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
       {/* Full-View Unobstructed Continuous Looping MP4 Video (Zero Play/Pause/Replay Buttons) */}
       <video
         ref={videoRef}
-        src={IDENTITY_REVEAL_VIDEO_SRC}
+        src={FULL_VIEW_VIDEOS[fullVideoIdx % FULL_VIEW_VIDEOS.length]}
         autoPlay
-        loop
         playsInline
         preload="auto"
         muted={isMuted}
         disablePictureInPicture
+        onEnded={() => {
+          setFullVideoIdx((prev) => (prev + 1) % FULL_VIEW_VIDEOS.length);
+        }}
         className="w-full h-full object-contain bg-black"
       />
 

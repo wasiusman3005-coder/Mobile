@@ -18,21 +18,45 @@ import {
   VolumeX,
   ScrollText,
   Film,
+  Users,
+  Maximize2,
+  Eye,
+  Sparkles,
+  RefreshCw,
+  Sliders,
+  Briefcase,
+  GraduationCap,
+  DollarSign,
+  Mic,
+  Monitor,
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
-import { readPhoneHardwareTelemetry, PhoneHardwareTelemetry } from "../services/systemTelemetry";
 import { triggerHaptic } from "../services/mobileDeviceActions";
 import { UserProfile, DashboardCustomization, LanguageCode, VoiceGender } from "../types";
 import { QuantumThemeColor } from "./AutoMorphingQuantumLogo";
 import {
-  CentralQuantumCoreHologram,
   CockpitCorePhase,
-  QuantumColorPalette,
   CORE_TOPOLOGIES,
   QUANTUM_SPECTRUMS,
 } from "./CentralQuantumCoreHologram";
+import { DualCharacterHoloStage, HubPanelNotification } from "./DualCharacterHoloStage";
 import { QDynamicsBrandLogo3D } from "./QDynamicsBrandLogo3D";
 import { getCharacterDisplayName } from "../data/jarvisCatalog";
+import type { MatrixModuleId } from "./QuantumAppsMatrix";
+import { MobileCommsControlHub } from "./MobileCommsControlHub";
+import { DesktopManager } from "./DesktopManager";
+import { StudentStudyHub } from "./StudentStudyHub";
+import { BusinessAdvisorHub } from "./BusinessAdvisorHub";
+import { LifeRecordsManager } from "./LifeRecordsManager";
+import { HealthLifestyleGuard } from "./HealthLifestyleGuard";
+import { FinanceInvestManager } from "./FinanceInvestManager";
+import { QuantumFocusAnalytics } from "./QuantumFocusAnalytics";
+import { PersonalMemoryBank } from "./PersonalMemoryBank";
+import { WorkflowAutomationSuite } from "./WorkflowAutomationSuite";
+import { CommunicationCodingSuite } from "./CommunicationCodingSuite";
+import { QuantumGeospatialMapSuite } from "./QuantumGeospatialMapSuite";
+import { DigitalDeviceBridgeSuite } from "./DigitalDeviceBridgeSuite";
+import { CreativeMediaStudio } from "./CreativeMediaStudio";
 
 export interface CockpitSummaryItem {
   id: string;
@@ -42,8 +66,26 @@ export interface CockpitSummaryItem {
   timeStr: string;
 }
 
+const MODULE_PROJECTED_TITLES: Record<MatrixModuleId, string> = {
+  comms: "Mobile Alerts, Calls & Control Panel",
+  desktop: "Phone Hardware & File Vault",
+  study: "Study, Labs & Live Simulation Hub",
+  business: "Business Command & Growth Advisor",
+  records: "Universal Life Records Vault",
+  health: "Health & Lifestyle Shield",
+  finance: "Expenses & Fazool Kharchi Defense",
+  focus: "Deep Focus Chamber",
+  memory: "Tasks, Goals & Neural Memory",
+  automation: "Workflow Automation Engine",
+  communication: "Omni-Channel & Coding Copilot",
+  maps: "Geospatial Radar & GPS",
+  devices: "Digital Device Bridge",
+  studio: "Creative AI Media Studio",
+};
+
 interface UltraCockpitDashboardProps {
   userProfile: UserProfile;
+  onUpdateProfile?: (profile: UserProfile) => void;
   customization: DashboardCustomization;
   currentTheme?: QuantumThemeColor;
   coherence: number;
@@ -52,22 +94,10 @@ interface UltraCockpitDashboardProps {
   screenWorkMinutes: number;
   onOpenVoiceModal: () => void;
   onOpenAppsMatrix: () => void;
-  onOpenModule?: (
-    moduleId:
-      | "comms"
-      | "desktop"
-      | "study"
-      | "records"
-      | "health"
-      | "finance"
-      | "focus"
-      | "memory"
-      | "automation"
-      | "communication"
-      | "maps"
-      | "devices"
-      | "studio"
-  ) => void;
+  onOpenModule?: (moduleId: MatrixModuleId) => void;
+  activeProjectedModule?: MatrixModuleId | null;
+  onCloseProjectedModule?: () => void;
+  activeHubNotification?: HubPanelNotification | null;
   onOpenSettings: () => void;
   onTriggerWakeWord?: () => void;
   onPrimeWakeMic?: () => void;
@@ -102,15 +132,26 @@ interface UltraCockpitDashboardProps {
   hudHidden?: boolean;
   onToggleHudHidden?: () => void;
   onShowIdentityVideo?: () => void;
+  liveReplyText?: string;
+  onSwitchGender?: (nextGender: "male" | "female") => void;
+  onRenameGenderName?: (gender: "male" | "female", newName: string) => void;
+  onOpenCharacterSettings?: () => void;
+  detailViewNonce?: number;
+  pausedByFullscreen?: boolean;
 }
 
 export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
+  userProfile,
+  onUpdateProfile,
   customization,
   coherence,
   isListening,
   onOpenVoiceModal,
   onOpenAppsMatrix,
   onOpenModule,
+  activeProjectedModule = null,
+  onCloseProjectedModule,
+  activeHubNotification = null,
   onOpenSettings,
   onPrimeWakeMic,
   wakeReady,
@@ -138,21 +179,39 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
   hudHidden = false,
   onToggleHudHidden,
   onShowIdentityVideo,
+  onSpeakBriefing,
+  liveReplyText = "",
+  onSwitchGender,
+  onRenameGenderName,
+  onOpenCharacterSettings,
+  detailViewNonce = 0,
+  pausedByFullscreen = false,
 }) => {
-  const [phoneTelemetry, setPhoneTelemetry] = useState<PhoneHardwareTelemetry | null>(null);
   const [dismissIframeNotice, setDismissIframeNotice] = useState(false);
   const [soundOn, setSoundOn] = useState(soundEffects.soundEnabled);
-  const [sidebarDrawer, setSidebarDrawer] = useState<"none" | "core" | "summary">("none");
+  const [sidebarDrawer, setSidebarDrawer] = useState<"none" | "characters" | "core" | "summary">("none");
+  const [isIconFlightActive, setIsIconFlightActive] = useState(true);
   const summaryScrollRef = useRef<HTMLDivElement>(null);
 
-  const activeCharName = getCharacterDisplayName(customization.avatarConfig);
-  const activeSpec = QUANTUM_SPECTRUMS[spectrumIndex % QUANTUM_SPECTRUMS.length];
+  useEffect(() => {
+    const settleTimer = setTimeout(() => {
+      setIsIconFlightActive(false);
+    }, 2850);
+    return () => clearTimeout(settleTimer);
+  }, []);
 
   useEffect(() => {
-    readPhoneHardwareTelemetry()
-      .then((tel) => setPhoneTelemetry(tel))
-      .catch(() => {});
-  }, []);
+    if (detailViewNonce > 0) {
+      setSidebarDrawer("summary");
+    }
+  }, [detailViewNonce]);
+
+  const activeGender: "male" | "female" =
+    customization.avatarConfig?.characterGender === "male" ? "male" : "female";
+  const activeCharName = getCharacterDisplayName(customization.avatarConfig, activeGender);
+  const maleCharName = getCharacterDisplayName(customization.avatarConfig, "male");
+  const femaleCharName = getCharacterDisplayName(customization.avatarConfig, "female");
+  const activeSpec = QUANTUM_SPECTRUMS[spectrumIndex % QUANTUM_SPECTRUMS.length];
 
   useEffect(() => {
     if (summaryScrollRef.current) {
@@ -165,6 +224,10 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       ? (window.location.origin || "").replace("https://ais-dev-", "https://ais-pre-")
       : "";
 
+  const projectedTitle = activeProjectedModule
+    ? MODULE_PROJECTED_TITLES[activeProjectedModule] || "Tech Hub Terminal"
+    : null;
+
   const sideActions: {
     id: string;
     label: string;
@@ -172,13 +235,39 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     onClick: () => void;
     active?: boolean;
     badgeCount?: number;
+    color: string;
+    bgFrom: string;
+    bgTo: string;
+    borderHex: string;
+    glowHex: string;
   }[] = [
     {
+      id: "characters",
+      label: "Characters & Views",
+      icon: Users,
+      active: sidebarDrawer === "characters",
+      color: "#38bdf8",
+      bgFrom: "rgba(6, 182, 212, 0.34)",
+      bgTo: "rgba(14, 116, 144, 0.18)",
+      borderHex: "rgba(56, 189, 248, 0.55)",
+      glowHex: "rgba(56, 189, 248, 0.42)",
+      onClick: () => {
+        soundEffects.playClick();
+        setSidebarDrawer((prev) => (prev === "characters" ? "none" : "characters"));
+      },
+    },
+    {
       id: "identity_video",
-      label: "Show Wasu & Wasi ki Jan",
+      label: "Full View",
       icon: Film,
+      color: "#e879f9",
+      bgFrom: "rgba(168, 85, 247, 0.36)",
+      bgTo: "rgba(217, 70, 239, 0.18)",
+      borderHex: "rgba(232, 121, 249, 0.55)",
+      glowHex: "rgba(217, 70, 239, 0.42)",
       onClick: () => {
         soundEffects.playBeepConfirm();
+        setSidebarDrawer("none");
         onShowIdentityVideo?.();
       },
     },
@@ -187,6 +276,11 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       label: "Core & Spectrum",
       icon: Atom,
       active: sidebarDrawer === "core",
+      color: "#818cf8",
+      bgFrom: "rgba(99, 102, 241, 0.36)",
+      bgTo: "rgba(56, 189, 248, 0.18)",
+      borderHex: "rgba(129, 140, 248, 0.55)",
+      glowHex: "rgba(99, 102, 241, 0.45)",
       onClick: () => {
         soundEffects.playClick();
         setSidebarDrawer((prev) => (prev === "core" ? "none" : "core"));
@@ -194,19 +288,74 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     },
     {
       id: "summary",
-      label: "Voice Summary",
+      label: "Detail Summary",
       icon: ScrollText,
       active: sidebarDrawer === "summary",
       badgeCount: cockpitSummaries.length,
+      color: "#fbbf24",
+      bgFrom: "rgba(245, 158, 11, 0.36)",
+      bgTo: "rgba(180, 83, 9, 0.18)",
+      borderHex: "rgba(251, 191, 36, 0.55)",
+      glowHex: "rgba(245, 158, 11, 0.42)",
       onClick: () => {
         soundEffects.playClick();
         setSidebarDrawer((prev) => (prev === "summary" ? "none" : "summary"));
       },
     },
     {
+      id: "study",
+      label: "Study & Labs",
+      icon: GraduationCap,
+      active: activeProjectedModule === "study",
+      color: "#60a5fa",
+      bgFrom: "rgba(59, 130, 246, 0.36)",
+      bgTo: "rgba(29, 78, 216, 0.18)",
+      borderHex: "rgba(96, 165, 250, 0.55)",
+      glowHex: "rgba(59, 130, 246, 0.42)",
+      onClick: () => {
+        soundEffects.playClick();
+        onOpenModule?.("study");
+      },
+    },
+    {
+      id: "business",
+      label: "Business Hub",
+      icon: Briefcase,
+      active: activeProjectedModule === "business",
+      color: "#fb923c",
+      bgFrom: "rgba(249, 115, 22, 0.36)",
+      bgTo: "rgba(234, 88, 12, 0.18)",
+      borderHex: "rgba(251, 146, 60, 0.55)",
+      glowHex: "rgba(249, 115, 22, 0.42)",
+      onClick: () => {
+        soundEffects.playClick();
+        onOpenModule?.("business");
+      },
+    },
+    {
+      id: "finance",
+      label: "Expenses Guard",
+      icon: DollarSign,
+      active: activeProjectedModule === "finance",
+      color: "#34d399",
+      bgFrom: "rgba(16, 185, 129, 0.36)",
+      bgTo: "rgba(5, 150, 105, 0.18)",
+      borderHex: "rgba(52, 211, 153, 0.55)",
+      glowHex: "rgba(16, 185, 129, 0.42)",
+      onClick: () => {
+        soundEffects.playClick();
+        onOpenModule?.("finance");
+      },
+    },
+    {
       id: "apps",
-      label: "Apps",
+      label: "All Apps Matrix",
       icon: LayoutGrid,
+      color: "#c084fc",
+      bgFrom: "rgba(139, 92, 246, 0.36)",
+      bgTo: "rgba(192, 132, 252, 0.18)",
+      borderHex: "rgba(192, 132, 252, 0.55)",
+      glowHex: "rgba(168, 85, 247, 0.42)",
       onClick: () => {
         soundEffects.playClick();
         triggerHaptic(15);
@@ -217,6 +366,12 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       id: "info",
       label: "Phone Info",
       icon: Smartphone,
+      active: activeProjectedModule === "desktop",
+      color: "#22d3ee",
+      bgFrom: "rgba(14, 165, 233, 0.36)",
+      bgTo: "rgba(6, 182, 212, 0.18)",
+      borderHex: "rgba(34, 211, 238, 0.55)",
+      glowHex: "rgba(14, 165, 233, 0.42)",
       onClick: () => {
         soundEffects.playClick();
         onOpenModule?.("desktop");
@@ -224,8 +379,14 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     },
     {
       id: "alerts",
-      label: "Alerts",
+      label: "Mobile Alerts",
       icon: Bell,
+      active: activeProjectedModule === "comms",
+      color: "#facc15",
+      bgFrom: "rgba(234, 179, 8, 0.36)",
+      bgTo: "rgba(202, 138, 4, 0.18)",
+      borderHex: "rgba(250, 204, 21, 0.55)",
+      glowHex: "rgba(234, 179, 8, 0.42)",
       onClick: () => {
         soundEffects.playClick();
         onOpenModule?.("comms");
@@ -233,8 +394,14 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     },
     {
       id: "tasks",
-      label: "Tasks",
+      label: "Tasks & Memory",
       icon: CheckSquare,
+      active: activeProjectedModule === "memory",
+      color: "#2dd4bf",
+      bgFrom: "rgba(20, 184, 166, 0.36)",
+      bgTo: "rgba(13, 148, 136, 0.18)",
+      borderHex: "rgba(45, 212, 191, 0.55)",
+      glowHex: "rgba(20, 184, 166, 0.42)",
       onClick: () => {
         soundEffects.playClick();
         onOpenModule?.("memory");
@@ -242,8 +409,14 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     },
     {
       id: "health",
-      label: "Health",
+      label: "Health Shield",
       icon: Heart,
+      active: activeProjectedModule === "health",
+      color: "#fb7185",
+      bgFrom: "rgba(244, 63, 94, 0.38)",
+      bgTo: "rgba(225, 29, 72, 0.18)",
+      borderHex: "rgba(251, 113, 133, 0.58)",
+      glowHex: "rgba(244, 63, 94, 0.44)",
       onClick: () => {
         soundEffects.playClick();
         onOpenModule?.("health");
@@ -251,8 +424,13 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     },
     {
       id: "chat",
-      label: "Chat",
+      label: "Voice Chat",
       icon: MessageSquare,
+      color: "#a78bfa",
+      bgFrom: "rgba(139, 92, 246, 0.36)",
+      bgTo: "rgba(99, 102, 241, 0.18)",
+      borderHex: "rgba(167, 139, 250, 0.55)",
+      glowHex: "rgba(139, 92, 246, 0.42)",
       onClick: () => {
         soundEffects.playClick();
         onOpenVoiceModal();
@@ -263,6 +441,11 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       label: wakeReady ? (isListening ? "Listening" : "Speak") : "Mic On",
       icon: AudioWaveform,
       active: isListening || !wakeReady,
+      color: "#4ade80",
+      bgFrom: "rgba(34, 197, 94, 0.36)",
+      bgTo: "rgba(22, 163, 74, 0.18)",
+      borderHex: "rgba(74, 222, 128, 0.55)",
+      glowHex: "rgba(34, 197, 94, 0.45)",
       onClick: () => {
         soundEffects.playBeepConfirm();
         if (!wakeReady && onPrimeWakeMic) {
@@ -276,6 +459,11 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       id: "audio",
       label: soundOn ? "Audio On" : "Audio Off",
       icon: soundOn ? Volume2 : VolumeX,
+      color: soundOn ? "#00f0ff" : "#94a3b8",
+      bgFrom: soundOn ? "rgba(0, 240, 255, 0.32)" : "rgba(71, 85, 105, 0.28)",
+      bgTo: soundOn ? "rgba(6, 182, 212, 0.16)" : "rgba(30, 41, 59, 0.2)",
+      borderHex: soundOn ? "rgba(0, 240, 255, 0.5)" : "rgba(148, 163, 184, 0.35)",
+      glowHex: soundOn ? "rgba(0, 240, 255, 0.38)" : "rgba(100, 116, 139, 0.25)",
       onClick: () => {
         const next = !soundEffects.soundEnabled;
         soundEffects.soundEnabled = next;
@@ -287,6 +475,11 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       id: "install",
       label: "Phone Link",
       icon: Download,
+      color: "#a3e635",
+      bgFrom: "rgba(132, 204, 22, 0.32)",
+      bgTo: "rgba(16, 185, 129, 0.16)",
+      borderHex: "rgba(163, 230, 53, 0.5)",
+      glowHex: "rgba(132, 204, 22, 0.38)",
       onClick: () => {
         soundEffects.playClick();
         onOpenPhoneInstall?.("android");
@@ -296,6 +489,11 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       id: "settings",
       label: "Settings",
       icon: Settings,
+      color: "#cbd5e1",
+      bgFrom: "rgba(100, 116, 139, 0.38)",
+      bgTo: "rgba(56, 189, 248, 0.16)",
+      borderHex: "rgba(148, 163, 184, 0.55)",
+      glowHex: "rgba(148, 163, 184, 0.38)",
       onClick: () => {
         soundEffects.playClick();
         onOpenSettings();
@@ -305,6 +503,11 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       id: "lock",
       label: "Lock",
       icon: Lock,
+      color: "#f87171",
+      bgFrom: "rgba(239, 68, 68, 0.38)",
+      bgTo: "rgba(185, 28, 28, 0.2)",
+      borderHex: "rgba(248, 113, 113, 0.58)",
+      glowHex: "rgba(239, 68, 68, 0.45)",
       onClick: () => {
         soundEffects.playAlert();
         triggerHaptic([35, 20, 35]);
@@ -313,75 +516,370 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     },
   ];
 
-  const handlePhaseColorChange = (_color: QuantumColorPalette) => {};
-
   return (
     <div
       id="core"
-      className="relative w-full min-h-screen bg-transparent text-slate-100 flex flex-col items-center justify-center px-4 py-6 select-none font-rajdhani overflow-hidden"
+      className="relative flex flex-col items-center justify-center min-h-screen w-full px-3 py-4 overflow-hidden select-none"
     >
-      {/* Floating Top-Left 3D Moving Q-DYNAMICS Logo (No Box/Border) */}
-      <div className="q-hud-top fixed top-3 left-3 sm:left-5 z-30 transition-all duration-300">
-        <QDynamicsBrandLogo3D accentHex={activeSpec.hex} secondaryHex={activeSpec.secondaryHex} />
+      {/* Top-Left Moving 3D Q-DYNAMICS Logo */}
+      <div className="q-hud-chrome fixed top-3 left-3 sm:top-4 sm:left-4 z-30 pointer-events-auto transition-opacity duration-300">
+        <QDynamicsBrandLogo3D
+          accentHex={activeSpec.hex}
+          secondaryHex={activeSpec.secondaryHex}
+        />
       </div>
 
-      {/* Minimal Dismissible AI Studio Wrapper Helper */}
-      {phoneTelemetry?.inIframeWrapper && directAppUrl && !dismissIframeNotice && (
-        <div className="q-hud-top fixed top-4 left-1/2 -translate-x-1/2 z-30 max-w-[90vw] px-3 py-1.5 rounded-xl bg-black/75 border border-amber-400/40 backdrop-blur-md flex items-center gap-2 text-[11px] font-mono text-amber-200 transition-all duration-300">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-          <a
-            href={directAppUrl}
-            target="_top"
-            rel="noopener noreferrer"
-            className="hover:underline flex items-center gap-1 whitespace-nowrap"
-          >
-            <span>Open Direct App for Mobile Install</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
+      {/* Minimal Dismissible Notice ONLY inside AI Studio iframe */}
+      {typeof window !== "undefined" && window.self !== window.top && !dismissIframeNotice && (
+        <div className="q-hud-chrome fixed top-3 left-1/2 -translate-x-1/2 z-40 max-w-md w-[90%] rounded-xl bg-amber-950/90 border border-amber-500/40 px-3 py-2 flex items-center justify-between gap-2 shadow-xl backdrop-blur-md">
+          <div className="flex items-center gap-2 text-[11px] text-amber-200 min-w-0">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="truncate">Preview iframe: open standalone tab for full voice mic.</span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <a
+              href={directAppUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-1 rounded bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center gap-1"
+            >
+              Open <ExternalLink className="w-3 h-3" />
+            </a>
+            <button
+              type="button"
+              onClick={() => setDismissIframeNotice(true)}
+              className="p-1 text-amber-300 hover:text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* FULL-SCREEN STAGE: LIVING WASU & WASI KI JAN IN TECHNOLOGY HUB    */}
+      {/* ================================================================= */}
+      <DualCharacterHoloStage
+        coherence={coherence}
+        language={language}
+        voiceGender={activeGender}
+        cockpitPhase={cockpitPhase}
+        assistantName={activeCharName}
+        maleName={maleCharName}
+        femaleName={femaleCharName}
+        onRenameAssistant={onRenameAssistant}
+        onSwitchGender={onSwitchGender}
+        audioLevel={audioLevel}
+        liveTranscript={liveTranscript}
+        liveReplyText={liveReplyText}
+        recordingSeconds={recordingSeconds}
+        waWaveBars={waWaveBars}
+        onCancelRecording={onCancelRecording}
+        onSendRecording={onSendRecording}
+        onStartManualRecording={onStartManualRecording}
+        onSpeakBriefing={onSpeakBriefing}
+        onShowIdentityVideo={onShowIdentityVideo}
+        wakeReady={wakeReady}
+        onPrimeWakeMic={onPrimeWakeMic}
+        spectrumIndex={spectrumIndex}
+        energySurge={energySurge}
+        pausedByFullscreen={pausedByFullscreen || Boolean(activeProjectedModule)}
+        activeHubNotification={activeHubNotification}
+        activeProjectedTitle={projectedTitle}
+      />
+
+      {/* ================================================================= */}
+      {/* PROJECTED BIG HUB SCREEN: CHARACTERS OPEN & CONTROL ALL PANELS    */}
+      {/* ================================================================= */}
+      {activeProjectedModule && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-2.5 sm:p-5 bg-[#020612]/80 backdrop-blur-xl animate-fadeIn">
+          <div className="relative w-full max-w-5xl h-[89vh] rounded-3xl bg-[#040a18]/96 border border-cyan-400/45 shadow-[0_0_65px_rgba(6,182,212,0.28)] flex flex-col overflow-hidden text-slate-100">
+            {/* Characters Live Working Terminal Bar */}
+            <div className="px-4 sm:px-5 py-3 bg-[#071127]/95 border-b border-cyan-500/30 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-400/45 flex items-center justify-center text-cyan-300 shrink-0">
+                  <Monitor className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-orbitron font-bold text-xs sm:text-sm text-cyan-300 uppercase tracking-wider truncate">
+                    {projectedTitle}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 truncate">
+                    {cockpitPhase === "recording"
+                      ? `LISTENING: "${liveTranscript || "Speak now..."}"`
+                      : cockpitPhase === "processing"
+                      ? "LOADING: Processing hub request..."
+                      : cockpitPhase === "speaking"
+                      ? `SPEAKING (${activeCharName}): ${liveReplyText || "Responding live..."}`
+                      : `${activeCharName} & ${activeGender === "male" ? femaleCharName : maleCharName} operating Tech Hub Screen`}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEffects.playBeepConfirm();
+                    if (!wakeReady && onPrimeWakeMic) onPrimeWakeMic();
+                    else onStartManualRecording?.();
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border flex items-center gap-1.5 cursor-pointer transition ${
+                    cockpitPhase === "recording"
+                      ? "bg-emerald-500/25 border-emerald-400 text-emerald-200"
+                      : "bg-slate-900 border-cyan-500/35 text-cyan-200 hover:bg-slate-800"
+                  }`}
+                >
+                  <Mic className="w-3.5 h-3.5" />
+                  <span>{cockpitPhase === "recording" ? "Listening" : "Talk"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEffects.playClick();
+                    setSidebarDrawer("summary");
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-mono cursor-pointer transition"
+                  title="Detail Summary"
+                >
+                  Summary
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEffects.playClick();
+                    onCloseProjectedModule?.();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-rose-950/75 hover:bg-rose-900 border border-rose-500/40 text-rose-200 text-xs font-mono font-bold flex items-center gap-1 cursor-pointer transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Close Panel</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Active Workspace Body Rendered Directly on Hub Screen */}
+            <div className="flex-1 overflow-y-auto p-3 sm:p-5">
+              {activeProjectedModule === "comms" && (
+                <MobileCommsControlHub
+                  language={language}
+                  voiceGender={voiceGender}
+                  onOpenApkGuide={() => onOpenPhoneInstall?.("apk")}
+                />
+              )}
+              {activeProjectedModule === "desktop" && (
+                <DesktopManager language={language} voiceGender={voiceGender} />
+              )}
+              {activeProjectedModule === "study" && (
+                <StudentStudyHub language={language} voiceGender={voiceGender} />
+              )}
+              {activeProjectedModule === "business" && (
+                <BusinessAdvisorHub language={language} voiceGender={voiceGender} />
+              )}
+              {activeProjectedModule === "records" && (
+                <LifeRecordsManager language={language} voiceGender={voiceGender} />
+              )}
+              {activeProjectedModule === "health" && (
+                <HealthLifestyleGuard language={language} voiceGender={voiceGender} />
+              )}
+              {activeProjectedModule === "finance" && (
+                <FinanceInvestManager language={language} voiceGender={voiceGender} />
+              )}
+              {activeProjectedModule === "focus" && (
+                <QuantumFocusAnalytics language={language} voiceGender={voiceGender} />
+              )}
+              {activeProjectedModule === "memory" && (
+                <PersonalMemoryBank
+                  userProfile={userProfile}
+                  onUpdateProfile={onUpdateProfile || (() => {})}
+                  language={language}
+                  voiceGender={voiceGender}
+                />
+              )}
+              {activeProjectedModule === "automation" && (
+                <WorkflowAutomationSuite language={language} voiceGender={voiceGender} />
+              )}
+              {activeProjectedModule === "communication" && (
+                <CommunicationCodingSuite language={language} voiceGender={voiceGender} />
+              )}
+              {activeProjectedModule === "maps" && (
+                <QuantumGeospatialMapSuite
+                  language={language}
+                  voiceGender={voiceGender}
+                  onSelectDevice={() => onOpenModule?.("devices")}
+                />
+              )}
+              {activeProjectedModule === "devices" && (
+                <DigitalDeviceBridgeSuite
+                  language={language}
+                  voiceGender={voiceGender}
+                  onOpenMapLocation={() => onOpenModule?.("maps")}
+                />
+              )}
+              {activeProjectedModule === "studio" && (
+                <CreativeMediaStudio language={language} voiceGender={voiceGender} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* SIDEBAR POPOVER DRAWER: CHARACTERS CUSTOMIZATION & VIEWS           */}
+      {/* ================================================================= */}
+      {sidebarDrawer === "characters" && (
+        <div className="q-hud-chrome fixed z-40 bottom-16 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-auto md:right-24 md:top-1/2 md:-translate-y-1/2 w-[min(340px,calc(100vw-24px))] rounded-2xl bg-[#070d1c]/95 border border-cyan-400/35 p-4 shadow-2xl space-y-3.5 animate-fadeIn">
+          <div className="flex items-center justify-between border-b border-slate-400/15 pb-2">
+            <span className="font-orbitron font-bold text-xs tracking-wider text-cyan-300 uppercase flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5" />
+              <span>Characters &amp; Stage Views</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setSidebarDrawer("none")}
+              className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Full View & Detail View Controls */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                soundEffects.playBeepConfirm();
+                setSidebarDrawer("none");
+                onShowIdentityVideo?.();
+              }}
+              className="py-2 px-2.5 rounded-xl bg-purple-950/70 hover:bg-purple-900/80 border border-purple-400/45 text-purple-200 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span>Full View</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                soundEffects.playClick();
+                setSidebarDrawer("summary");
+              }}
+              className="py-2 px-2.5 rounded-xl bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-400/45 text-cyan-200 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Detail View</span>
+            </button>
+          </div>
+
+          {onSpeakBriefing && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEffects.playBeepConfirm();
+                setSidebarDrawer("none");
+                onSpeakBriefing();
+              }}
+              className="w-full py-2 px-3 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-400/45 text-emerald-200 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Sara Kuch Batao (Briefing)</span>
+            </button>
+          )}
+
+          {/* Switch Active Character Voice */}
+          <div className="space-y-1.5 pt-1 border-t border-slate-400/15">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
+              Active Speaking Character
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  soundEffects.playQuantumWarp();
+                  onSwitchGender?.("female");
+                }}
+                className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition ${
+                  activeGender === "female"
+                    ? "bg-cyan-500/25 border-cyan-400 text-cyan-100"
+                    : "bg-slate-900/80 border-slate-700 text-slate-400 hover:text-white"
+                }`}
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span className="truncate">{femaleCharName}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  soundEffects.playQuantumWarp();
+                  onSwitchGender?.("male");
+                }}
+                className={`py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition ${
+                  activeGender === "male"
+                    ? "bg-amber-500/25 border-amber-400 text-amber-100"
+                    : "bg-slate-900/80 border-slate-700 text-slate-400 hover:text-white"
+                }`}
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span className="truncate">{maleCharName}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Customize Both Character Names */}
+          <div className="space-y-2 pt-1 border-t border-slate-400/15">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
+              Customize Character Names
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-cyan-300 mb-1">Female Name</label>
+                <input
+                  type="text"
+                  value={customization.avatarConfig?.customFemaleName ?? "Wasi ki Jan"}
+                  onChange={(e) => onRenameGenderName?.("female", e.target.value)}
+                  maxLength={24}
+                  placeholder="Wasi ki Jan"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 focus:border-cyan-400 text-slate-100 text-xs outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-amber-300 mb-1">Male Name</label>
+                <input
+                  type="text"
+                  value={customization.avatarConfig?.customMaleName ?? "Wasu"}
+                  onChange={(e) => onRenameGenderName?.("male", e.target.value)}
+                  maxLength={24}
+                  placeholder="Wasu"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 focus:border-amber-400 text-slate-100 text-xs outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Open Voice & Accent Settings */}
           <button
             type="button"
-            onClick={() => setDismissIframeNotice(true)}
-            className="text-slate-400 hover:text-white cursor-pointer"
-            title="Dismiss"
+            onClick={() => {
+              soundEffects.playClick();
+              setSidebarDrawer("none");
+              if (onOpenCharacterSettings) {
+                onOpenCharacterSettings();
+              } else {
+                onOpenSettings();
+              }
+            }}
+            className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-cyan-500/35 text-cyan-200 text-xs font-mono flex items-center justify-center gap-1.5 cursor-pointer transition"
           >
-            <X className="w-3.5 h-3.5" />
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Voice, Pitch &amp; Schedule Settings</span>
           </button>
         </div>
       )}
 
       {/* ================================================================= */}
-      {/* CENTER CLEAN VIEWPORT: MAIN 3D QUANTUM LOGO + LIVE SIGNAL WAVE    */}
-      {/* ================================================================= */}
-      <div className="relative z-10 w-full max-w-xl flex flex-col items-center justify-center md:pr-14 pb-16 md:pb-0">
-        <CentralQuantumCoreHologram
-          coherence={coherence}
-          language={language}
-          voiceGender={voiceGender}
-          activeInterfaceTheme="quantum_cockpit"
-          cockpitPhase={cockpitPhase}
-          assistantName={activeCharName}
-          onRenameAssistant={onRenameAssistant}
-          onColorChange={handlePhaseColorChange}
-          audioLevel={audioLevel}
-          liveTranscript={liveTranscript}
-          recordingSeconds={recordingSeconds}
-          waWaveBars={waWaveBars}
-          onCancelRecording={onCancelRecording}
-          onSendRecording={onSendRecording}
-          onStartManualRecording={onStartManualRecording}
-          wakeReady={wakeReady}
-          onPrimeWakeMic={onPrimeWakeMic}
-          topologyIndex={topologyIndex}
-          spectrumIndex={spectrumIndex}
-          energySurge={energySurge}
-        />
-      </div>
-
-      {/* ================================================================= */}
       {/* SIDEBAR POPOVER DRAWER: CORE CONTROLS (TOPOLOGY/SPECTRUM/SURGE/HUD) */}
       {/* ================================================================= */}
       {sidebarDrawer === "core" && (
-        <div className="q-hud-chrome fixed z-40 bottom-16 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-auto md:right-20 md:top-1/2 md:-translate-y-1/2 w-[min(320px,calc(100vw-24px))] rounded-2xl bg-[#070d1c]/95 border border-slate-400/25 p-4 shadow-2xl space-y-4 animate-fadeIn">
+        <div className="q-hud-chrome fixed z-40 bottom-16 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-auto md:right-24 md:top-1/2 md:-translate-y-1/2 w-[min(320px,calc(100vw-24px))] rounded-2xl bg-[#070d1c]/95 border border-slate-400/25 p-4 shadow-2xl space-y-4 animate-fadeIn">
           <div className="flex items-center justify-between border-b border-slate-400/15 pb-2">
             <span className="font-orbitron font-bold text-xs tracking-wider text-slate-100 uppercase">
               3D Core &amp; Spectrum
@@ -493,7 +991,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       {/* SIDEBAR POPOVER DRAWER: VOICE & REMINDER SUMMARY                  */}
       {/* ================================================================= */}
       {sidebarDrawer === "summary" && (
-        <div className="q-hud-chrome fixed z-40 bottom-16 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-auto md:right-20 md:top-1/2 md:-translate-y-1/2 w-[min(360px,calc(100vw-24px))] rounded-2xl bg-[#070d1c]/95 border border-slate-400/25 p-4 shadow-2xl animate-fadeIn">
+        <div className="q-hud-chrome fixed z-50 bottom-16 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-auto md:right-24 md:top-1/2 md:-translate-y-1/2 w-[min(360px,calc(100vw-24px))] rounded-2xl bg-[#070d1c]/95 border border-slate-400/25 p-4 shadow-2xl animate-fadeIn">
           <div className="flex items-center justify-between border-b border-slate-400/15 pb-2 mb-2.5">
             <span className="font-orbitron font-bold text-xs tracking-wider text-slate-100 uppercase">
               Voice &amp; Reminder Summary
@@ -539,14 +1037,35 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       )}
 
       {/* ================================================================= */}
-      {/* SINGLE CLEAN VERTICAL ICON SIDEBAR (DESKTOP) / BOTTOM BAR (MOBILE) */}
+      {/* FIELD-COLORED 3D CRYSTAL ORBITAL DOCK WITH SCREEN-WIDE 3D ENTRY   */}
       {/* ================================================================= */}
       <nav
-        aria-label="Jarvis Icon Bar"
-        className="q-hud-chrome fixed z-30 bottom-2.5 left-1/2 -translate-x-1/2 max-w-[95vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-3.5 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-center gap-1 p-1.5 rounded-2xl bg-[#070d1c]/82 border border-white/10 shadow-2xl overflow-x-auto md:overflow-visible transition-all duration-300"
+        id="jarvis-orbital-dock"
+        aria-label="Jarvis 3D Orbital Icon Dock"
+        className={`q-hud-chrome fixed z-30 bottom-2.5 left-1/2 -translate-x-1/2 max-w-[95vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-4 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-center gap-1.5 md:gap-1.5 p-2 md:py-3 md:px-2.5 rounded-2xl md:rounded-[34px] bg-[#040916]/65 border border-white/15 md:border-cyan-400/25 shadow-2xl transition-all duration-300 backdrop-blur-md ${
+          isIconFlightActive ? "overflow-visible" : "overflow-x-auto md:overflow-visible"
+        }`}
+        style={{ perspective: "1200px", transformStyle: "preserve-3d" }}
       >
-        {sideActions.map((item) => {
+        {sideActions.map((item, idx) => {
           const IconComponent = item.icon;
+          const total = sideActions.length;
+          const norm = total > 1 ? idx / (total - 1) : 0.5;
+          const curveX = -Math.round(Math.sin(norm * Math.PI) * 30);
+          const floatDelay = `${(idx * 0.14).toFixed(2)}s`;
+
+          // Screen-wide deterministic 3D flight trajectory from scattered viewport points into dock alignment
+          const angle = (idx / total) * Math.PI * 2;
+          const startX = `${(-52 - Math.abs(Math.cos(angle)) * 34).toFixed(1)}vw`;
+          const startY = `${(Math.sin(angle * 2) * 38).toFixed(1)}vh`;
+          const midX = `${(-18 - Math.abs(Math.sin(angle)) * 26).toFixed(1)}vw`;
+          const midY = `${(Math.cos(angle * 2) * 20).toFixed(1)}vh`;
+          const mobStartX = `${(Math.cos(angle) * 38).toFixed(1)}vw`;
+          const mobStartY = `${(-38 - (idx % 4) * 12).toFixed(1)}vh`;
+          const mobMidX = `${(Math.sin(angle) * 18).toFixed(1)}vw`;
+          const mobMidY = `${(-14 - (idx % 3) * 6).toFixed(1)}vh`;
+          const flyDelay = `${(idx * 0.045).toFixed(3)}s`;
+
           return (
             <button
               key={item.id}
@@ -554,17 +1073,42 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
               onClick={item.onClick}
               title={item.label}
               aria-label={item.label}
-              className={`group relative p-2.5 rounded-xl flex items-center justify-center transition shrink-0 cursor-pointer ${
-                item.active
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/45"
-                  : "text-slate-300 hover:text-white hover:bg-white/10 border border-transparent"
-              }`}
+              style={
+                {
+                  "--orb-x": `${curveX}px`,
+                  "--orb-delay": floatDelay,
+                  "--fly-x0": startX,
+                  "--fly-y0": startY,
+                  "--fly-x1": midX,
+                  "--fly-y1": midY,
+                  "--fly-mx0": mobStartX,
+                  "--fly-my0": mobStartY,
+                  "--fly-mx1": mobMidX,
+                  "--fly-my1": mobMidY,
+                  "--fly-delay": flyDelay,
+                  background: `linear-gradient(145deg, ${item.bgFrom}, ${item.bgTo})`,
+                  borderColor: item.active ? item.color : item.borderHex,
+                  color: item.color,
+                  boxShadow: item.active
+                    ? `0 0 18px ${item.glowHex}, inset 0 1px 1px rgba(255,255,255,0.38)`
+                    : `0 4px 14px -2px ${item.glowHex}, inset 0 1px 1px rgba(255,255,255,0.26)`,
+                } as React.CSSProperties
+              }
+              className={`${
+                isIconFlightActive ? "q-orbital-enter" : "q-orbital-item"
+              } group relative p-2 rounded-2xl border flex items-center justify-center shrink-0 cursor-pointer transition-[filter,scale] duration-200 hover:scale-115 hover:brightness-125`}
             >
-              <IconComponent className="w-4 h-4 shrink-0" />
+              <IconComponent className="w-4 h-4 shrink-0 drop-shadow-[0_0_6px_currentColor]" />
               {item.badgeCount !== undefined && item.badgeCount > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#00f0ff]" />
+                <span
+                  className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-[#040916]"
+                  style={{ backgroundColor: item.color, boxShadow: `0 0 8px ${item.color}` }}
+                />
               )}
-              <span className="hidden md:block pointer-events-none opacity-0 group-hover:opacity-100 absolute right-full mr-2.5 px-2.5 py-1 rounded-lg bg-[#070d1c]/95 border border-slate-400/25 text-[11px] font-mono text-slate-100 whitespace-nowrap shadow-xl transition-opacity">
+              <span
+                className="hidden md:block pointer-events-none opacity-0 group-hover:opacity-100 absolute right-full mr-3 px-2.5 py-1 rounded-lg bg-[#050b18]/95 text-[11px] font-mono text-slate-100 whitespace-nowrap shadow-xl transition-opacity border"
+                style={{ borderColor: item.borderHex }}
+              >
                 {item.label}
               </span>
             </button>
@@ -574,3 +1118,4 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     </div>
   );
 };
+

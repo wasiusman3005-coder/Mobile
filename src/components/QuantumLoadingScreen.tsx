@@ -52,6 +52,9 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   const [isCompleted, setIsCompleted] = useState(false);
+  const dotCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const progressRef = useRef(0);
+  progressRef.current = progress;
 
   useEffect(() => {
     if (!isOpen) {
@@ -77,6 +80,79 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
     return () => clearInterval(timer);
   }, [isOpen]);
 
+  // Coalescing small quantum dots assembling into loading rings & diagnostic nodes
+  useEffect(() => {
+    if (!isOpen) return;
+    const canvas = dotCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let rafId = 0;
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    const resize = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const palette = ["#00f0ff", "#8b5cf6", "#38bdf8", "#10b981"];
+    const dots = Array.from({ length: 180 }, (_, idx) => {
+      const ang = (idx / 180) * Math.PI * 2 + Math.random() * 0.4;
+      const farR = Math.max(width, height) * (0.48 + Math.random() * 0.25);
+      const targetRingR = idx % 3 === 0 ? 150 : idx % 3 === 1 ? 225 : 310;
+      return {
+        startX: width * 0.5 + Math.cos(ang) * farR,
+        startY: height * 0.5 + Math.sin(ang) * farR,
+        angle: ang,
+        targetRingR,
+        r: 1.5 + Math.random() * 2.2,
+        speedOffset: 0.4 + Math.random() * 0.8,
+        color: palette[idx % palette.length],
+      };
+    });
+
+    const t0 = performance.now();
+    const renderDots = (now: number) => {
+      const t = (now - t0) / 1000;
+      const p = Math.min(1, progressRef.current / 100);
+      const ease = 1 - Math.pow(1 - p, 2);
+      ctx.clearRect(0, 0, width, height);
+
+      const cx = width * 0.34;
+      const cy = height * 0.52;
+      for (const d of dots) {
+        const spin = d.angle + t * 0.65 * d.speedOffset;
+        const tx = cx + Math.cos(spin) * d.targetRingR;
+        const ty = cy + Math.sin(spin) * d.targetRingR;
+        const dx = d.startX + (tx - d.startX) * ease;
+        const dy = d.startY + (ty - d.startY) * ease;
+        ctx.fillStyle = d.color;
+        ctx.globalAlpha = 0.25 + ease * 0.65;
+        ctx.beginPath();
+        ctx.arc(dx, dy, d.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      rafId = requestAnimationFrame(renderDots);
+    };
+    rafId = requestAnimationFrame(renderDots);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", resize);
+    };
+  }, [isOpen]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -94,13 +170,26 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
   }, [isOpen, progress, isCompleted]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    // Failsafe guarantee: never leave loading screen open past 3.4s
+    const hardFailsafe = setTimeout(() => {
+      if (!completedRef.current) {
+        completedRef.current = true;
+        onCompleteRef.current();
+      }
+    }, 3400);
+    return () => clearTimeout(hardFailsafe);
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen || !isCompleted) return;
     if (completedRef.current) return;
-    completedRef.current = true;
     soundEffects.playSuccessChime();
     const t = setTimeout(() => {
+      if (completedRef.current) return;
+      completedRef.current = true;
       onCompleteRef.current();
-    }, 320);
+    }, 260);
     return () => clearTimeout(t);
   }, [isOpen, isCompleted]);
 
@@ -122,6 +211,7 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
       id="diagnostics"
       className="fixed inset-0 z-[100] bg-[#04070f]/95 text-slate-100 flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto select-none font-rajdhani"
     >
+      <canvas ref={dotCanvasRef} className="fixed inset-0 pointer-events-none z-0" />
       <div className="fixed inset-0 quantum-grid opacity-30 pointer-events-none" />
 
       {/* Stage 2 Top Bar */}

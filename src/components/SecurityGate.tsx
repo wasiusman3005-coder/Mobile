@@ -14,7 +14,6 @@ import {
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
 import { storageService } from "../services/storage";
-import { getCharacterDisplayName } from "../data/jarvisCatalog";
 import { readPhoneHardwareTelemetry, PhoneHardwareTelemetry } from "../services/systemTelemetry";
 import { checkBiometricCapabilities } from "../services/biometricAuth";
 import { triggerHaptic } from "../services/mobileDeviceActions";
@@ -31,7 +30,7 @@ const REQUIRED_PASSKEY = ["0", "8", "5", "2", "1", "3"].join("");
 
 export const SecurityGate: React.FC<SecurityGateProps> = ({
   onAuthenticated,
-  preferredLanguage,
+  preferredLanguage: _preferredLanguage,
 }) => {
   const [authTab, setAuthTab] = useState<"passkey" | "password">("passkey");
   const [enteredDigits, setEnteredDigits] = useState("");
@@ -82,26 +81,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
     speechService.primeMicrophoneAccess().catch(() => {});
 
     const profile = storageService.getUserProfile();
-    const cust = storageService.getCustomization();
-    const charGender = cust.avatarConfig?.characterGender === "male" ? "male" : "female";
-    const activeCharName = getCharacterDisplayName(cust.avatarConfig, charGender);
     const name = userToGreet || profile.displayName || profile.username || "Wasi";
-
-    const welcomeVoice =
-      preferredLanguage === "en"
-        ? `Welcome back Commander ${name}. I am ${activeCharName}. Q-Nexus Cockpit calibrated. Say Jarvis anytime to summon me.`
-        : preferredLanguage === "pa"
-        ? charGender === "male"
-          ? `Assalam o Alaikum ${name} paji! Main ${activeCharName} haan. Q-Nexus Cockpit tayar ae. Main tuhade tasks, calls te sehat da khayal rakh reha aan.`
-          : `Assalam o Alaikum ${name} paji! Main ${activeCharName} haan. Q-Nexus Cockpit tayar ae. Main tuhade tasks, calls te sehat da khayal rakh rahi aan.`
-        : charGender === "male"
-        ? `Assalam o Alaikum ${name} Sahab! Khush aamdeed. Main ${activeCharName} hoon — aapke tasks, calls, notifications aur health par nazar rakh raha hoon.`
-        : `Assalam o Alaikum ${name} Sahab! Khush aamdeed. Main ${activeCharName} hoon — aapke tasks, calls, notifications aur health par nazar rakh rahi hoon.`;
-
-    speechService.speak(welcomeVoice, {
-      lang: preferredLanguage,
-      gender: charGender,
-    });
 
     setTimeout(() => {
       try {
@@ -205,7 +185,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
       <header className="relative z-10 w-full max-w-[1120px] flex flex-wrap items-center justify-between gap-3 pb-4 mb-5 border-b border-slate-400/20">
         <div className="flex items-center gap-3">
           <div className="font-orbitron font-extrabold text-lg sm:text-xl tracking-[0.22em] text-slate-100 whitespace-nowrap">
-            Q-<span className="text-[#00f0ff]">DYNAMICS</span>
+            WASI&apos;S <span className="text-[#00f0ff]">JARVIS</span>
           </div>
           <span className="hidden sm:inline text-xs font-mono text-slate-400">
             · Security Gate · Encrypted Vault Lock
@@ -248,67 +228,101 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
 
       {/* 2-Column Lock Grid */}
       <div className="relative z-10 w-full max-w-[1120px] grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-center my-auto">
-        {/* LEFT COLUMN: Laser-Sweeping Quantum Reticle (Visual Shield Only — Cannot Bypass Passkey) */}
+        {/* LEFT COLUMN: Circular Main Character Portrait Surrounded by Moving 3D Orbital Rings */}
         <div className="rounded-2xl bg-[#080e1c]/90 border border-slate-400/20 p-6 sm:p-8 flex flex-col items-center gap-5 relative overflow-hidden shadow-2xl">
           <div
-            className={`relative w-[220px] h-[220px] sm:w-[250px] sm:h-[250px] rounded-full flex items-center justify-center border transition-colors ${
-              passkeyStatus === "success"
-                ? "border-emerald-400/70"
-                : scannerLockedFlash
-                ? "border-rose-500/70"
-                : "border-[#00f0ff]/30"
-            } overflow-hidden`}
-            style={{
-              background: "radial-gradient(circle, rgba(0, 240, 255, 0.09) 0%, rgba(4, 7, 15, 0.9) 72%)",
-            }}
+            className="relative w-[250px] h-[250px] sm:w-[290px] sm:h-[290px] flex items-center justify-center"
+            style={{ perspective: "900px" }}
           >
+            {/* Outer Ambient Halo Glow */}
             <div
-              className="absolute inset-2.5 rounded-full border-[1.5px] border-dashed border-[#00f0ff]/45 animate-spin"
-              style={{ animationDuration: "20s" }}
-            />
-            <div
-              className="absolute inset-7 rounded-full border border-violet-500/45 border-t-[#00f0ff] border-b-transparent animate-spin-reverse"
-              style={{ animationDuration: "9s" }}
-            />
-
-            <svg
-              className={`w-[50%] h-[50%] transition-all duration-300 ${
+              className={`absolute inset-1 rounded-full blur-xl opacity-55 transition-colors duration-500 ${
                 passkeyStatus === "success"
-                  ? "text-emerald-400 scale-105"
+                  ? "bg-emerald-500/35"
                   : scannerLockedFlash
-                  ? "text-rose-400"
-                  : "text-[#00f0ff]"
+                  ? "bg-rose-500/40"
+                  : "bg-cyan-500/25"
               }`}
-              viewBox="0 0 120 120"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <circle cx="60" cy="60" r="44" strokeOpacity="0.35" />
-              <circle cx="60" cy="60" r="30" strokeDasharray="5 4" />
-              <circle cx="60" cy="60" r="14" />
-              <path d="M60 8 V24 M60 96 V112 M8 60 H24 M96 60 H112" strokeLinecap="round" />
-              <path
-                d="M36 44 C44 34, 76 34, 84 44 M32 60 C42 46, 78 46, 88 60 M36 76 C46 66, 74 66, 84 76"
-                strokeOpacity="0.72"
-                strokeLinecap="round"
-              />
-            </svg>
+            />
 
+            {/* Ring 1: Slow Clockwise Conic Neon Halo */}
             <div
-              aria-hidden="true"
-              className="absolute left-0 right-0 top-0 h-[3px] q-laser-beam"
+              className="absolute inset-1 rounded-full p-[2.5px] animate-spin"
               style={{
+                animationDuration: "14s",
                 background:
                   passkeyStatus === "success"
-                    ? "linear-gradient(90deg, transparent 5%, #10b981 30%, #ffffff 50%, #10b981 70%, transparent 95%)"
+                    ? "conic-gradient(from 0deg, #10b981, transparent 35%, #34d399 65%, transparent 90%, #10b981)"
                     : scannerLockedFlash
-                    ? "linear-gradient(90deg, transparent 5%, #f43f5e 30%, #ffffff 50%, #f43f5e 70%, transparent 95%)"
-                    : "linear-gradient(90deg, transparent 5%, #00f0ff 30%, #ffffff 50%, #00f0ff 70%, transparent 95%)",
-                boxShadow: "0 0 18px 4px rgba(0, 240, 255, 0.35)",
+                    ? "conic-gradient(from 0deg, #f43f5e, transparent 35%, #fb7185 65%, transparent 90%, #f43f5e)"
+                    : "conic-gradient(from 0deg, #00f0ff, transparent 28%, #8b5cf6 56%, #f59e0b 78%, transparent 92%, #00f0ff)",
               }}
-            />
+            >
+              <div className="w-full h-full rounded-full bg-[#060b16]/90" />
+            </div>
+
+            {/* Ring 2: Counter-Clockwise Segmented Tech Radar Ring with Orbiting Nodes */}
+            <div
+              className="absolute inset-3.5 rounded-full border-2 border-dashed border-[#00f0ff]/60 animate-spin-reverse"
+              style={{ animationDuration: "11s" }}
+            >
+              <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-[#00f0ff] shadow-[0_0_12px_#00f0ff]" />
+              <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-violet-400 shadow-[0_0_12px_#a78bfa]" />
+            </div>
+
+            {/* Ring 3: Clockwise Fine Gold/Violet Arc Ring */}
+            <div
+              className="absolute inset-6 rounded-full border-[1.5px] border-t-amber-400/85 border-r-cyan-400/60 border-b-violet-500/75 border-l-transparent animate-spin"
+              style={{ animationDuration: "6.5s" }}
+            >
+              <span className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-amber-300 shadow-[0_0_10px_#fbbf24]" />
+            </div>
+
+            {/* Ring 4 & 5: 3D Tilted Gyroscopic Orbital Rings */}
+            <div className="pointer-events-none absolute -inset-1 rounded-full border border-cyan-400/45 q-gyro-ring-a" />
+            <div className="pointer-events-none absolute -inset-1 rounded-full border border-violet-400/40 q-gyro-ring-b" />
+
+            {/* Center Round Main Character Photo Frame */}
+            <div
+              className={`relative z-10 w-[184px] h-[184px] sm:w-[214px] sm:h-[214px] rounded-full overflow-hidden border-[3px] shadow-[0_0_32px_rgba(0,240,255,0.35)] transition-all duration-300 ${
+                passkeyStatus === "success"
+                  ? "border-emerald-400 scale-105 shadow-[0_0_40px_rgba(16,185,129,0.55)]"
+                  : scannerLockedFlash
+                  ? "border-rose-500 shadow-[0_0_40px_rgba(244,63,94,0.55)]"
+                  : "border-cyan-300/80"
+              }`}
+              style={{
+                background: "radial-gradient(circle, rgba(0, 240, 255, 0.16) 0%, #050b18 85%)",
+              }}
+            >
+              <img
+                src="/assets/aistudio/Gemini_Generated_Image_55uicz55uicz55ui_f744178a.jpg"
+                alt="Wasi's Jarvis Main Character Portrait"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover object-[50%_18%] scale-105"
+              />
+              {/* Subtle Glass Vignette + Scanning Sweep Beam */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 rounded-full"
+                style={{
+                  boxShadow: "inset 0 0 24px rgba(2, 6, 18, 0.65)",
+                }}
+              />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute left-0 right-0 top-0 h-[2.5px] q-laser-beam opacity-85"
+                style={{
+                  background:
+                    passkeyStatus === "success"
+                      ? "linear-gradient(90deg, transparent 5%, #10b981 30%, #ffffff 50%, #10b981 70%, transparent 95%)"
+                      : scannerLockedFlash
+                      ? "linear-gradient(90deg, transparent 5%, #f43f5e 30%, #ffffff 50%, #f43f5e 70%, transparent 95%)"
+                      : "linear-gradient(90deg, transparent 5%, #00f0ff 30%, #ffffff 50%, #00f0ff 70%, transparent 95%)",
+                  boxShadow: "0 0 14px 3px rgba(0, 240, 255, 0.4)",
+                }}
+              />
+            </div>
           </div>
 
           <div className="text-center space-y-1.5">

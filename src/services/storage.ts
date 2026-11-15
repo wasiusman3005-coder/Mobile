@@ -404,7 +404,7 @@ export class StorageService {
       if (data.health) this.saveHealth(data.health);
       return true;
     } catch (e) {
-      console.error("Backup import error:", e);
+      console.warn("Backup import warning:", e);
       return false;
     }
   }
