@@ -1088,28 +1088,52 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
                   "--fly-delay": flyDelay,
                   background: `linear-gradient(145deg, ${item.bgFrom}, ${item.bgTo})`,
                   borderColor: item.active ? item.color : item.borderHex,
-                  color: item.color,
+                  color: "#ffffff",
                   boxShadow: item.active
-                    ? `0 0 18px ${item.glowHex}, inset 0 1px 1px rgba(255,255,255,0.38)`
-                    : `0 4px 14px -2px ${item.glowHex}, inset 0 1px 1px rgba(255,255,255,0.26)`,
+                    ? `0 0 22px ${item.glowHex}, 0 0 0 1.5px ${item.color}, inset 0 1.5px 2px rgba(255,255,255,0.5)`
+                    : `0 6px 18px -2px ${item.glowHex}, inset 0 1.5px 2px rgba(255,255,255,0.36), inset 0 -4px 8px rgba(2,6,18,0.45)`,
                 } as React.CSSProperties
               }
               className={`${
                 isIconFlightActive ? "q-orbital-enter" : "q-orbital-item"
-              } group relative p-2 rounded-2xl border flex items-center justify-center shrink-0 cursor-pointer transition-[filter,scale] duration-200 hover:scale-115 hover:brightness-125`}
+              } group relative w-9 h-9 md:w-10 md:h-10 rounded-2xl border flex items-center justify-center shrink-0 cursor-pointer transition-[filter,transform] duration-200 hover:scale-120 hover:brightness-125`}
             >
-              <IconComponent className="w-4 h-4 shrink-0 drop-shadow-[0_0_6px_currentColor]" />
+              {/* Glossy Top Crystal Specular Highlight */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-1 top-0.5 h-2.5 rounded-t-xl opacity-65"
+                style={{
+                  background: "linear-gradient(180deg, rgba(255,255,255,0.45) 0%, transparent 100%)",
+                }}
+              />
+              {/* Hover Outer Orbital Energy Halo */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-1 rounded-[18px] opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                style={{
+                  border: `1px solid ${item.color}`,
+                  boxShadow: `0 0 14px ${item.glowHex}`,
+                }}
+              />
+              <IconComponent
+                className="relative z-10 w-[18px] h-[18px] shrink-0"
+                style={{
+                  color: item.color,
+                  filter: `drop-shadow(0 0 7px ${item.color}) drop-shadow(0 1px 2px rgba(0,0,0,0.85))`,
+                }}
+              />
               {item.badgeCount !== undefined && item.badgeCount > 0 && (
                 <span
-                  className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-[#040916]"
+                  className="absolute -top-0.5 -right-0.5 z-20 w-2.5 h-2.5 rounded-full border border-[#040916]"
                   style={{ backgroundColor: item.color, boxShadow: `0 0 8px ${item.color}` }}
                 />
               )}
               <span
-                className="hidden md:block pointer-events-none opacity-0 group-hover:opacity-100 absolute right-full mr-3 px-2.5 py-1 rounded-lg bg-[#050b18]/95 text-[11px] font-mono text-slate-100 whitespace-nowrap shadow-xl transition-opacity border"
-                style={{ borderColor: item.borderHex }}
+                className="hidden md:flex items-center gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 absolute right-full mr-3 px-2.5 py-1 rounded-lg bg-[#050b18]/95 text-[11px] font-mono text-slate-100 whitespace-nowrap shadow-xl transition-opacity border"
+                style={{ borderColor: item.borderHex, boxShadow: `0 0 16px ${item.glowHex}` }}
               >
-                {item.label}
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                <span>{item.label}</span>
               </span>
             </button>
           );

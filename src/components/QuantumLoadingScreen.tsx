@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { soundEffects } from "../services/soundEffects";
+import { HUB_LIVE_VIDEOS, preloadVideoBlob } from "../services/videoCache";
 
 interface QuantumLoadingScreenProps {
   isOpen: boolean;
@@ -69,6 +70,7 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
     completedRef.current = false;
     setViewportStr(`${window.innerWidth}×${window.innerHeight}`);
     soundEffects.playQuantumStartup();
+    preloadVideoBlob(HUB_LIVE_VIDEOS[0]).catch(() => {});
 
     const timer = setInterval(() => {
       setProgress((prev) => {

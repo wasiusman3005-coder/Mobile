@@ -3,13 +3,13 @@ import { Trash2, Send, Bell } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { LanguageCode, VoiceGender } from "../types";
 import { CockpitCorePhase } from "./CentralQuantumCoreHologram";
+import {
+  HUB_LIVE_VIDEOS,
+  getCachedVideoSrc,
+  startSequentialHubWarmup,
+} from "../services/videoCache";
 
-export const HUB_LIVE_VIDEOS = [
-  "/assets/aistudio/gemini_generated_video_77029aae_66787b62.mp4",
-  "/assets/aistudio/1_73e6d4cd.mp4",
-  "/assets/aistudio/2_f462292e.mp4",
-  "/assets/aistudio/3_7bd03cf9.mp4",
-] as const;
+export { HUB_LIVE_VIDEOS };
 
 export interface HubPanelNotification {
   id: string;
@@ -71,9 +71,9 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
   const [activeVideoIdx, setActiveVideoIdx] = useState(0);
   const activeSlotRef = useRef<0 | 1>(0);
   const activeVideoIdxRef = useRef(0);
-  const [slotSrcs, setSlotSrcs] = useState<[string, string]>([
-    HUB_LIVE_VIDEOS[0],
-    HUB_LIVE_VIDEOS[1],
+  const [slotSrcs, setSlotSrcs] = useState<[string, string]>(() => [
+    getCachedVideoSrc(HUB_LIVE_VIDEOS[0]),
+    getCachedVideoSrc(HUB_LIVE_VIDEOS[1]),
   ]);
   const preloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [waveTick, setWaveTick] = useState(0);
@@ -87,9 +87,11 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
     return () => clearInterval(id);
   }, [cockpitPhase]);
 
-  // Clean unmount cleanup for preload timer
+  // Staggered sequential RAM Blob warmup for remaining clips (starts cleanly after 1.6s entry stagger)
   useEffect(() => {
+    const cancelWarmup = startSequentialHubWarmup(1600);
     return () => {
+      cancelWarmup();
       if (preloadTimeoutRef.current) clearTimeout(preloadTimeoutRef.current);
     };
   }, []);
@@ -162,10 +164,11 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
 
     if (preloadTimeoutRef.current) clearTimeout(preloadTimeoutRef.current);
     preloadTimeoutRef.current = setTimeout(() => {
+      const nextPreloadUrl = getCachedVideoSrc(HUB_LIVE_VIDEOS[afterNextIdx]);
       setSlotSrcs((prev) => {
-        if (prev[slotIdx] === HUB_LIVE_VIDEOS[afterNextIdx]) return prev;
+        if (prev[slotIdx] === nextPreloadUrl) return prev;
         const next: [string, string] = [prev[0], prev[1]];
-        next[slotIdx] = HUB_LIVE_VIDEOS[afterNextIdx];
+        next[slotIdx] = nextPreloadUrl;
         return next;
       });
     }, 260);

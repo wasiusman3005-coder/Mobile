@@ -847,7 +847,7 @@ export default function App() {
         if (!speechService.getSpeakingState() && !speechService.getListeningState()) {
           speakProactiveBriefing("full");
         }
-      }, 1200);
+      }, 2400);
     }
 
     const periodicTimer = setInterval(() => {

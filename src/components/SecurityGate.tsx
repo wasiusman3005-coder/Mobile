@@ -177,9 +177,18 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
   return (
     <div
       id="lock"
-      className="fixed inset-0 z-50 flex flex-col items-center justify-start lg:justify-center bg-[#04070f]/92 text-slate-100 px-4 py-4 sm:p-8 font-rajdhani overflow-y-auto"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-start lg:justify-center bg-[#030612]/95 text-slate-100 px-4 py-4 sm:p-8 font-rajdhani overflow-y-auto"
     >
-      <div className="fixed inset-0 quantum-grid opacity-30 pointer-events-none" />
+      {/* Multi-Colored Atmospheric Lighting Orbs */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 overflow-hidden"
+      >
+        <div className="absolute -top-28 -left-24 w-[420px] h-[420px] rounded-full bg-cyan-500/20 blur-[110px]" />
+        <div className="absolute -bottom-32 -right-20 w-[460px] h-[460px] rounded-full bg-fuchsia-600/20 blur-[125px]" />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[520px] h-[300px] rounded-full bg-amber-500/12 blur-[120px]" />
+      </div>
+      <div className="fixed inset-0 quantum-grid opacity-35 pointer-events-none" />
 
       {/* Top HUD Bar */}
       <header className="relative z-10 w-full max-w-[1120px] flex flex-wrap items-center justify-between gap-3 pb-4 mb-5 border-b border-slate-400/20">
@@ -226,22 +235,32 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
         </a>
       )}
 
-      {/* 2-Column Lock Grid */}
+      {/* 2-Column Lock Grid with Prismatic Lighting */}
       <div className="relative z-10 w-full max-w-[1120px] grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-center my-auto">
-        {/* LEFT COLUMN: Circular Main Character Portrait Surrounded by Moving 3D Orbital Rings */}
-        <div className="rounded-2xl bg-[#080e1c]/90 border border-slate-400/20 p-6 sm:p-8 flex flex-col items-center gap-5 relative overflow-hidden shadow-2xl">
+        {/* LEFT COLUMN: Circular Main Character Portrait Surrounded by Multi-Colored Moving 3D Orbital Rings */}
+        <div
+          className="rounded-2xl p-[1.5px] shadow-[0_0_55px_rgba(0,240,255,0.22)]"
+          style={{
+            background: "linear-gradient(135deg, rgba(0,240,255,0.65), rgba(139,92,246,0.45), rgba(245,158,11,0.55))",
+          }}
+        >
+        <div className="rounded-[15px] bg-[#060c1b]/94 p-6 sm:p-8 flex flex-col items-center gap-5 relative overflow-hidden">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-40 rounded-full bg-cyan-400/20 blur-3xl"
+          />
           <div
             className="relative w-[250px] h-[250px] sm:w-[290px] sm:h-[290px] flex items-center justify-center"
             style={{ perspective: "900px" }}
           >
-            {/* Outer Ambient Halo Glow */}
+            {/* Outer Ambient Multi-Hue Halo Glow */}
             <div
-              className={`absolute inset-1 rounded-full blur-xl opacity-55 transition-colors duration-500 ${
+              className={`absolute -inset-2 rounded-full blur-2xl opacity-70 transition-colors duration-500 ${
                 passkeyStatus === "success"
-                  ? "bg-emerald-500/35"
+                  ? "bg-emerald-500/45"
                   : scannerLockedFlash
-                  ? "bg-rose-500/40"
-                  : "bg-cyan-500/25"
+                  ? "bg-rose-500/50"
+                  : "bg-gradient-to-tr from-cyan-500/35 via-violet-500/35 to-amber-500/30"
               }`}
             />
 
@@ -339,19 +358,30 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
             </div>
           </div>
         </div>
+        </div>
 
-        {/* RIGHT COLUMN: Hidden 6-Digit Security Passkey Keypad */}
-        <div className="rounded-2xl bg-[#080e1c]/90 border border-slate-400/20 p-6 sm:p-8 flex flex-col gap-5 shadow-2xl">
+        {/* RIGHT COLUMN: Illuminated Prismatic 6-Digit Security Passkey Keypad */}
+        <div
+          className="rounded-2xl p-[1.5px] shadow-[0_0_55px_rgba(139,92,246,0.22)]"
+          style={{
+            background: "linear-gradient(135deg, rgba(139,92,246,0.6), rgba(0,240,255,0.55), rgba(236,72,153,0.45))",
+          }}
+        >
+        <div className="rounded-[15px] bg-[#060c1b]/94 p-6 sm:p-8 flex flex-col gap-5 relative overflow-hidden">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-16 -right-12 w-60 h-44 rounded-full bg-violet-500/20 blur-3xl"
+          />
           <div>
-            <h1 className="font-orbitron font-extrabold text-xl sm:text-2xl tracking-[0.08em] text-slate-100">
+            <h1 className="font-orbitron font-extrabold text-xl sm:text-2xl tracking-[0.08em] bg-gradient-to-r from-cyan-300 via-white to-violet-300 bg-clip-text text-transparent">
               Quantum Authentication
             </h1>
-            <p className="mt-1.5 text-xs sm:text-sm text-slate-400 leading-relaxed">
+            <p className="mt-1.5 text-xs sm:text-sm text-slate-300 leading-relaxed">
               Enter your hidden 6-digit passkey to unlock Q-NEXUS Jarvis OS.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-[#04070f] border border-slate-400/15">
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-[#030714] border border-cyan-500/20">
             <button
               type="button"
               onClick={() => {
@@ -361,7 +391,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
               }}
               className={`py-2 rounded-lg text-xs font-mono font-semibold transition cursor-pointer ${
                 authTab === "passkey"
-                  ? "bg-cyan-500/20 text-[#00f0ff] border border-[#00f0ff]/45"
+                  ? "bg-gradient-to-r from-cyan-500/30 to-violet-500/25 text-cyan-200 border border-cyan-400/60 shadow-[0_0_16px_rgba(0,240,255,0.25)]"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
@@ -376,7 +406,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
               }}
               className={`py-2 rounded-lg text-xs font-mono font-semibold transition cursor-pointer ${
                 authTab === "password"
-                  ? "bg-cyan-500/20 text-[#00f0ff] border border-[#00f0ff]/45"
+                  ? "bg-gradient-to-r from-violet-500/30 to-fuchsia-500/25 text-violet-200 border border-violet-400/60 shadow-[0_0_16px_rgba(168,85,247,0.25)]"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
@@ -393,7 +423,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
 
           {authTab === "passkey" ? (
             <>
-              {/* 6 Masked Passkey Slots — Strictly Hidden ('•') */}
+              {/* 6 Masked Passkey Slots — Luminous Glass Neon */}
               <div
                 className={`grid grid-cols-6 gap-2.5 tabular ${
                   passkeyStatus === "error" ? "q-keypad-shake" : ""
@@ -404,14 +434,14 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
                   return (
                     <div
                       key={slotIdx}
-                      className={`h-13 rounded-xl border bg-[#04070f]/90 flex items-center justify-center font-mono text-2xl font-bold transition ${
+                      className={`h-13 rounded-xl border flex items-center justify-center font-mono text-2xl font-bold transition ${
                         passkeyStatus === "error"
-                          ? "border-rose-500 text-rose-400"
+                          ? "border-rose-500 bg-rose-950/50 text-rose-400 shadow-[0_0_18px_rgba(244,63,94,0.35)]"
                           : passkeyStatus === "success"
-                          ? "border-emerald-400 text-emerald-400"
+                          ? "border-emerald-400 bg-emerald-950/50 text-emerald-300 shadow-[0_0_18px_rgba(16,185,129,0.4)]"
                           : isFilled
-                          ? "border-[#00f0ff] text-[#00f0ff] shadow-[0_0_16px_rgba(0,240,255,0.18)]"
-                          : "border-slate-400/20 text-slate-600"
+                          ? "border-cyan-400 bg-gradient-to-b from-cyan-500/25 to-violet-500/20 text-cyan-200 shadow-[0_0_20px_rgba(0,240,255,0.35)]"
+                          : "border-slate-500/30 bg-[#040919]/90 text-slate-600"
                       }`}
                     >
                       {isFilled ? "•" : "—"}
@@ -421,16 +451,24 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
               </div>
 
               <div className="grid grid-cols-3 gap-2.5">
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => pushDigit(d)}
-                    className="h-[50px] rounded-xl border border-slate-400/20 bg-slate-900/70 hover:bg-slate-800 hover:border-[#00f0ff] text-slate-100 font-mono text-lg font-semibold cursor-pointer transition active:scale-95 tabular"
-                  >
-                    {d}
-                  </button>
-                ))}
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d, idx) => {
+                  const keyGlow =
+                    idx % 3 === 0
+                      ? "hover:border-cyan-400 hover:shadow-[0_0_18px_rgba(0,240,255,0.35)] hover:text-cyan-200"
+                      : idx % 3 === 1
+                      ? "hover:border-violet-400 hover:shadow-[0_0_18px_rgba(167,139,250,0.35)] hover:text-violet-200"
+                      : "hover:border-amber-400 hover:shadow-[0_0_18px_rgba(251,191,36,0.32)] hover:text-amber-200";
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => pushDigit(d)}
+                      className={`h-[50px] rounded-xl border border-cyan-500/25 bg-gradient-to-b from-slate-800/80 to-slate-950/90 text-slate-100 font-mono text-lg font-bold cursor-pointer transition active:scale-95 tabular shadow-inner ${keyGlow}`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
                 <button
                   type="button"
                   onClick={() => {
@@ -438,14 +476,14 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
                     setEnteredDigits("");
                     setLockFeedback("Cleared — Enter 6-digit passkey");
                   }}
-                  className="h-[50px] rounded-xl border border-slate-400/20 bg-slate-900/70 hover:bg-slate-800 hover:border-[#00f0ff] text-slate-400 hover:text-slate-100 font-sans text-sm font-semibold cursor-pointer transition"
+                  className="h-[50px] rounded-xl border border-rose-500/30 bg-gradient-to-b from-rose-950/55 to-slate-950/90 hover:border-rose-400 hover:shadow-[0_0_16px_rgba(244,63,94,0.3)] text-rose-300 font-sans text-sm font-semibold cursor-pointer transition"
                 >
                   Clear
                 </button>
                 <button
                   type="button"
                   onClick={() => pushDigit("0")}
-                  className="h-[50px] rounded-xl border border-slate-400/20 bg-slate-900/70 hover:bg-slate-800 hover:border-[#00f0ff] text-slate-100 font-mono text-lg font-semibold cursor-pointer transition active:scale-95 tabular"
+                  className="h-[50px] rounded-xl border border-cyan-500/25 bg-gradient-to-b from-slate-800/80 to-slate-950/90 hover:border-cyan-400 hover:shadow-[0_0_18px_rgba(0,240,255,0.35)] hover:text-cyan-200 text-slate-100 font-mono text-lg font-bold cursor-pointer transition active:scale-95 tabular"
                 >
                   0
                 </button>
@@ -455,7 +493,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
                     soundEffects.playKeyClick(700);
                     setEnteredDigits((prev) => prev.slice(0, -1));
                   }}
-                  className="h-[50px] rounded-xl border border-slate-400/20 bg-slate-900/70 hover:bg-slate-800 hover:border-[#00f0ff] text-slate-400 hover:text-slate-100 font-sans text-sm font-semibold cursor-pointer transition"
+                  className="h-[50px] rounded-xl border border-amber-500/30 bg-gradient-to-b from-amber-950/45 to-slate-950/90 hover:border-amber-400 hover:shadow-[0_0_16px_rgba(251,191,36,0.3)] text-amber-200 font-sans text-sm font-semibold cursor-pointer transition"
                 >
                   Back
                 </button>
@@ -551,6 +589,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
               </button>
             </form>
           )}
+        </div>
         </div>
       </div>
     </div>
