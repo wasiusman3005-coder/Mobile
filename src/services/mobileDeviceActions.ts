@@ -1,3 +1,5 @@
+import { isNativeAndroidApk, toggleNativeAndroidFlashlight } from "./nativeAndroidBridge";
+
 export interface PhoneStorageStats {
   usedMb: number;
   quotaGb: number;
@@ -23,6 +25,39 @@ export function triggerHaptic(pattern: number | number[] = [25, 30, 45]): boolea
     }
   } catch {}
   return false;
+}
+
+export function playLocatorSiren(durationMs = 4500): boolean {
+  try {
+    triggerHaptic([300, 120, 300, 120, 450, 150, 300]);
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return false;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    const now = ctx.currentTime;
+    const steps = Math.max(2, Math.floor(durationMs / 450));
+    for (let i = 0; i < steps; i++) {
+      osc.frequency.setValueAtTime(i % 2 === 0 ? 880 : 1240, now + i * 0.45);
+    }
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.32, now + 0.08);
+    gain.gain.setValueAtTime(0.32, now + durationMs / 1000 - 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + durationMs / 1000);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + durationMs / 1000);
+    osc.onended = () => {
+      try {
+        ctx.close();
+      } catch {}
+    };
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 let activeWakeLock: any = null;
@@ -62,6 +97,13 @@ let torchStream: MediaStream | null = null;
 
 export async function togglePhoneFlashlight(enable: boolean): Promise<{ ok: boolean; active: boolean; message: string }> {
   try {
+    // 1) Native Android Hardware CameraManager Torch (inside APK)
+    if (isNativeAndroidApk()) {
+      const nativeTorch = await toggleNativeAndroidFlashlight(enable);
+      if (nativeTorch) return nativeTorch;
+    }
+
+    // 2) Web MediaDevices Torch fallback
     if (!enable) {
       if (torchStream) {
         torchStream.getTracks().forEach((t) => t.stop());
@@ -86,7 +128,7 @@ export async function togglePhoneFlashlight(enable: boolean): Promise<{ ok: bool
       return { ok: true, active: true, message: "Phone Flashlight ON!" };
     } else {
       stream.getTracks().forEach((t) => t.stop());
-      return { ok: false, active: false, message: "Torch hardware control is restricted by this browser/device." };
+      return { ok: false, active: false, message: "Torch hardware control is restricted in this browser. Works natively in APK." };
     }
   } catch {
     return { ok: false, active: false, message: "Allow camera permission on phone to toggle flashlight." };
@@ -133,7 +175,7 @@ function classifyMobileFile(name: string, mime: string): { type: MobileVaultFile
     return { type: "audio", folder: "Phone/Voice & Audio" };
   }
   if (/\.(zip|rar|7z|apk|tar)$/i.test(lower)) {
-    return { type: "archive", folder: "Phone/Downloads & APK" };
+    return { type: "archive", folder: "Phone/Downloads & Files" };
   }
   if (/\.(ts|tsx|js|py|json|html|css)$/i.test(lower)) {
     return { type: "code", folder: "Phone/Scripts" };

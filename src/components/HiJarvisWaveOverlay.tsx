@@ -250,7 +250,7 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
         const replyMsg = replyMatch[2].trim();
         if (!isNativeAndroidApk()) {
           const msg =
-            "WhatsApp aur SMS auto-reply ke liye Q-NEXUS Android APK install hona zaroori hai. Phone Control Hub khol diya gaya hai.";
+            "WhatsApp aur SMS auto-reply ke liye Wasu's Jarvis ko phone ki Notification Access permission chahiye. Phone Control Hub khol diya gaya hai.";
           setReplyText(msg);
           setActionBadge("OPEN_COMMS");
           speakReply(msg);
@@ -287,7 +287,7 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
       ) {
         if (!isNativeAndroidApk()) {
           const msg =
-            "Aap abhi Chrome browser mein hain jahan Android security ki wajah se WhatsApp ya Call Logs blocked hoti hain. Android APK install kar ke Notification Access allow karne par main har call aur message bol kar sunaungi.";
+            "Abhi browser sandbox active hai; live phone calls aur notifications ke liye Phone Control Hub mein system Notification Access enable karein.";
           setReplyText(msg);
           setActionBadge("OPEN_COMMS");
           speakReply(msg);

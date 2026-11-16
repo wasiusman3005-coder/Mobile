@@ -16,10 +16,9 @@ import { VoiceJarvisModal } from "./components/VoiceJarvisModal";
 import { HiJarvisWaveOverlay } from "./components/HiJarvisWaveOverlay";
 import { AwayAutoPilot } from "./components/AwayAutoPilot";
 import { MandatoryHealthLockdown } from "./components/MandatoryHealthLockdown";
-import { DesktopInstallModal } from "./components/DesktopInstallModal";
 import { IdentityVideoOverlay } from "./components/IdentityVideoOverlay";
-import { OfflineIndicator } from "./components/PWAInstallButton";
 import { readPhoneHardwareTelemetry } from "./services/systemTelemetry";
+import { togglePhoneFlashlight, triggerHaptic, playLocatorSiren } from "./services/mobileDeviceActions";
 import {
   subscribeNativeEvents,
   isNativeAndroidApk,
@@ -39,6 +38,28 @@ import {
   PERSONALITY_MODES,
   isIdentityVideoCommand,
 } from "./data/jarvisCatalog";
+
+const OfflineIndicator: React.FC = () => {
+  const [online, setOnline] = useState(
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
+  useEffect(() => {
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+  if (online) return null;
+  return (
+    <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[120] px-3 py-1 rounded-full bg-amber-950/90 border border-amber-400/60 text-amber-200 text-[10px] font-mono shadow-lg">
+      OFFLINE MOBILE MODE — LOCAL CORE ACTIVE
+    </div>
+  );
+};
 
 export default function App() {
   // Authentication & Security State (Enforces hidden 6-digit passkey unlock)
@@ -77,7 +98,7 @@ export default function App() {
   const [appsMatrixInitialModule, setAppsMatrixInitialModule] = useState<MatrixModuleId | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<
-    "appearance" | "voice" | "security" | "screensaver" | "health" | "data"
+    "appearance" | "voice" | "security" | "alerts" | "screensaver" | "health" | "data"
   >("appearance");
   const [detailViewNonce, setDetailViewNonce] = useState(0);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
@@ -86,11 +107,9 @@ export default function App() {
   const [isWakeWaveOpen, setIsWakeWaveOpen] = useState(false);
   const [waveListenNonce, setWaveListenNonce] = useState(0);
   const [waveInitialCommand, setWaveInitialCommand] = useState<{ id: number; text: string } | null>(null);
-  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
-  const [installModalTab, setInstallModalTab] = useState<"android" | "ios" | "apk">("android");
   const [isIdentityVideoOpen, setIsIdentityVideoOpen] = useState(false);
 
-  // Q-DYNAMICS Stage 3 Animation & HUD State
+  // Wasu's Jarvis 3D Core Animation & HUD State
   const [wormholeState, setWormholeState] = useState<{ active: boolean; label: string }>({
     active: false,
     label: "Crossing Quantum Singularity...",
@@ -121,7 +140,9 @@ export default function App() {
   const [cockpitLiveReply, setCockpitLiveReply] = useState("");
   const [cockpitRecordingSeconds, setCockpitRecordingSeconds] = useState(0);
   const [cockpitWaBars, setCockpitWaBars] = useState<number[]>(() => Array(34).fill(18));
-  const [cockpitSummaries, setCockpitSummaries] = useState<CockpitSummaryItem[]>([]);
+  const [cockpitSummaries, setCockpitSummaries] = useState<CockpitSummaryItem[]>(() =>
+    storageService.getSummaryLogs()
+  );
   const [isWakeWordActive, setIsWakeWordActive] = useState(true);
   const [wakeReady, setWakeReady] = useState(false);
   const [wakeStatusText, setWakeStatusText] = useState("Tap to enable 'Hi Jarvis'");
@@ -147,6 +168,8 @@ export default function App() {
   avatarConfigRef.current = avatarConfig;
   const userProfileRef = useRef(userProfile);
   userProfileRef.current = userProfile;
+  const proactiveAlertsRef = useRef(customization.proactiveAlerts);
+  proactiveAlertsRef.current = customization.proactiveAlerts;
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -157,10 +180,14 @@ export default function App() {
     const cleaned = text.trim();
     if (!cleaned) return;
     const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    setCockpitSummaries((prev) => [
-      ...prev.slice(-11),
-      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, role, speaker, text: cleaned, timeStr },
-    ]);
+    setCockpitSummaries((prev) => {
+      const next: CockpitSummaryItem[] = [
+        ...prev.slice(-39),
+        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, role, speaker, text: cleaned, timeStr },
+      ];
+      storageService.saveSummaryLogs(next);
+      return next;
+    });
   };
 
   const projectHubAlert = (title: string, text: string, source = "SYSTEM HUB") => {
@@ -408,6 +435,35 @@ export default function App() {
             : smsRes.length > 0
             ? `Latest SMS ${smsRes[0].address}: ${smsRes[0].body}`
             : "Is waqt koi naya notification ya call nahi hai.";
+        soundEffects.playBeepConfirm();
+        speakCockpitReply(msg);
+        return;
+      }
+
+      if (lower.includes("torch") || lower.includes("flashlight") || lower.includes("flash light")) {
+        const turnOn = !(lower.includes("off") || lower.includes("band") || lower.includes("bujha"));
+        const res = await togglePhoneFlashlight(turnOn);
+        soundEffects.playBeepConfirm();
+        speakCockpitReply(res.message);
+        return;
+      }
+
+      if (lower.includes("find phone") || lower.includes("find my phone") || lower.includes("phone bajao") || lower.includes("ring phone") || lower.includes("siren")) {
+        playLocatorSiren(2600);
+        const msg =
+          lang === "en"
+            ? "Find My Phone locator siren and vibration activated!"
+            : "Phone locator siren aur vibration active kar di gayi hai!";
+        speakCockpitReply(msg);
+        return;
+      }
+
+      if (lower.includes("vibrate") || lower.includes("haptic")) {
+        triggerHaptic([120, 60, 120, 60, 160]);
+        const msg =
+          lang === "en"
+            ? "Phone vibration pulse triggered."
+            : "Phone haptic vibration pulse bhej diya gaya hai.";
         soundEffects.playBeepConfirm();
         speakCockpitReply(msg);
         return;
@@ -683,10 +739,12 @@ export default function App() {
         showToast(`Background Wake: '${nativePhrase}'`);
       },
       (notif) => {
+        const alertsCfg = proactiveAlertsRef.current;
+        if (alertsCfg && !alertsCfg.incomingNotifications) return;
         const alertLine = `${notif.appName} par ${notif.title} ka message aaya hai: ${notif.text}`;
         appendCockpitSummary("reminder", `${notif.appName} Alert`, `${notif.title}: ${notif.text}`);
         projectHubAlert(notif.title, notif.text, notif.appName);
-        if (!speechService.getListeningState()) {
+        if ((alertsCfg?.speakNotificationsAloud ?? true) && !speechService.getListeningState()) {
           speechService.speak(alertLine, {
             lang: languageRef.current,
             gender: hubPresenterTurnRef.current === "female" ? "male" : "female",
@@ -713,6 +771,71 @@ export default function App() {
       unsubListening();
     };
   }, [isAuthenticated, isWakeWordActive]);
+
+  // Proactive Mobile Hardware Telemetry & Network Alert Watcher
+  const lowBatteryAlertedRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const handleNetOnline = () => {
+      if (proactiveAlertsRef.current?.networkAlerts === false) return;
+      const msg =
+        languageRef.current === "en"
+          ? "Mobile connection restored. Wasu's Jarvis is back online."
+          : "Phone internet connection wapas aa gaya hai.";
+      appendCockpitSummary("reminder", "Network Alert", msg);
+      projectHubAlert("Network Online", msg, "MOBILE RADIO");
+      if (!speechService.getListeningState() && !speechService.getSpeakingState()) {
+        speechService.speak(msg, { lang: languageRef.current, gender: voiceCharRef.current });
+      }
+    };
+
+    const handleNetOffline = () => {
+      if (proactiveAlertsRef.current?.networkAlerts === false) return;
+      const msg =
+        languageRef.current === "en"
+          ? "Phone network disconnected. Local mobile offline mode active."
+          : "Phone internet disconnect ho gaya hai. Local offline mode active hai.";
+      appendCockpitSummary("reminder", "Network Alert", msg);
+      projectHubAlert("Network Offline", msg, "MOBILE RADIO");
+      if (!speechService.getListeningState() && !speechService.getSpeakingState()) {
+        speechService.speak(msg, { lang: languageRef.current, gender: voiceCharRef.current });
+      }
+    };
+
+    window.addEventListener("online", handleNetOnline);
+    window.addEventListener("offline", handleNetOffline);
+
+    const checkBattery = async () => {
+      try {
+        const tel = await readPhoneHardwareTelemetry();
+        const threshold = proactiveAlertsRef.current?.lowBatteryThreshold ?? 20;
+        if (tel.batteryPercent !== null && tel.batteryPercent <= threshold && !tel.isCharging) {
+          if (!lowBatteryAlertedRef.current) {
+            lowBatteryAlertedRef.current = true;
+            const msg =
+              languageRef.current === "en"
+                ? `Low battery alert: Phone battery is at ${tel.batteryPercent}%. Connect your charger.`
+                : `Battery Alert: Aapke phone ki battery sirf ${tel.batteryPercent} percent reh gayi hai, charger laga lein.`;
+            appendCockpitSummary("reminder", "Battery Alert", msg);
+            projectHubAlert("Low Battery Alert", msg, "POWER GUARD");
+            if (!speechService.getListeningState() && !speechService.getSpeakingState()) {
+              speechService.speak(msg, { lang: languageRef.current, gender: voiceCharRef.current });
+            }
+          }
+        } else if (tel.batteryPercent !== null && (tel.isCharging || tel.batteryPercent > threshold + 5)) {
+          lowBatteryAlertedRef.current = false;
+        }
+      } catch {}
+    };
+
+    const batInterval = setInterval(checkBattery, 60000);
+    return () => {
+      window.removeEventListener("online", handleNetOnline);
+      window.removeEventListener("offline", handleNetOffline);
+      clearInterval(batInterval);
+    };
+  }, [isAuthenticated]);
 
   // Proactive Companion Engine: Tells User About Pending Tasks, Health & Calls/Notifications Aloud
   const initialBriefingDoneRef = useRef(false);
@@ -985,7 +1108,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Q-DYNAMICS Stage 3: Auto-cycle 4 topologies (every 9s) & 4 color spectrums (every 11s) + 'H' Capture Toggle
+  // WASU'S JARVIS Stage 3: Auto-cycle 4 topologies (every 9s) & 4 color spectrums (every 11s) + 'H' Capture Toggle
   useEffect(() => {
     if (!isAuthenticated || showLoadingScreen) return;
     const topoTimer = autoCycleTopology
@@ -1136,9 +1259,20 @@ export default function App() {
     } else if (action === "OPEN_MAPS" || action === "GPS_TRACK") {
       setProjectedHubModule("maps");
       showToast("Quantum Geospatial Maps & Radar Projected");
-    } else if (action === "OPEN_DEVICES" || action === "FIND_PHONE") {
+    } else if (action === "OPEN_DEVICES") {
       setProjectedHubModule("devices");
-      showToast(action === "FIND_PHONE" ? "Find My Phone Siren Triggered!" : "Digital Device Bridge Projected");
+      showToast("Mobile Device Control Projected");
+    } else if (action === "FIND_PHONE") {
+      playLocatorSiren(2600);
+      setProjectedHubModule("devices");
+      showToast("Find My Phone Siren Triggered!");
+    } else if (action === "FLASHLIGHT_ON") {
+      togglePhoneFlashlight(true).then((r) => showToast(r.message));
+    } else if (action === "FLASHLIGHT_OFF") {
+      togglePhoneFlashlight(false).then((r) => showToast(r.message));
+    } else if (action === "VIBRATE_PHONE") {
+      triggerHaptic([120, 60, 120, 60, 160]);
+      showToast("Phone Haptic Pulse Triggered!");
     } else if (action === "PRIVACY_CLOAK") {
       window.dispatchEvent(new CustomEvent("toggle-privacy-cloak"));
       showToast("High-Privacy Cloak Toggled!");
@@ -1189,13 +1323,14 @@ export default function App() {
         <div className="relative z-10 flex-1 min-h-[100dvh] flex items-center justify-center overflow-hidden">
           <SecurityGate
             onAuthenticated={() => {
-              triggerWormhole("Entering Quantum Diagnostics", () => {
+              triggerWormhole("Entering Wasu's Jarvis Mobile Core", () => {
                 sessionStorage.setItem("q_nexus_session_auth", "active");
                 setIsAuthenticated(true);
                 setShowLoadingScreen(true);
               });
             }}
             preferredLanguage={language}
+            customization={customization}
           />
         </div>
       ) : (
@@ -1203,7 +1338,7 @@ export default function App() {
           {/* Visual Scanline Effect (Separate overlay so all click events work) */}
           {customization.scanlines && <div className="scanlines-overlay" />}
 
-          {/* Mandatory Ergonomic Health Rest Lockdown (Blocks PC until rest timer ends) */}
+          {/* Mandatory Ergonomic Mobile Health Rest Lockdown */}
           <MandatoryHealthLockdown
         isOpen={isHealthLockdownActive}
         onRestCompleted={() => {
@@ -1215,7 +1350,7 @@ export default function App() {
         durationMinutes={customization.mandatoryRestMinutes}
       />
 
-      {/* Away Auto-Pilot Screensaver */}
+      {/* Mobile Standby Shield */}
       {isAwayMode && (
         <AwayAutoPilot
           onReturn={() => setIsAwayMode(false)}
@@ -1224,7 +1359,7 @@ export default function App() {
         />
       )}
 
-      {/* Unified Quantum Applications Matrix (All Folders & Tools in One Dedicated Interface) */}
+      {/* Unified Wasu's Jarvis Applications Matrix */}
       <QuantumAppsMatrix
         isOpen={isAppsMatrixOpen}
         onClose={() => setIsAppsMatrixOpen(false)}
@@ -1232,14 +1367,10 @@ export default function App() {
         voiceGender={customization.activeVoiceMode}
         userProfile={userProfile}
         onUpdateProfile={setUserProfile}
-        onOpenDesktopInstall={(tab) => {
-          setInstallModalTab(tab || "android");
-          setIsInstallModalOpen(true);
-        }}
         initialModule={appsMatrixInitialModule}
       />
 
-      {/* Quantum Settings & Deep Customization Modal */}
+      {/* Settings & Full Mobile Customization Modal */}
       <QuantumSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -1257,15 +1388,7 @@ export default function App() {
         onSpeakBriefing={() => speakProactiveBriefing("full")}
       />
 
-      {/* Phone & APK Installation Guide Modal */}
-      <DesktopInstallModal
-        isOpen={isInstallModalOpen}
-        onClose={() => setIsInstallModalOpen(false)}
-        language={language}
-        initialTab={installModalTab}
-      />
-
-      {/* Stage 2: Q-DYNAMICS System Diagnostics & Boot Check Screen -> Direct Main Hub */}
+      {/* Mobile System Diagnostics & Boot Check Screen */}
       <QuantumLoadingScreen
         isOpen={showLoadingScreen}
         onComplete={() => {
@@ -1404,10 +1527,6 @@ export default function App() {
           wakeStatusText={wakeStatusText}
           wakeReady={wakeReady}
           lastHeardWakeText={lastHeardWakeText}
-          onOpenPhoneInstall={(tab?: "android" | "ios" | "apk") => {
-            setInstallModalTab(tab || "android");
-            setIsInstallModalOpen(true);
-          }}
           cockpitPhase={
             (isJarvisListening
               ? "recording"
@@ -1434,6 +1553,11 @@ export default function App() {
           }}
           onRenameAssistant={handleRenameAssistant}
           cockpitSummaries={cockpitSummaries}
+          onClearSummary={() => {
+            setCockpitSummaries([]);
+            storageService.clearSummaryLogs();
+            showToast("Summary Log cleared");
+          }}
           topologyIndex={topologyIndex}
           onSelectTopology={(idx) => {
             setAutoCycleTopology(false);

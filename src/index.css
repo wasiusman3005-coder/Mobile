@@ -203,7 +203,7 @@
 }
 
 /* ================================================================
-   Q-DYNAMICS 3-STAGE HUD & WORMHOLE ANIMATIONS
+   WASU'S JARVIS 3-STAGE HUD & WORMHOLE ANIMATIONS
    ================================================================ */
 @keyframes qLaserSweep {
   0%, 100% {
@@ -462,6 +462,57 @@ body.hud-hidden .q-hud-top {
 
 .q-mobile-video-pan {
   animation: qMobilePortraitSweep 10s ease-in-out infinite;
+}
+
+/* Lock Screen Continuous Motion, Color Shifting & Geometric Morphing */
+@keyframes qLockBgMotion {
+  0%, 100% {
+    transform: scale(1.06) translate3d(0, 0, 0);
+  }
+  33% {
+    transform: scale(1.13) translate3d(-1.5%, 1%, 0);
+  }
+  66% {
+    transform: scale(1.1) translate3d(1.5%, -1.2%, 0);
+  }
+}
+
+@keyframes qLockColorShift {
+  0% {
+    filter: hue-rotate(0deg) saturate(1.15) contrast(1.04);
+  }
+  50% {
+    filter: hue-rotate(155deg) saturate(1.32) contrast(1.08);
+  }
+  100% {
+    filter: hue-rotate(360deg) saturate(1.15) contrast(1.04);
+  }
+}
+
+@keyframes qLockGeoMorph {
+  0%, 100% {
+    border-radius: 42% 58% 60% 40% / 44% 46% 54% 56%;
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    border-radius: 58% 42% 40% 60% / 56% 54% 46% 44%;
+    transform: rotate(180deg) scale(1.08);
+  }
+}
+
+.q-lock-bg-motion {
+  animation: qLockBgMotion 16s ease-in-out infinite;
+  will-change: transform;
+}
+
+.q-lock-color-shift {
+  animation: qLockColorShift 14s linear infinite;
+  will-change: filter;
+}
+
+.q-lock-geo-morph {
+  animation: qLockGeoMorph 10s ease-in-out infinite;
+  will-change: transform, border-radius;
 }
 
 

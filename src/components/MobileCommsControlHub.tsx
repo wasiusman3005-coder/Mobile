@@ -13,7 +13,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Reply,
-  Download,
+  BatteryCharging,
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
@@ -25,6 +25,8 @@ import {
   getNativeSmsMessages,
   sendNativeSms,
   setNativeBackgroundWakeService,
+  setNativeBackgroundAutoAnnounce,
+  openAndroidBatteryOptimizationSettings,
   openAndroidNotificationAccessSettings,
   requestAndroidNativePermissions,
   subscribeNativeEvents,
@@ -38,13 +40,11 @@ import { LanguageCode, VoiceGender } from "../types";
 interface MobileCommsControlHubProps {
   language: LanguageCode;
   voiceGender: VoiceGender;
-  onOpenApkGuide?: () => void;
 }
 
 export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
   language,
   voiceGender,
-  onOpenApkGuide,
 }) => {
   const isNative = isNativeAndroidApk();
   const [activeTab, setActiveTab] = useState<"notifications" | "calls" | "sms" | "background">("notifications");
@@ -56,6 +56,13 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
   const [smsPhone, setSmsPhone] = useState("");
   const [smsText, setSmsText] = useState("");
   const [bgWakeActive, setBgWakeActive] = useState(false);
+  const [bgAutoAnnounce, setBgAutoAnnounce] = useState(() => {
+    try {
+      return localStorage.getItem("wasu_jarvis_bg_announce") !== "0";
+    } catch {
+      return true;
+    }
+  });
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -112,14 +119,14 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
     if (!isNative) {
       const msg =
         language === "en"
-          ? "Chrome web browser cannot read WhatsApp or Messenger notifications due to Android security. Build and install the Q-NEXUS APK for full notification access."
-          : "Chrome browser Android ki security ki wajah se WhatsApp aur doosri apps ke notifications nahi parh sakta. Complete phone control ke liye project ka Android APK install karein.";
+          ? "Live WhatsApp/Messenger notifications require running the Wasu's Jarvis Android APK with Notification Access enabled."
+          : "Live WhatsApp aur apps ke notifications Wasu's Jarvis Android APK mein Notification Access on karne par milte hain.";
       setStatusNotice(msg);
       speakSummary(msg);
       return;
     }
     if (!listenerEnabled) {
-      const msg = "Notification Listener access off hai. Ooper Notification Access Settings daba kar Q-NEXUS ko allow karein.";
+      const msg = "Notification Listener access off hai. Notification Access Settings daba kar Wasu's Jarvis ko allow karein.";
       setStatusNotice(msg);
       speakSummary(msg);
       return;
@@ -140,7 +147,7 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
   const handleReadCalls = () => {
     soundEffects.playClick();
     if (!isNative) {
-      speakSummary("Call logs sirf installed Q-NEXUS Android APK mein read ho sakti hain.");
+      speakSummary("Call logs sirf installed Wasu's Jarvis Android APK mein read ho sakti hain.");
       return;
     }
     if (calls.length === 0) {
@@ -188,10 +195,22 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
       "wake up jarvis",
       "hi jarvis",
       "hey jarvis",
-      "hello zoya",
+      "wasu",
+      "wasi ki jan",
     ]);
     setBgWakeActive(res.active);
     setStatusNotice(res.message);
+  };
+
+  const handleToggleAutoAnnounce = async () => {
+    const next = !bgAutoAnnounce;
+    setBgAutoAnnounce(next);
+    await setNativeBackgroundAutoAnnounce(next);
+    setStatusNotice(
+      next
+        ? "Background Auto-Announce ON: App band hone par bhi alerts voice se batayega."
+        : "Background Auto-Announce OFF"
+    );
   };
 
   const handleGrantPermissions = async () => {
@@ -230,13 +249,13 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
           </div>
           <p className="text-[11px] font-mono text-slate-300 leading-relaxed">
             {isNative
-              ? "Aap native Q-NEXUS Android APK chala rahe hain. Notification Access aur Permissions allow kar ke WhatsApp, Messenger, SMS, Calls aur Always-On Background 'Wake up Jarvis' use karein."
-              : "Google Chrome aur Web PWA security ki wajah se WhatsApp/Instagram notifications, Call Logs, SMS, ya app band hone ke baad mic ('Wake up Jarvis') nahi chala sakte. Full phone control ke liye project ka ready-to-build .APK (build_android_apk.bat) banayein."}
+              ? "Wasu's Jarvis Native Android APK active hai. Notification Access aur Permissions allow kar ke WhatsApp, Messenger, SMS, Calls aur Always-On Background Service chalayein."
+              : "Live Android WhatsApp/Messenger notifications, Call Logs, SMS, aur app band hone ke baad background service sirf compiled Wasu's Jarvis Android APK mein kaam karti hai."}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {isNative ? (
+          {isNative && (
             <>
               <button
                 type="button"
@@ -255,20 +274,6 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
                 <span>NOTIFICATION ACCESS</span>
               </button>
             </>
-          ) : (
-            onOpenApkGuide && (
-              <button
-                type="button"
-                onClick={() => {
-                  soundEffects.playClick();
-                  onOpenApkGuide();
-                }}
-                className="px-3 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-orbitron font-bold text-[11px] cursor-pointer flex items-center gap-1.5 shadow-lg shadow-amber-500/20"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>BUILD ANDROID .APK</span>
-              </button>
-            )
           )}
         </div>
       </div>
@@ -366,7 +371,7 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
               className="px-3 py-1.5 rounded-xl bg-cyan-950 hover:bg-cyan-900 border border-cyan-400 text-cyan-200 text-xs font-mono flex items-center gap-1.5 cursor-pointer"
             >
               <Volume2 className="w-3.5 h-3.5" />
-              <span>Zoya: Read Messages Aloud</span>
+              <span>Jarvis: Read Messages Aloud</span>
             </button>
           </div>
 
@@ -520,7 +525,7 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
             <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 text-center text-xs font-mono text-slate-400">
               {isNative
                 ? "SMS Inbox empty hai ya READ_SMS permission allow karein."
-                : "Real SMS inbox sirf Q-NEXUS Android APK mein load hota hai."}
+                : "Real SMS inbox sirf Wasu's Jarvis Android APK mein load hota hai."}
             </div>
           ) : (
             <div className="space-y-2">
@@ -538,17 +543,17 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
         </div>
       )}
 
-      {/* TAB 4: ALWAYS-ON BACKGROUND WAKE SERVICE */}
+      {/* TAB 4: ALWAYS-ON BACKGROUND WAKE & VOICE SERVICE */}
       {activeTab === "background" && (
         <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/40 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h4 className="font-orbitron font-bold text-sm text-amber-300 flex items-center gap-2">
                 <Smartphone className="w-4 h-4" />
-                <span>ALWAYS-ON BACKGROUND &quot;WAKE UP JARVIS&quot;</span>
+                <span>ALWAYS-ON BACKGROUND SERVICE</span>
               </h4>
               <p className="text-xs font-mono text-slate-300 mt-1 leading-relaxed">
-                Android Foreground Service app close hone ya screen lock hone ke baad bhi microphone par &quot;Wake up Jarvis&quot; aur &quot;Hi Jarvis&quot; sunti rehti hai aur bolte hi Q-NEXUS auto-launch kar deti hai.
+                Android Foreground Service app close hone ke baad bhi background mein chalegi, incoming alerts voice se batayegi aur wake word sun kar Wasu&apos;s Jarvis open karegi.
               </p>
             </div>
             <button
@@ -560,11 +565,36 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
                   : "bg-amber-400 hover:bg-amber-300 text-slate-950"
               }`}
             >
-              {bgWakeActive ? "SERVICE RUNNING ✓" : "START WAKE SERVICE"}
+              {bgWakeActive ? "SERVICE RUNNING ✓" : "START SERVICE"}
             </button>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={handleToggleAutoAnnounce}
+              className={`px-3 py-2.5 rounded-xl border text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer ${
+                bgAutoAnnounce
+                  ? "bg-emerald-950/70 border-emerald-400 text-emerald-200"
+                  : "bg-slate-900 border-slate-700 text-slate-300"
+              }`}
+            >
+              <Volume2 className="w-4 h-4" />
+              <span>{bgAutoAnnounce ? "Background Voice Alerts: ON" : "Background Voice Alerts: OFF"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openAndroidBatteryOptimizationSettings()}
+              className="px-3 py-2.5 rounded-xl bg-cyan-950/70 border border-cyan-500/45 text-cyan-200 text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <BatteryCharging className="w-4 h-4" />
+              <span>Allow Unrestricted Battery Run</span>
+            </button>
+          </div>
+
           <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-400">
-            Active Phrases: <span className="text-cyan-300">&quot;Wake up Jarvis&quot;, &quot;Hi Jarvis&quot;, &quot;Hey Jarvis&quot;, &quot;Hello Zoya&quot;</span>
+            Active Phrases: <span className="text-cyan-300">&quot;Wake up Jarvis&quot;, &quot;Hi Jarvis&quot;, &quot;Hey Jarvis&quot;, &quot;Wasu&quot;, &quot;Wasi ki Jan&quot;</span>
           </div>
         </div>
       )}

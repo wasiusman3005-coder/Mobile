@@ -67,6 +67,22 @@ export interface MobileSecurityConfig {
   autoLockMinutes: number;
 }
 
+export interface ProactiveAlertConfig {
+  incomingNotifications: boolean;
+  speakNotificationsAloud: boolean;
+  lowBatteryThreshold: number;
+  taskReminders: boolean;
+  networkAlerts: boolean;
+}
+
+export interface SummaryLogEntry {
+  id: string;
+  role: 'user' | 'assistant' | 'reminder';
+  speaker: string;
+  text: string;
+  timeStr: string;
+}
+
 export interface DashboardCustomization {
   accentTheme: AccentTheme;
   customAccentHex: string;
@@ -74,6 +90,16 @@ export interface DashboardCustomization {
   customBgUrl: string;
   show3DBackground: boolean;
   activeInterfaceTheme?: JarvisInterfaceThemeId;
+  brandTitle?: string;
+  brandSubtitle?: string;
+  logoStyle?: 'reactor' | 'tesseract' | 'crystal' | 'singularity';
+  lockScreenMotionEnabled?: boolean;
+  lockScreenColorShift?: boolean;
+  lockScreenDesignStyle?: 'orbital' | 'cyber_grid' | 'aurora_waves';
+  dockShowLabels?: boolean;
+  dockIconSize?: 'compact' | 'normal' | 'large';
+  hudOpacity?: number;
+  proactiveAlerts?: ProactiveAlertConfig;
   screensaverType: 'sentry' | 'matrix' | 'nebula' | 'vortex';
   screensaverTimeoutMinutes: number;
   screensaverMessage: string;
@@ -160,13 +186,13 @@ export interface HealthState {
 
 export interface EditingMacro {
   id: string;
-  software: 'Premiere Pro' | 'After Effects' | 'Photoshop' | 'VS Code' | 'Blender';
+  software: 'Mobile Hardware' | 'Notifications' | 'Battery & Perf' | 'GPS & Security';
   title: string;
   commandSnippet: string;
   voicePromptUrdu: string;
   voicePromptEnglish: string;
   voicePromptPunjabi: string;
-  category: 'render' | 'cut' | 'color' | 'cleanup' | 'proxy';
+  category: 'hardware' | 'alerts' | 'battery' | 'cleanup' | 'security';
 }
 
 export interface FileItem {
@@ -206,17 +232,6 @@ export interface AppConnectorItem {
   lastSync: string;
   activeItemsCount: number;
   quickActionLabel: string;
-}
-
-export interface DockerContainerItem {
-  id: string;
-  name: string;
-  image: string;
-  status: 'running' | 'stopped' | 'restarting';
-  uptime: string;
-  cpuPercent: number;
-  memUsageMb: number;
-  ports: string;
 }
 
 export interface ScheduledRoutineItem {
@@ -283,7 +298,7 @@ export interface JiraGitHubIssueItem {
   status: 'Backlog' | 'In Progress' | 'Done';
 }
 
-export type DeviceType = 'pc' | 'mobile' | 'tablet' | 'wearable' | 'smart_light' | 'audio_dac' | 'smart_plug' | 'peripherals';
+export type DeviceType = 'mobile' | 'tablet' | 'wearable' | 'smart_light' | 'audio_dac' | 'smart_plug' | 'peripherals';
 export type DeviceConnectionProtocol = 'BLE' | 'WiFi_LAN' | 'USB_C' | 'Cloud_Relay';
 
 export interface ConnectedDeviceItem {

@@ -154,10 +154,12 @@ export const QuantumCore3D: React.FC<QuantumCore3DProps> = ({
     window.addEventListener("resize", handleResize);
 
     // Animation Loop
-    let clock = new THREE.Clock();
-    const animate = () => {
+    const timer = new THREE.Timer();
+    timer.connect(document);
+    const animate = (timestamp?: number) => {
       animFrameIdRef.current = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
+      timer.update(timestamp);
+      const elapsedTime = timer.getElapsed();
 
       // Dynamic pulse multiplier if speaking or listening
       const pulseSpeed = isSpeaking ? 6 : isListening ? 4 : 2;
@@ -186,10 +188,12 @@ export const QuantumCore3D: React.FC<QuantumCore3DProps> = ({
       renderer.render(scene, camera);
     };
 
-    animate();
+    animFrameIdRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
+      timer.disconnect();
+      timer.dispose();
       window.removeEventListener("resize", handleResize);
       container.removeEventListener("mousemove", handleMouseMove);
       renderer.dispose();

@@ -767,7 +767,7 @@ class SpeechService {
                 }
                 if (data.needsSpeechApi) {
                   this.stopAudioBurstWakeFallback();
-                  this.wakeCallbacks.onWakeStatusChange?.(false, "Use Chrome on Mobile/PC or tap WAVE button");
+                  this.wakeCallbacks.onWakeStatusChange?.(false, "Use Android APK / Mobile Chrome or tap WAVE button");
                   return;
                 }
                 if (data.matched) {

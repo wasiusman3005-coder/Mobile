@@ -48,6 +48,9 @@ interface QNexusPluginInterface {
   getCallLogs(): Promise<{ calls: NativeCallLogItem[] }>;
   getSmsMessages(): Promise<{ messages: NativeSmsItem[] }>;
   sendSms(opts: { phone: string; message: string }): Promise<{ ok: boolean; message: string }>;
+  toggleFlashlight?(opts: { enable: boolean }): Promise<{ ok: boolean; active: boolean; message: string }>;
+  setAutoAnnounce?(opts: { enabled: boolean }): Promise<{ ok: boolean; enabled: boolean }>;
+  openBatteryOptimizationSettings?(): Promise<{ ok: boolean }>;
   setBackgroundWakeService(opts: { enabled: boolean; phrases?: string[] }): Promise<{ ok: boolean; active: boolean; message: string }>;
   openNotificationAccessSettings(): Promise<{ ok: boolean }>;
   requestAllPermissions(): Promise<{ ok: boolean; mic: boolean; phone: boolean; sms: boolean }>;
@@ -83,7 +86,7 @@ export async function getNativeDeviceTelemetry(): Promise<NativeDeviceTelemetry 
 }
 
 export async function verifyNativeAndroidBiometric(
-  title = "Q-NEXUS Biometric Unlock",
+  title = "Wasu's Jarvis Biometric Unlock",
   subtitle = "Verify with your Phone Fingerprint or Face"
 ): Promise<{ ok: boolean; message: string } | null> {
   const plugin = getNativePlugin();
@@ -92,6 +95,43 @@ export async function verifyNativeAndroidBiometric(
     return await plugin.verifyBiometric({ title, subtitle });
   } catch (e: any) {
     return { ok: false, message: e?.message || "Biometric check failed" };
+  }
+}
+
+export async function toggleNativeAndroidFlashlight(
+  enable: boolean
+): Promise<{ ok: boolean; active: boolean; message: string } | null> {
+  const plugin = getNativePlugin();
+  if (!plugin?.toggleFlashlight) return null;
+  try {
+    return await plugin.toggleFlashlight({ enable });
+  } catch (e: any) {
+    return { ok: false, active: false, message: e?.message || "Native flashlight control failed" };
+  }
+}
+
+export async function setNativeBackgroundAutoAnnounce(enabled: boolean): Promise<boolean> {
+  try {
+    localStorage.setItem("wasu_jarvis_bg_announce", enabled ? "1" : "0");
+  } catch {}
+  const plugin = getNativePlugin();
+  if (!plugin?.setAutoAnnounce) return false;
+  try {
+    const res = await plugin.setAutoAnnounce({ enabled });
+    return Boolean(res.ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function openAndroidBatteryOptimizationSettings(): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin?.openBatteryOptimizationSettings) return false;
+  try {
+    const res = await plugin.openBatteryOptimizationSettings();
+    return Boolean(res.ok);
+  } catch {
+    return false;
   }
 }
 
@@ -163,14 +203,14 @@ export async function sendNativeSms(phone: string, message: string): Promise<{ o
 
 export async function setNativeBackgroundWakeService(
   enabled: boolean,
-  phrases: string[] = ["wake up jarvis", "hi jarvis", "hi nexus", "hello zoya"]
+  phrases: string[] = ["wake up jarvis", "hi jarvis", "wasu", "wasi ki jan"]
 ): Promise<{ ok: boolean; active: boolean; message: string }> {
   const plugin = getNativePlugin();
   if (!plugin) {
     return {
       ok: false,
       active: false,
-      message: "Chrome browsers cannot run mic services after closing. Install the Q-NEXUS Android APK for Always-On background 'Wake up Jarvis'.",
+      message: "Chrome browsers cannot keep background services active after closing. Run the Wasu's Jarvis Android APK for Always-On background execution.",
     };
   }
   try {

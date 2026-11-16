@@ -237,10 +237,10 @@ export const QuantumLoadingScreen: React.FC<QuantumLoadingScreenProps> = ({
       <header className="relative z-10 w-full max-w-[1220px] flex flex-wrap items-center justify-between gap-4 pb-4 mb-6 border-b border-slate-400/20">
         <div className="flex items-center gap-3">
           <div className="font-orbitron font-extrabold text-lg sm:text-xl tracking-[0.22em] text-slate-100 whitespace-nowrap">
-            Q-<span className="text-[#00f0ff]">DYNAMICS</span>
+            WASU&apos;S <span className="text-[#00f0ff]">JARVIS</span>
           </div>
           <span className="text-xs font-mono text-slate-400 tabular">
-            · Stage 2 / 3 · System Diagnostics &amp; Boot Check · {commanderName}
+            · Mobile AI Diagnostics &amp; Boot Check · {commanderName}
           </span>
         </div>
 

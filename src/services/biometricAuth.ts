@@ -135,7 +135,7 @@ export async function enrollDeviceBiometric(
         publicKey: {
           challenge,
           rp: {
-            name: "Q-NEXUS Mobile Jarvis OS",
+            name: "Wasu's Jarvis Mobile OS",
             id: window.location.hostname,
           },
           user: {
@@ -184,7 +184,7 @@ export async function enrollDeviceBiometric(
         return {
           ok: false,
           usedHardwareWebAuthn: true,
-          message: "Biometric prompt cancelled or blocked. Open standalone app tab (not iframe) and verify Fingerprint/Face.",
+          message: "Biometric prompt cancelled or blocked. Open standalone Chrome/APK and verify Fingerprint/Face.",
         };
       }
     }
@@ -198,7 +198,7 @@ export async function enrollDeviceBiometric(
     faceUnlockEnabled: mode === "face" ? true : existing.faceUnlockEnabled,
     biometricCredentialId: existing.biometricCredentialId || syntheticId,
     enrolledDeviceLabel: caps.blockedByIframe
-      ? "Preview Mode (Open Standalone URL or APK for OS Sensor)"
+      ? "Preview Mode (Open Standalone or Android APK for Hardware Sensor)"
       : /Android/i.test(navigator.userAgent)
       ? "Android Sensor"
       : /iPhone|iPad/i.test(navigator.userAgent)
@@ -213,7 +213,7 @@ export async function enrollDeviceBiometric(
     usedHardwareWebAuthn: false,
     credentialId: next.biometricCredentialId,
     message: caps.blockedByIframe
-      ? "Saved! Note: Hardware Fingerprint sensor requires opening Standalone Chrome tab or Android APK (iframe previews block WebAuthn)."
+      ? "Saved! Note: Hardware Fingerprint sensor works inside Android APK or standalone Chrome (iframe blocks WebAuthn)."
       : mode === "face"
       ? "Face Unlock profile calibrated & enabled!"
       : "Fingerprint Unlock profile enabled!",
@@ -233,7 +233,7 @@ export async function verifyDeviceBiometric(
   // 1) Native Android APK BiometricPrompt verification
   if (caps.nativeApkSupported) {
     const nativeRes = await verifyNativeAndroidBiometric(
-      mode === "face" ? "Q-NEXUS Face Unlock" : "Q-NEXUS Fingerprint Unlock",
+      mode === "face" ? "Wasu's Jarvis Face Unlock" : "Wasu's Jarvis Fingerprint Unlock",
       "Verify using your phone's hardware sensor"
     );
     if (nativeRes) {

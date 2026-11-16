@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Monitor, GraduationCap, Database, Heart, DollarSign, Target, Brain, Laptop, X, ArrowLeft, Sparkles, ChevronRight, LayoutGrid, MapPin, Smartphone, Globe, Radio, Briefcase } from "lucide-react";
+import { GraduationCap, Database, Heart, DollarSign, Target, Brain, X, ArrowLeft, ChevronRight, LayoutGrid, MapPin, Smartphone, Radio, Briefcase } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { DesktopManager } from "./DesktopManager";
 import { StudentStudyHub } from "./StudentStudyHub";
@@ -16,7 +16,7 @@ import { CreativeMediaStudio } from "./CreativeMediaStudio";
 import { MobileCommsControlHub } from "./MobileCommsControlHub";
 import { BusinessAdvisorHub } from "./BusinessAdvisorHub";
 import { LanguageCode, VoiceGender, UserProfile } from "../types";
-import { Film, Sparkles as SparkleIcon, Bell } from "lucide-react";
+import { Film, Bell } from "lucide-react";
 
 export type MatrixModuleId = "comms" | "desktop" | "study" | "business" | "records" | "health" | "finance" | "focus" | "memory" | "automation" | "communication" | "maps" | "devices" | "studio";
 
@@ -27,7 +27,6 @@ interface QuantumAppsMatrixProps {
   voiceGender: VoiceGender;
   userProfile: UserProfile;
   onUpdateProfile: (profile: UserProfile) => void;
-  onOpenDesktopInstall: (tab?: "android" | "ios" | "apk") => void;
   initialModule?: MatrixModuleId | null;
 }
 
@@ -38,7 +37,6 @@ export const QuantumAppsMatrix: React.FC<QuantumAppsMatrixProps> = ({
   voiceGender,
   userProfile,
   onUpdateProfile,
-  onOpenDesktopInstall,
   initialModule = null,
 }) => {
   const [activeModule, setActiveModule] = useState<MatrixModuleId | null>(initialModule);
@@ -230,7 +228,7 @@ export const QuantumAppsMatrix: React.FC<QuantumAppsMatrixProps> = ({
                 </div>
                 <div>
                   <h2 className="font-orbitron font-bold text-base md:text-lg text-cyan-300 glow-text-cyan uppercase">
-                    QUANTUM APPLICATIONS & OPERATIONS MATRIX
+                    WASU&apos;S JARVIS — MOBILE APPS MATRIX
                   </h2>
                   <p className="text-xs font-mono text-slate-400">
                     All personal tools, study solvers, phone hardware controllers and biometric vaults in one mobile workspace
@@ -290,37 +288,6 @@ export const QuantumAppsMatrix: React.FC<QuantumAppsMatrixProps> = ({
                   );
                 })}
 
-                {/* Mobile Phone App Installer Card */}
-                <div
-                  onClick={() => {
-                    soundEffects.playClick();
-                    onOpenDesktopInstall();
-                  }}
-                  className="p-5 rounded-3xl bg-gradient-to-br from-slate-900/90 to-slate-950 border border-slate-700 hover:border-emerald-400 shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer flex flex-col justify-between group hover:-translate-y-1"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="w-11 h-11 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition">
-                        <Smartphone className="w-6 h-6" />
-                      </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-emerald-300">
-                        MOBILE INSTALLER
-                      </span>
-                    </div>
-
-                    <h3 className="font-orbitron font-bold text-base text-slate-100 group-hover:text-emerald-300 transition mb-1">
-                      Install Phone App (Android &amp; iPhone)
-                    </h3>
-                    <p className="text-xs font-mono text-slate-400 leading-relaxed">
-                      Step-by-step Android Chrome 1-tap PWA install, iPhone Safari Home Screen app setup &amp; Capacitor APK guide.
-                    </p>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-slate-400 group-hover:text-emerald-300">
-                    <span>VIEW PHONE INSTALL GUIDE</span>
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-                  </div>
-                </div>
               </div>
             </div>
           ) : (
@@ -330,7 +297,6 @@ export const QuantumAppsMatrix: React.FC<QuantumAppsMatrixProps> = ({
                 <MobileCommsControlHub
                   language={language}
                   voiceGender={voiceGender}
-                  onOpenApkGuide={() => onOpenDesktopInstall("apk")}
                 />
               )}
               {activeModule === "desktop" && (

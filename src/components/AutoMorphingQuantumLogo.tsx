@@ -229,13 +229,15 @@ export const AutoMorphingQuantumLogo: React.FC<AutoMorphingQuantumLogoProps> = (
     const haloPoints = new THREE.Points(partGeo, partMat);
     rootGroup.add(haloPoints);
 
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
+    timer.connect(document);
     let currentColor = new THREE.Color(QUANTUM_THEMES[0].hex);
     let targetColor = new THREE.Color(QUANTUM_THEMES[0].hex);
 
-    const animate = () => {
+    const animate = (timestamp?: number) => {
       animFrameIdRef.current = requestAnimationFrame(animate);
-      const time = clock.getElapsedTime();
+      timer.update(timestamp);
+      const time = timer.getElapsed();
 
       const activeIdx = currentIndexRef.current;
       targetColor.set(QUANTUM_THEMES[activeIdx].hex);
@@ -299,10 +301,12 @@ export const AutoMorphingQuantumLogo: React.FC<AutoMorphingQuantumLogoProps> = (
       renderer.render(scene, camera);
     };
 
-    animate();
+    animFrameIdRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
+      timer.disconnect();
+      timer.dispose();
       renderer.dispose();
       coreGeo.dispose();
       coreMat.dispose();
@@ -368,7 +372,7 @@ export const AutoMorphingQuantumLogo: React.FC<AutoMorphingQuantumLogoProps> = (
               className="font-orbitron font-extrabold text-sm tracking-wider transition-colors duration-700"
               style={{ color: activeTheme.hex }}
             >
-              Q-NEXUS
+              WASU&apos;S JARVIS
             </span>
             <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-slate-300">
               UHD 4K

@@ -176,7 +176,7 @@ export const CommunicationCodingSuite: React.FC<CommunicationCodingSuiteProps> =
         },
         {
           id: `dt-${Date.now()}-4`,
-          title: "4. Setup Docker multi-stage build & compose configuration",
+          title: "4. Prepare Android Capacitor release & mobile signing",
           category: "devops",
           hours: 2.5,
           dependencies: ["Task 1", "Task 3"],

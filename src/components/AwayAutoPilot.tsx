@@ -16,11 +16,11 @@ export const AwayAutoPilot: React.FC<AwayAutoPilotProps> = ({
   voiceGender,
 }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [backgroundTasks, setBackgroundTasks] = useState([
-    { title: "Adobe Premiere 4K ProRes Proxy Render", progress: 68, status: "Rendering via CUDA" },
-    { title: "After Effects Temp Disk Cache Cleanup", progress: 100, status: "Completed (42 GB freed)" },
-    { title: "Quantum Telemetry & Sentry Intrusion Watch", progress: 100, status: "Monitoring 360° Perimeter" },
-    { title: "Daily Cloud Encryption Backup", progress: 85, status: "Uploading Encrypted Snapshot" },
+  const [backgroundTasks] = useState([
+    { title: "Phone Notification Listener & Voice Summary", progress: 100, status: "Monitoring Calls, WhatsApp & SMS" },
+    { title: "Battery Thermal & Storage Cache Guard", progress: 100, status: "Optimized (Healthy Range)" },
+    { title: "Wasu's Jarvis Sentry Perimeter Watch", progress: 100, status: "360° Mobile Shield Active" },
+    { title: "Encrypted Mobile Vault Sync", progress: 92, status: "Syncing On-Device Memory" },
   ]);
 
   useEffect(() => {
@@ -78,7 +78,7 @@ export const AwayAutoPilot: React.FC<AwayAutoPilotProps> = ({
           QUANTUM SENTRY ACTIVE
         </h1>
         <p className="text-xs font-mono text-slate-400 mb-6">
-          Jarvis is executing all queued renders, background automations, and protecting your PC while you are away.
+          Wasu&apos;s Jarvis is monitoring your notifications, calls, battery, and mobile security while your phone rests.
         </p>
 
         {/* Running Tasks in Background */}
@@ -105,7 +105,7 @@ export const AwayAutoPilot: React.FC<AwayAutoPilotProps> = ({
       <div className="relative z-10 text-center">
         <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-cyan-950/80 border border-cyan-400/50 text-cyan-300 font-mono text-xs tracking-wider shadow-lg shadow-cyan-950 animate-bounce">
           <Power className="w-4 h-4" />
-          <span>CLICK ANYWHERE TO RESUME DESKTOP WORKSPACE</span>
+          <span>TAP ANYWHERE TO RESUME MOBILE JARVIS</span>
         </div>
       </div>
     </div>

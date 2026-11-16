@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.Cursor
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -105,15 +107,14 @@ class QNexusPlugin : Plugin() {
 
     @PluginMethod
     fun verifyBiometric(call: PluginCall) {
-        val title = call.getString("title") ?: "Q-NEXUS Biometric Lock"
+        val title = call.getString("title") ?: "Wasu's Jarvis Biometric Lock"
         val subtitle = call.getString("subtitle") ?: "Touch Fingerprint sensor or use Face Unlock"
         val executor = ContextCompat.getMainExecutor(context)
 
         activity.runOnUiThread {
             val bm = BiometricManager.from(context)
-            val canAuth = bm.canAuthenticate(
-                BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
+            val allowed = BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            val canAuth = bm.canAuthenticate(allowed)
             if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
                 val res = JSObject()
                 res.put("ok", false)
@@ -145,11 +146,90 @@ class QNexusPlugin : Plugin() {
             val info = BiometricPrompt.PromptInfo.Builder()
                 .setTitle(title)
                 .setSubtitle(subtitle)
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                )
+                .setAllowedAuthenticators(allowed)
                 .build()
             prompt.authenticate(info)
+        }
+    }
+
+    @PluginMethod
+    fun toggleFlashlight(call: PluginCall) {
+        val enable = call.getBoolean("enable") ?: false
+        try {
+            val camManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            var targetId: String? = null
+            for (id in camManager.cameraIdList) {
+                val chars = camManager.getCameraCharacteristics(id)
+                val hasFlash = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                val facing = chars.get(CameraCharacteristics.LENS_FACING)
+                if (hasFlash && facing == CameraCharacteristics.LENS_FACING_BACK) {
+                    targetId = id
+                    break
+                } else if (hasFlash && targetId == null) {
+                    targetId = id
+                }
+            }
+            if (targetId == null) {
+                val res = JSObject()
+                res.put("ok", false)
+                res.put("active", false)
+                res.put("message", "No camera flashlight found on this phone.")
+                call.resolve(res)
+                return
+            }
+            camManager.setTorchMode(targetId, enable)
+            val res = JSObject()
+            res.put("ok", true)
+            res.put("active", enable)
+            res.put("message", if (enable) "Phone Flashlight turned ON!" else "Phone Flashlight turned OFF.")
+            call.resolve(res)
+        } catch (e: Exception) {
+            val res = JSObject()
+            res.put("ok", false)
+            res.put("active", false)
+            res.put("message", e.message ?: "Could not control phone flashlight.")
+            call.resolve(res)
+        }
+    }
+
+    @PluginMethod
+    fun setAutoAnnounce(call: PluginCall) {
+        val enabled = call.getBoolean("enabled") ?: true
+        context.getSharedPreferences("WasuJarvisPrefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("bg_auto_announce", enabled)
+            .apply()
+        val res = JSObject()
+        res.put("ok", true)
+        res.put("enabled", enabled)
+        call.resolve(res)
+    }
+
+    @PluginMethod
+    fun openBatteryOptimizationSettings(call: PluginCall) {
+        try {
+            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            val res = JSObject()
+            res.put("ok", true)
+            call.resolve(res)
+        } catch (_: Exception) {
+            try {
+                val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallback)
+                val res = JSObject()
+                res.put("ok", true)
+                call.resolve(res)
+            } catch (_: Exception) {
+                val res = JSObject()
+                res.put("ok", false)
+                call.resolve(res)
+            }
         }
     }
 
@@ -283,6 +363,11 @@ class QNexusPlugin : Plugin() {
     @PluginMethod
     fun setBackgroundWakeService(call: PluginCall) {
         val enabled = call.getBoolean("enabled") ?: false
+        context.getSharedPreferences("WasuJarvisPrefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("wake_enabled", enabled)
+            .apply()
+
         val intent = Intent(context, JarvisWakeForegroundService::class.java)
         if (enabled) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -296,7 +381,11 @@ class QNexusPlugin : Plugin() {
         val res = JSObject()
         res.put("ok", true)
         res.put("active", enabled)
-        res.put("message", if (enabled) "Always-On 'Wake up Jarvis' Background Service Started!" else "Background Wake Service Stopped.")
+        res.put(
+            "message",
+            if (enabled) "Always-On Wasu's Jarvis Background Service Started!"
+            else "Background Wake Service Stopped."
+        )
         call.resolve(res)
     }
 
@@ -316,14 +405,18 @@ class QNexusPlugin : Plugin() {
     }
 
     private fun requestAllPerms(call: PluginCall) {
-        val perms = arrayOf(
+        val permsList = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.READ_CALL_LOG,
             Manifest.permission.READ_SMS,
             Manifest.permission.SEND_SMS,
-            Manifest.permission.CAMERA
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_FINE_LOCATION
         )
-        ActivityCompat.requestPermissions(activity, perms, 9001)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permsList.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        ActivityCompat.requestPermissions(activity, permsList.toTypedArray(), 9001)
         val res = JSObject()
         res.put("ok", true)
         res.put("mic", ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)

@@ -242,7 +242,7 @@ export const LifeRecordsManager: React.FC<LifeRecordsManagerProps> = ({
                 <option value="study">Study & Academic</option>
                 <option value="finance">Finance & Investment</option>
                 <option value="health">Health & Diet</option>
-                <option value="tech">Tech & PC Hardware</option>
+                <option value="tech">Tech &amp; Mobile Hardware</option>
                 <option value="memory">Personal Life Memory</option>
               </select>
             </div>

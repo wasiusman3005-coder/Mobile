@@ -21,12 +21,23 @@ if (fs.existsSync(oldJavaMain)) {
   fs.unlinkSync(oldJavaMain);
 }
 
+const stringsPath = path.join(root, "android", "app", "src", "main", "res", "values", "strings.xml");
+if (fs.existsSync(stringsPath)) {
+  let stringsXml = fs.readFileSync(stringsPath, "utf8");
+  stringsXml = stringsXml
+    .replace(/<string name="app_name">[^<]*<\/string>/, `<string name="app_name">Wasu&apos;s Jarvis</string>`)
+    .replace(/<string name="title_activity_main">[^<]*<\/string>/, `<string name="title_activity_main">Wasu&apos;s Jarvis</string>`);
+  fs.writeFileSync(stringsPath, stringsXml, "utf8");
+  console.log("Updated strings.xml app_name to Wasu's Jarvis.");
+}
+
 const manifestPath = path.join(root, "android", "app", "src", "main", "AndroidManifest.xml");
 if (fs.existsSync(manifestPath)) {
   let manifest = fs.readFileSync(manifestPath, "utf8");
   const perms = [
     "android.permission.RECORD_AUDIO",
     "android.permission.CAMERA",
+    "android.permission.FLASHLIGHT",
     "android.permission.READ_CALL_LOG",
     "android.permission.READ_PHONE_STATE",
     "android.permission.READ_SMS",
@@ -38,6 +49,8 @@ if (fs.existsSync(manifestPath)) {
     "android.permission.FOREGROUND_SERVICE_MICROPHONE",
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.WAKE_LOCK",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
   ];
   for (const p of perms) {
     if (!manifest.includes(p)) {
@@ -51,8 +64,9 @@ if (fs.existsSync(manifestPath)) {
   const servicesBlock = `
         <service
             android:name=".QNexusNotificationService"
-            android:label="Q-NEXUS Notifications Control"
+            android:label="Wasu&apos;s Jarvis Notifications &amp; Voice"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:stopWithTask="false"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
@@ -62,15 +76,43 @@ if (fs.existsSync(manifestPath)) {
             android:name=".JarvisWakeForegroundService"
             android:enabled="true"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="microphone" />
+        <receiver
+            android:name=".JarvisBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 `;
 
   if (!manifest.includes("QNexusNotificationService")) {
     manifest = manifest.replace("</application>", `${servicesBlock}    </application>`);
+  } else {
+    manifest = manifest
+      .replace(/Q-NEXUS Notifications Control/g, "Wasu&apos;s Jarvis Notifications &amp; Voice")
+      .replace(/android:stopWithTask="true"/g, 'android:stopWithTask="false"');
+    if (!manifest.includes("JarvisBootReceiver")) {
+      manifest = manifest.replace(
+        "</application>",
+        `        <receiver
+            android:name=".JarvisBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>\n    </application>`
+      );
+    }
   }
 
   fs.writeFileSync(manifestPath, manifest, "utf8");
-  console.log("Updated AndroidManifest.xml with Biometric, Mic, SMS, Call Log & Wake Service permissions.");
+  console.log("Updated AndroidManifest.xml with Flashlight, Biometric, Boot Receiver & Wake Service permissions.");
 }
 
 const gradlePath = path.join(root, "android", "app", "build.gradle");

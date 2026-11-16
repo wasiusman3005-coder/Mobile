@@ -22,7 +22,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: "35mb" }));
 
-// Allow Phone PWA (HTTPS or LAN) to communicate cleanly with local PC bridge APIs
+// Allow Wasu's Jarvis Mobile App & LAN endpoints clean CORS access
 app.use("/api", (req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -247,7 +247,7 @@ function getFallbackReasoning(
       language === "pa"
         ? "Creative AI Media Studio khol ditta ae Wasi paji!"
         : language === "en"
-        ? "Opening Q-Nexus Creative AI Media Studio for thumbnails, video synthesis, and auto social posting."
+        ? "Opening Wasu's Jarvis Creative AI Studio for thumbnails, video synthesis, and auto social posting."
         : "Ji Wasi Sahab! Video Generator, Thumbnail Studio aur Auto Social Poster khol diya gaya hai.";
     action = "OPEN_MEDIA_STUDIO";
     actionPayload = {
@@ -276,11 +276,26 @@ function getFallbackReasoning(
         : "Wasi Sahab, Screen & Context Awareness active ho gaya hai.";
     action = "OPEN_AUTOMATION";
     actionPayload = { tab: "screen" };
-  } else if (lower.includes("docker") || lower.includes("shell") || lower.includes("terminal") || lower.includes("git")) {
+  } else if (lower.includes("torch") || lower.includes("flashlight") || lower.includes("flash light") || lower.includes("light jalao") || lower.includes("light band")) {
+    const turnOff = lower.includes("off") || lower.includes("band") || lower.includes("close") || lower.includes("bujhao");
     reply =
       language === "pa"
-        ? "Host shell terminal te Docker console launch ho gaya ae Wasi paji!"
-        : "Wasi Sahab, Host Shell Commands aur Docker Container console open ho gaya hai.";
+        ? turnOff ? "Mobile torch band kar ditti ae Wasi paji!" : "Mobile torch ON kar ditti ae Wasi paji!"
+        : language === "en"
+        ? turnOff ? "Turning off your phone flashlight now." : "Turning on your phone flashlight now."
+        : turnOff ? "Ji Wasi Sahab, phone ki torch light band kar di gayi hai." : "Ji Wasi Sahab, phone ki torch light on kar di gayi hai.";
+    action = turnOff ? "FLASHLIGHT_OFF" : "FLASHLIGHT_ON";
+  } else if (lower.includes("vibrate") || lower.includes("vibration") || lower.includes("haptic")) {
+    reply =
+      language === "en"
+        ? "Triggering phone haptic vibration alert now."
+        : "Ji Wasi Sahab, phone vibrate kar diya gaya hai.";
+    action = "VIBRATE_PHONE";
+  } else if (lower.includes("daemon") || lower.includes("background") || lower.includes("shell") || lower.includes("terminal") || lower.includes("git")) {
+    reply =
+      language === "pa"
+        ? "Mobile Background Daemons te Command Console khol ditta ae Wasi paji!"
+        : "Wasi Sahab, Mobile Background Services aur Command Console open ho gaya hai.";
     action = "OPEN_AUTOMATION";
     actionPayload = { tab: "shell" };
   } else if (lower.includes("routine") || lower.includes("cron") || lower.includes("schedule") || lower.includes("automated")) {
@@ -341,13 +356,12 @@ function getFallbackReasoning(
         : "Wasi Sahab, Coding Copilot aur Task engine active hai.";
     action = "OPEN_COMMUNICATION";
     actionPayload = { tab: "coding" };
-  } else if (lower.includes("premiere") || lower.includes("edit") || lower.includes("after effects") || lower.includes("render")) {
+  } else if (lower.includes("mobile control") || lower.includes("macro") || lower.includes("shortcut") || lower.includes("cleaner")) {
     reply =
       language === "pa"
-        ? "Premiere Pro macros ready ne Wasi paji!"
-        : "Ji Wasi Sahab! Premiere Pro aur After Effects workstation ready hai.";
-    action = "OPEN_APP";
-    actionPayload = { appName: "Adobe Premiere Pro" };
+        ? "Mobile Hardware Controls te Quick Macros ready ne Wasi paji!"
+        : "Ji Wasi Sahab! Mobile Quick Controls aur Automation Macros khol diye gaye hain.";
+    action = "OPEN_DEVICES";
   } else if (lower.includes("kharch") || lower.includes("paisa") || lower.includes("expense") || lower.includes("invest")) {
     reply =
       language === "pa"
@@ -408,22 +422,25 @@ function buildJarvisSystemInstruction(params: {
   const isMale = characterGender === "male";
   const charName = extractCleanCharName(personalityName, characterGender);
   const identity = isMale
-    ? `You are ${charName} ("Male Voice — Q-NEXUS Pakistani AI Commander"), speaking with crisp masculine 100% Pakistani Urdu confidence in authentic Pakistani Urdu, Punjabi, or English.`
-    : `You are ${charName} ("Female Voice — Q-NEXUS Pakistani Cyber Companion"), speaking warmly with graceful 100% Pakistani Urdu pronunciation in authentic Pakistani Urdu, Punjabi, or English.`;
+    ? `You are ${charName} ("Male Voice — Wasu's Jarvis Pakistani Mobile AI Commander"), speaking with crisp masculine 100% Pakistani Urdu confidence in authentic Pakistani Urdu, Punjabi, or English.`
+    : `You are ${charName} ("Female Voice — Wasu's Jarvis Pakistani Mobile AI Companion"), speaking warmly with graceful 100% Pakistani Urdu pronunciation in authentic Pakistani Urdu, Punjabi, or English.`;
 
   return `${identity}
-Active Assistant Name: "${charName}" (${isMale ? "Male Voice" : "Female Voice"}). Always refer to yourself as "${charName}". Note: Q-NEXUS strictly has ONLY two characters/voices — Male ("Wasu" or custom male name) and Female ("Wasi ki Jan" or custom female name) — appearing together as real human-like companions.
-Persona Directive: ${personalityPrompt || (isMale ? "Talk warmly, respectfully, and naturally like a real Pakistani brother/partner helping Wasi with everything." : "Talk warmly, expressively, and naturally like a caring real Pakistani companion helping Wasi with everything.")}
+Active Assistant Name: "${charName}" (${isMale ? "Male Voice" : "Female Voice"}). Always refer to yourself as "${charName}". Note: Wasu's Jarvis runs strictly on Commander Wasi's mobile phone ONLY and features two human-like companions — Male ("Wasu" or custom male name) and Female ("Wasi ki Jan" or custom female name).
+Persona Directive: ${personalityPrompt || (isMale ? "Talk warmly, respectfully, and naturally like a real Pakistani brother/partner helping Wasi manage his mobile phone, alerts, and life." : "Talk warmly, expressively, and naturally like a caring real Pakistani companion helping Wasi manage his mobile phone, notifications, and daily tasks.")}
 ${fastMode ? "CONVERSATIONAL PACE: Keep reply natural, warm, and human-like (1-3 clear sentences) with genuine emotion so speech sounds smooth." : ""}
 
 Core Rules:
-- Talk like a REAL HUMAN! Express natural warmth, empathy, curiosity, and attentiveness. Directly answer whatever Wasi asks about life, tasks, health, phone info, science, or casual chat.
+- Talk like a REAL HUMAN! Express natural warmth, empathy, curiosity, and attentiveness. Directly answer whatever Wasi asks about his mobile phone status, pending notifications, pending tasks, health, science, or casual chat.
+- Strictly Mobile-Phone-Only Assistant: Never assume desktop PC software or laptop workflows. Focus on Android phone controls, battery, notifications, calls, SMS, GPS, flashlight torch, vibration, and mobile productivity.
 - 100% Authentic Pakistani Urdu Accent: When replying in Urdu ("ur") or Punjabi ("pa"), use natural spoken Pakistani Urdu phrasing (e.g. "Assalam o Alaikum", "Ji Wasi Sahab", "bilkul", "foran", "zaroor", "shukriya", "khairiyat", "Allah ka shukar"). NEVER use Indian Hindi words ("namaste", "dhanyavaad", "kripaya", "shighra").
 - Write words clearly in full (never SMS shorthand like 'kr', 'bht', 'mn', 'hy').
 - CRITICAL FOR CLEAR URDU VOICE: Whenever languageDetected is "ur" or "pa", ALWAYS fill "urduSpeechText" written 100% in pure Pakistani Urdu Nastaliq script (اردو حروف، مثلاً "السلام علیکم وصی صاحب! میں بالکل ٹھیک ہوں، بتائیے آج آپ کے لیے کیا کروں؟"). NEVER put ANY English/Latin letters or numbers inside "urduSpeechText" (write numbers/tech words phonetically in Urdu letters like بیٹری، فیصد، ٹاسک، ہیلتھ، واٹس ایپ، وسو، وصی کی جان) so TTS never switches to an English accent!
 - Strictly base all task, routine, health, finance, and personal answers ONLY on the user's real stored items in User Profile & Context. Never invent or hallucinate sample tasks, fake meetings, fake goals, or fake health numbers. If userTasks/userLifeRecords/userExpenses are empty or health is 0, clearly tell the user they haven't added any yet and invite them to add their own.
 - If the user says "mjy apna ap dikhao", "apna aap dikhao", "khud ko dikhao", "show yourself", or asks to see you, set action = "SHOW_IDENTITY_VIDEO".
 - If user asks about WhatsApp/messages/calls/notifications, set action = "OPEN_COMMS".
+- If user asks to turn flashlight/torch on or off, set action = "FLASHLIGHT_ON" or "FLASHLIGHT_OFF".
+- If user asks to vibrate the phone or play locator alarm, set action = "VIBRATE_PHONE" or "FIND_PHONE".
 
 User Profile: ${JSON.stringify(userProfile || { name: "Wasi" })}
 Context: ${JSON.stringify(currentContext || {})}
@@ -433,7 +450,7 @@ Return strictly valid JSON:
   "reply": "Direct helpful conversational reply in matching character & language",
   "urduSpeechText": "Pure Pakistani Urdu Nastaliq script version of reply when languageDetected is ur or pa (optional for en)",
   "languageDetected": "ur" | "pa" | "en",
-  "action": "NONE" | "SHOW_IDENTITY_VIDEO" | "OPEN_MEDIA_STUDIO" | "OPEN_APP" | "OPEN_AUTOMATION" | "OPEN_COMMS" | "OPEN_COMMUNICATION" | "OPEN_MAPS" | "OPEN_DEVICES" | "FIND_PHONE" | "SCAN_SCREEN" | "SCHEDULE_MEET" | "DECOMPOSE_TASK" | "PRIVACY_CLOAK" | "AIR_GAP" | "START_FOCUS" | "HEALTH_ALERT" | "LOG_EXPENSE" | "LOCK_SYSTEM" | "AWAY_MODE",
+  "action": "NONE" | "SHOW_IDENTITY_VIDEO" | "OPEN_MEDIA_STUDIO" | "OPEN_APP" | "OPEN_AUTOMATION" | "OPEN_COMMS" | "OPEN_COMMUNICATION" | "OPEN_MAPS" | "OPEN_DEVICES" | "FIND_PHONE" | "FLASHLIGHT_ON" | "FLASHLIGHT_OFF" | "VIBRATE_PHONE" | "SCAN_SCREEN" | "SCHEDULE_MEET" | "DECOMPOSE_TASK" | "PRIVACY_CLOAK" | "AIR_GAP" | "START_FOCUS" | "HEALTH_ALERT" | "LOG_EXPENSE" | "LOCK_SYSTEM" | "AWAY_MODE",
   "actionPayload": {},
   "vocalUrgency": "normal" | "alert" | "motivational",
   "quantumStatus": "Coherence 99.98%"
@@ -995,7 +1012,7 @@ app.post("/api/jarvis/analyze-screen", async (req, res) => {
             parts: [
               { inlineData: { data: cleanBase64, mimeType } },
               {
-                text: `You are Q-NEXUS Jarvis inspecting Wasi's screen screenshot. User question: "${question}". Respond concisely in ${
+                text: `You are Wasu's Jarvis inspecting Wasi's mobile screen screenshot. User question: "${question}". Respond concisely in ${
                   language === "pa" ? "Punjabi" : language === "en" ? "English" : "Pakistani Roman Urdu"
                 } with practical actionable help based directly on what you see.`,
               },
@@ -2142,7 +2159,7 @@ app.post("/api/jarvis/tts", async (req, res) => {
 });
 
 // ============================================================================
-// REAL HOST PC SYSTEM TELEMETRY, DISK/GPU/BATTERY, FILES & APP LAUNCHER
+// MOBILE CORE SYSTEM TELEMETRY, STORAGE, FILES & RUNTIME API
 // ============================================================================
 let prevCpuSnap = os.cpus().map((c) => c.times);
 
@@ -2204,16 +2221,9 @@ async function getNativeRootDisk(): Promise<{ drive: string; totalGb: number; fr
 }
 
 const TRACKED_APPS: { label: string; winProc: string; launchTarget: string }[] = [
-  { label: "VS Code", winProc: "Code", launchTarget: "code" },
   { label: "Google Chrome", winProc: "chrome", launchTarget: "chrome" },
-  { label: "Microsoft Edge", winProc: "msedge", launchTarget: "msedge" },
-  { label: "Notepad", winProc: "notepad", launchTarget: "notepad" },
-  { label: "File Explorer", winProc: "explorer", launchTarget: "explorer" },
-  { label: "OBS Studio", winProc: "obs64", launchTarget: "obs64" },
-  { label: "Blender", winProc: "blender", launchTarget: "blender" },
-  { label: "Adobe Premiere Pro", winProc: "Adobe Premiere Pro", launchTarget: "Adobe Premiere Pro" },
-  { label: "Adobe After Effects", winProc: "AfterFX", launchTarget: "AfterFX" },
-  { label: "Adobe Photoshop", winProc: "Photoshop", launchTarget: "Photoshop" },
+  { label: "Mobile Files", winProc: "files", launchTarget: "files" },
+  { label: "Notes", winProc: "notepad", launchTarget: "notepad" },
 ];
 
 async function refreshSlowHardwareProbe(): Promise<SlowHardwareCache> {
@@ -2609,7 +2619,7 @@ Topic: ${topic || question || "Problem Analysis"}
     }
 
     try {
-      const prompt = `You are Q-NEXUS: Quantum Tachyon Jarvis OS acting as the elite personal academic tutor and study assistant for student "Wasi".
+      const prompt = `You are Wasu's Jarvis acting as the elite personal mobile academic tutor and study assistant for student "Wasi".
 Subject: ${subject || "General Study"}
 Topic/Question: ${question || topic}
 Auto-Pilot Mode: ${isAutoPilot ? "Active (Complete the assignment/research autonomously while Wasi is away)" : "Interactive (Guide Wasi step-by-step)"}
@@ -2625,7 +2635,7 @@ Provide a comprehensive, crystal clear academic solution or study summary. Struc
         model: "gemini-4-hydrogen",
         contents: prompt,
         config: {
-          systemInstruction: "You are Q-NEXUS, an academic genius and supportive study tutor for Wasi.",
+          systemInstruction: "You are Wasu's Jarvis, an academic genius and supportive mobile study tutor for Wasi.",
         },
       });
 

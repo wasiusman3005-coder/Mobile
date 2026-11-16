@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Settings, X, Palette, Volume2, AudioWaveform, Image, Shield, Clock, Upload, Check, RefreshCw, Sparkles, Sliders, Globe, Radio, Play, Zap, Fingerprint, ScanFace, Lock, Trash2, Maximize2, Eye } from "lucide-react";
+import { Settings, X, Palette, AudioWaveform, Shield, Clock, Upload, Check, Sparkles, Sliders, Globe, Play, Fingerprint, ScanFace, Trash2, Maximize2, Eye, BellRing, Smartphone, Atom, BatteryWarning, Zap, Volume2 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
 import { storageService, defaultAvatarConfig, defaultSecurityConfig } from "../services/storage";
@@ -9,11 +9,12 @@ import {
   verifyDeviceBiometric,
   saveStoredSecurityConfig,
 } from "../services/biometricAuth";
+import { setNativeBackgroundAutoAnnounce } from "../services/nativeAndroidBridge";
 import { triggerHaptic } from "../services/mobileDeviceActions";
-import { DashboardCustomization, CustomVoiceProfile, AccentTheme, LanguageCode, MobileSecurityConfig } from "../types";
+import { DashboardCustomization, CustomVoiceProfile, AccentTheme, LanguageCode, MobileSecurityConfig, ProactiveAlertConfig } from "../types";
 import { ELEVENLABS_VOICE_PRESETS, getCharacterDisplayName } from "../data/jarvisCatalog";
 
-type SettingsTabId = "appearance" | "voice" | "security" | "screensaver" | "health" | "data";
+type SettingsTabId = "appearance" | "voice" | "security" | "alerts" | "screensaver" | "health" | "data";
 
 interface QuantumSettingsModalProps {
   isOpen: boolean;
@@ -82,6 +83,13 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
 
   const avatarCfg = customization.avatarConfig || defaultAvatarConfig;
   const securityCfg: MobileSecurityConfig = customization.securityConfig || defaultSecurityConfig;
+  const proactiveCfg: ProactiveAlertConfig = customization.proactiveAlerts || {
+    incomingNotifications: true,
+    speakNotificationsAloud: true,
+    lowBatteryThreshold: 20,
+    taskReminders: true,
+    networkAlerts: true,
+  };
   const femaleCharName = getCharacterDisplayName(avatarCfg, "female");
   const maleCharName = getCharacterDisplayName(avatarCfg, "male");
   const activeCharName = getCharacterDisplayName(avatarCfg);
@@ -322,10 +330,10 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
             </div>
             <div>
               <h2 className="font-orbitron font-bold text-base md:text-lg text-cyan-300 glow-text-cyan uppercase">
-                QUANTUM SYSTEM & HUD CUSTOMIZATION
+                WASU&apos;S JARVIS • FULL MOBILE CUSTOMIZER
               </h2>
               <p className="text-xs font-mono text-slate-400">
-                Personalize dashboard aesthetics, voice cloning, language, screensaver, and health limits
+                Customize brand, 3D logo, lock screen motion, dock labels, proactive alerts, voices &amp; biometrics
               </p>
             </div>
           </div>
@@ -381,7 +389,22 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
             }`}
           >
             <Fingerprint className="w-3.5 h-3.5" />
-            <span>Fingerprint &amp; Face Unlock</span>
+            <span>Fingerprint &amp; Face</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundEffects.playClick();
+              setActiveTab("alerts");
+            }}
+            className={`px-4 py-2 rounded-t-lg transition cursor-pointer flex items-center gap-2 shrink-0 ${
+              activeTab === "alerts"
+                ? "bg-slate-950 text-amber-400 font-bold border-t-2 border-amber-400"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <BellRing className="w-3.5 h-3.5" />
+            <span>Proactive Alerts</span>
           </button>
 
           <button
@@ -435,29 +458,215 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
           {/* 1. APPEARANCE & THEME */}
           {activeTab === "appearance" && (
             <div className="space-y-6">
-              {/* SINGLE LOCKED THEME: COCKPIT FIELD TACHYON */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-orbitron font-bold text-sm text-cyan-300 uppercase flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-cyan-400" />
-                    <span>Active Cockpit Interface Theme</span>
-                  </h3>
-                  <span className="text-[10px] text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/40">
-                    LOCKED TO COCKPIT TACHYON
-                  </span>
-                </div>
-                <div className="p-4 rounded-2xl border-2 border-cyan-400 bg-slate-900 shadow-xl shadow-cyan-950/70 flex items-center justify-between gap-4">
+              {/* BRAND IDENTITY & 3D LOGO CUSTOMIZER */}
+              <div className="p-4 rounded-2xl bg-slate-900/75 border border-cyan-500/35 space-y-4">
+                <h3 className="font-orbitron font-bold text-sm text-cyan-300 uppercase flex items-center gap-2">
+                  <Atom className="w-4 h-4 text-cyan-400" />
+                  <span>Brand Identity &amp; 3D Logo Geometry</span>
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <div className="font-orbitron font-bold text-sm text-white">
-                      Cockpit Field Tachyon Theme
-                    </div>
-                    <p className="text-[11px] text-slate-300 mt-1 font-mono">
-                      Primary spatial tachyon cockpit interface with 3D morphing core and live mobile HUD telemetry.
-                    </p>
+                    <label className="block text-[10px] text-slate-400 mb-1">Jarvis Display Title</label>
+                    <input
+                      type="text"
+                      value={customization.brandTitle ?? "Wasu's Jarvis"}
+                      onChange={(e) =>
+                        onUpdateCustomization({ ...customization, brandTitle: e.target.value })
+                      }
+                      maxLength={28}
+                      placeholder="Wasu's Jarvis"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-xl text-slate-100 text-xs focus:outline-none"
+                    />
                   </div>
-                  <span className="flex items-center gap-1 text-[10px] font-mono px-3 py-1 rounded-full bg-cyan-400 text-black font-bold shrink-0">
-                    <Check className="w-3.5 h-3.5" /> ACTIVE
-                  </span>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">Mobile Core Subtitle</label>
+                    <input
+                      type="text"
+                      value={customization.brandSubtitle ?? "Mobile AI Companion"}
+                      onChange={(e) =>
+                        onUpdateCustomization({ ...customization, brandSubtitle: e.target.value })
+                      }
+                      maxLength={36}
+                      placeholder="Mobile AI Companion"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-xl text-slate-100 text-xs focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-2">3D Logo Core Shape</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(
+                      [
+                        { id: "reactor", label: "Jewel Reactor", desc: "Faceted Core + Rings" },
+                        { id: "tesseract", label: "Tesseract Cube", desc: "Quantum Lattice" },
+                        { id: "crystal", label: "Prism Crystal", desc: "Refractive Octahedron" },
+                        { id: "singularity", label: "Singularity Sphere", desc: "Torus Flux" },
+                      ] as const
+                    ).map((shape) => (
+                      <button
+                        key={shape.id}
+                        type="button"
+                        onClick={() => {
+                          soundEffects.playClick();
+                          onUpdateCustomization({ ...customization, logoStyle: shape.id });
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                          (customization.logoStyle || "reactor") === shape.id
+                            ? "bg-cyan-950/70 border-cyan-400 text-cyan-200"
+                            : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        <div className="font-bold text-[11px]">{shape.label}</div>
+                        <div className="text-[9px] text-slate-500 mt-0.5">{shape.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* LOCK SCREEN MOTION, COLOR SHIFT & DESIGN STYLE */}
+              <div className="p-4 rounded-2xl bg-slate-900/75 border border-purple-500/35 space-y-3">
+                <h3 className="font-orbitron font-bold text-sm text-purple-300 uppercase flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  <span>Lock Screen Motion, Colors &amp; Design</span>
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+                    <div>
+                      <div className="font-semibold text-slate-200 text-xs">Motion Picture Lock BG</div>
+                      <div className="text-[10px] text-slate-400">Animated drifting hologram wallpaper</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={customization.lockScreenMotionEnabled ?? true}
+                      onChange={(e) =>
+                        onUpdateCustomization({
+                          ...customization,
+                          lockScreenMotionEnabled: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 accent-purple-400 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+                    <div>
+                      <div className="font-semibold text-slate-200 text-xs">Continuous Color &amp; Design Shift</div>
+                      <div className="text-[10px] text-slate-400">Cycles prismatic neon hues continuously</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={customization.lockScreenColorShift ?? true}
+                      onChange={(e) =>
+                        onUpdateCustomization({
+                          ...customization,
+                          lockScreenColorShift: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 accent-purple-400 cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1.5">Lock Screen HUD Geometry</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        { id: "orbital", label: "Orbital Rings" },
+                        { id: "cyber_grid", label: "Cyber Matrix" },
+                        { id: "aurora_waves", label: "Aurora Waves" },
+                      ] as const
+                    ).map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => {
+                          soundEffects.playClick();
+                          onUpdateCustomization({ ...customization, lockScreenDesignStyle: st.id });
+                        }}
+                        className={`py-2 px-2 rounded-xl border text-[11px] font-bold cursor-pointer transition ${
+                          (customization.lockScreenDesignStyle || "orbital") === st.id
+                            ? "bg-purple-950/70 border-purple-400 text-purple-200"
+                            : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {st.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* MAIN DOCK & MOBILE HUD LAYOUT CUSTOMIZER */}
+              <div className="p-4 rounded-2xl bg-slate-900/75 border border-emerald-500/30 space-y-3">
+                <h3 className="font-orbitron font-bold text-sm text-emerald-300 uppercase flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-emerald-400" />
+                  <span>Main Interface Dock &amp; HUD Layout</span>
+                </h3>
+
+                <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+                  <div>
+                    <div className="font-semibold text-slate-200 text-xs">Show Icon Names on Main Dock</div>
+                    <div className="text-[10px] text-slate-400">Displays visible label under every mobile dock icon</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={customization.dockShowLabels ?? true}
+                    onChange={(e) =>
+                      onUpdateCustomization({ ...customization, dockShowLabels: e.target.checked })
+                    }
+                    className="w-4 h-4 accent-emerald-400 cursor-pointer"
+                  />
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1.5">Dock Icon Size</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(["compact", "normal", "large"] as const).map((sz) => (
+                        <button
+                          key={sz}
+                          type="button"
+                          onClick={() => {
+                            soundEffects.playClick();
+                            onUpdateCustomization({ ...customization, dockIconSize: sz });
+                          }}
+                          className={`py-1.5 rounded-lg border uppercase text-[10px] font-bold cursor-pointer ${
+                            (customization.dockIconSize || "normal") === sz
+                              ? "bg-emerald-500 text-slate-950 border-emerald-400"
+                              : "bg-slate-950 text-slate-400 border-slate-800"
+                          }`}
+                        >
+                          {sz}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-[10px] text-slate-400 mb-1.5">
+                      <span>HUD Panel Opacity</span>
+                      <span className="text-emerald-300 font-bold">{customization.hudOpacity ?? 88}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="55"
+                      max="100"
+                      step="5"
+                      value={customization.hudOpacity ?? 88}
+                      onChange={(e) =>
+                        onUpdateCustomization({
+                          ...customization,
+                          hudOpacity: parseInt(e.target.value, 10),
+                        })
+                      }
+                      className="w-full accent-emerald-400 cursor-pointer"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1692,7 +1901,7 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                     <span>Phone Fingerprint &amp; Face Unlock Guard</span>
                   </h3>
                   <p className="text-[11px] text-slate-300 mt-1">
-                    Apne Android / iPhone ka Fingerprint sensor ya Face ID / Front Camera Face Scan enable karein taa-ke sirf aap Q-NEXUS unlock kar sakein.
+                    Apne Android phone ka real Fingerprint sensor ya Face Scan enable karein taa-ke sirf aap Wasu&apos;s Jarvis unlock kar sakein.
                   </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -1988,6 +2197,124 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
                     <Trash2 className="w-3 h-3" />
                     <span>Reset Biometrics</span>
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 2C. PROACTIVE MOBILE ALERTS & BACKGROUND VOICE ENGINE */}
+          {activeTab === "alerts" && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-950/40 to-cyan-950/30 border border-amber-500/40">
+                <h3 className="font-orbitron font-bold text-sm text-amber-300 uppercase flex items-center gap-2">
+                  <BellRing className="w-4 h-4 text-amber-400" />
+                  <span>Proactive Phone Alerts &amp; Background Companion</span>
+                </h3>
+                <p className="text-[11px] text-slate-300 mt-1">
+                  Control how Wasu&apos;s Jarvis informs you automatically about messages, missed calls, pending tasks, battery drops, and network state — even when the app is closed in background.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-3">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <div className="font-semibold text-slate-200 text-xs">Auto-Log Incoming Messages &amp; Calls</div>
+                    <div className="text-[10px] text-slate-400">Saves every notification summary inside the Summary Log</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={proactiveCfg.incomingNotifications}
+                    onChange={(e) =>
+                      onUpdateCustomization({
+                        ...customization,
+                        proactiveAlerts: { ...proactiveCfg, incomingNotifications: e.target.checked },
+                      })
+                    }
+                    className="w-4 h-4 accent-amber-400 cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between pt-3 border-t border-slate-800 cursor-pointer">
+                  <div>
+                    <div className="font-semibold text-slate-200 text-xs">Speak Notifications Aloud (Foreground &amp; Background)</div>
+                    <div className="text-[10px] text-slate-400">Announces WhatsApp, SMS &amp; incoming calls automatically</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={proactiveCfg.speakNotificationsAloud}
+                    onChange={(e) => {
+                      const val = e.target.checked;
+                      setNativeBackgroundAutoAnnounce(val);
+                      onUpdateCustomization({
+                        ...customization,
+                        proactiveAlerts: { ...proactiveCfg, speakNotificationsAloud: val },
+                      });
+                    }}
+                    className="w-4 h-4 accent-amber-400 cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between pt-3 border-t border-slate-800 cursor-pointer">
+                  <div>
+                    <div className="font-semibold text-slate-200 text-xs">Pending Tasks &amp; Routine Reminders</div>
+                    <div className="text-[10px] text-slate-400">Proactively briefs you on pending tasks automatically</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={proactiveCfg.taskReminders}
+                    onChange={(e) =>
+                      onUpdateCustomization({
+                        ...customization,
+                        proactiveAlerts: { ...proactiveCfg, taskReminders: e.target.checked },
+                      })
+                    }
+                    className="w-4 h-4 accent-amber-400 cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between pt-3 border-t border-slate-800 cursor-pointer">
+                  <div>
+                    <div className="font-semibold text-slate-200 text-xs">Mobile Network Drop / Reconnect Alerts</div>
+                    <div className="text-[10px] text-slate-400">Notifies when phone Wi-Fi/Cellular switches offline or reconnects</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={proactiveCfg.networkAlerts}
+                    onChange={(e) =>
+                      onUpdateCustomization({
+                        ...customization,
+                        proactiveAlerts: { ...proactiveCfg, networkAlerts: e.target.checked },
+                      })
+                    }
+                    className="w-4 h-4 accent-amber-400 cursor-pointer"
+                  />
+                </label>
+
+                <div className="pt-3 border-t border-slate-800">
+                  <div className="flex justify-between text-xs text-slate-200 mb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <BatteryWarning className="w-4 h-4 text-rose-400" />
+                      <span>Low Battery Spoken Alert Threshold</span>
+                    </span>
+                    <span className="text-rose-300 font-bold">{proactiveCfg.lowBatteryThreshold}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="40"
+                    step="5"
+                    value={proactiveCfg.lowBatteryThreshold}
+                    onChange={(e) =>
+                      onUpdateCustomization({
+                        ...customization,
+                        proactiveAlerts: {
+                          ...proactiveCfg,
+                          lowBatteryThreshold: parseInt(e.target.value, 10),
+                        },
+                      })
+                    }
+                    className="w-full accent-rose-400 cursor-pointer"
+                  />
                 </div>
               </div>
             </div>

@@ -55,7 +55,7 @@ class AppErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-[#02050f] text-slate-100 flex flex-col items-center justify-center p-6 gap-4 text-center font-sans">
-          <div className="text-lg font-bold text-cyan-300">Q-DYNAMICS Interface Recovering</div>
+          <div className="text-lg font-bold text-cyan-300">Wasu&apos;s Jarvis Interface Recovering</div>
           <button
             type="button"
             onClick={() => {

@@ -35,6 +35,7 @@ import {
   getNativeCallLogs,
   getNativeSmsMessages,
 } from "../services/nativeAndroidBridge";
+import { togglePhoneFlashlight, triggerHaptic, playLocatorSiren } from "../services/mobileDeviceActions";
 import {
   LanguageCode,
   VoiceGender,
@@ -514,6 +515,58 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
         return;
       }
 
+      // 0B-2. Phone Flashlight / Torch, Vibrate & Locator Siren commands
+      if (lower.includes("torch") || lower.includes("flashlight") || lower.includes("flash light")) {
+        const turnOn = !(lower.includes("off") || lower.includes("band") || lower.includes("bujha"));
+        const res = await togglePhoneFlashlight(turnOn);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            sender: "jarvis",
+            text: `🔦 ${res.message}`,
+            actionExecuted: turnOn ? "FLASHLIGHT_ON" : "FLASHLIGHT_OFF",
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+        speakWithPersonality(res.message);
+        return;
+      }
+
+      if (lower.includes("find phone") || lower.includes("find my phone") || lower.includes("phone bajao") || lower.includes("ring phone") || lower.includes("siren")) {
+        playLocatorSiren(2600);
+        const reply = "🔔 Phone locator siren aur vibration active kar di gayi hai!";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            sender: "jarvis",
+            text: reply,
+            actionExecuted: "FIND_PHONE",
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+        speakWithPersonality(reply);
+        return;
+      }
+
+      if (lower.includes("vibrate") || lower.includes("haptic")) {
+        triggerHaptic([120, 60, 120, 60, 160]);
+        const reply = "📳 Phone haptic vibration pulse bhej diya gaya hai!";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            sender: "jarvis",
+            text: reply,
+            actionExecuted: "VIBRATE_PHONE",
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+        speakWithPersonality(reply);
+        return;
+      }
+
       // 0C. Reply command for Native Android Notifications ("reply to Ali I am coming" / "Ali ko reply karo ...")
       const replyMatch =
         text.match(/reply\s+(?:to\s+)?([^\s:]+)\s+(?:that\s+)?(.+)/i) ||
@@ -522,7 +575,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
         const targetName = replyMatch[1].toLowerCase();
         const replyMsg = replyMatch[2].trim();
         if (!isNativeAndroidApk()) {
-          const msg = "Direct WhatsApp/Messenger/SMS auto-reply sirf installed Q-NEXUS Android APK mein chalti hai (Chrome browser privacy ki wajah se doosri apps ko reply nahi kar sakta).";
+          const msg = "Direct notification auto-reply ke liye Android Notification Access enable hona zaroori hai. Phone Alerts hub khol raha hoon.";
           setMessages((prev) => [
             ...prev,
             {
@@ -576,7 +629,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
       ) {
         if (!isNativeAndroidApk()) {
           const honestMsg =
-            "Aap abhi Chrome browser mein hain — Android security browser ko WhatsApp, Instagram, SMS ya Call Logs parhne nahi deti. Maine Phone Control Hub + Notification Access ke sath APK builder add kar diya hai; APK install kar ke Notification Access allow karein to main har app ka message bataungi aur auto-reply bhi karoongi.";
+            "Phone Alerts & Notifications hub khol raha hoon — live messages, missed calls aur SMS yahan sync hotay hain jab phone ki Notification Access enabled ho.";
           setMessages((prev) => [
             ...prev,
             {
@@ -741,7 +794,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
           fastMode: avatarConfig?.fastTalkingMode ?? true,
           currentContext: {
             time: new Date().toISOString(),
-            platform: "Mobile / Cockpit OS",
+            platform: "Wasu's Jarvis Mobile OS",
             userTasks: storageService.getTasks(),
             userLifeRecords: (() => {
               try {

@@ -1,6 +1,6 @@
-import { UserProfile, TaskItem, ExpenseItem, HealthState, EditingMacro, FileItem, DashboardCustomization, AvatarStudioConfig, MobileSecurityConfig } from "../types";
+import { UserProfile, TaskItem, ExpenseItem, HealthState, EditingMacro, FileItem, DashboardCustomization, AvatarStudioConfig, MobileSecurityConfig, SummaryLogEntry } from "../types";
 
-export const CLEAN_SLATE_VERSION = "v3-clean-no-sample";
+export const CLEAN_SLATE_VERSION = "v4-wasu-mobile-jarvis";
 
 const STORAGE_KEYS = {
   CLEAN_VERSION: "q_nexus_clean_cache_version",
@@ -14,6 +14,7 @@ const STORAGE_KEYS = {
   MOBILE_VAULT_FILES: "q_nexus_mobile_vault_files",
   FINANCE_SETTINGS: "q_nexus_finance_settings",
   CHAT_LOGS: "q_nexus_chat_logs",
+  SUMMARY_LOGS: "wasu_jarvis_summary_log",
   SECURITY: "q_nexus_security",
   SETTINGS: "q_nexus_settings",
   CUSTOMIZATION: "q_nexus_customization",
@@ -70,9 +71,25 @@ export const defaultCustomization: DashboardCustomization = {
   customBgUrl: "",
   show3DBackground: true,
   activeInterfaceTheme: "quantum_cockpit",
+  brandTitle: "WASU'S JARVIS",
+  brandSubtitle: "MOBILE QUANTUM OS",
+  logoStyle: "reactor",
+  lockScreenMotionEnabled: true,
+  lockScreenColorShift: true,
+  lockScreenDesignStyle: "orbital",
+  dockShowLabels: true,
+  dockIconSize: "normal",
+  hudOpacity: 92,
+  proactiveAlerts: {
+    incomingNotifications: true,
+    speakNotificationsAloud: true,
+    lowBatteryThreshold: 20,
+    taskReminders: true,
+    networkAlerts: true,
+  },
   screensaverType: "sentry",
   screensaverTimeoutMinutes: 5,
-  screensaverMessage: "QUANTUM MOBILE SENTRY ACTIVE • PHONE PROTECTED",
+  screensaverMessage: "WASU'S JARVIS SENTRY ACTIVE • PHONE PROTECTED",
   continuousWorkLimitMinutes: 45,
   mandatoryRestMinutes: 5,
   scanlines: false,
@@ -358,6 +375,30 @@ export class StorageService {
     } catch {}
   }
 
+  getSummaryLogs(): SummaryLogEntry[] {
+    ensureCleanCacheInitialized();
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.SUMMARY_LOGS);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  saveSummaryLogs(logs: SummaryLogEntry[]): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SUMMARY_LOGS, JSON.stringify(logs.slice(-60)));
+    } catch {}
+  }
+
+  clearSummaryLogs(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.SUMMARY_LOGS);
+    } catch {}
+  }
+
   async clearAllCacheAndPersonalData(): Promise<void> {
     try {
       localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
@@ -370,6 +411,7 @@ export class StorageService {
       localStorage.removeItem(STORAGE_KEYS.MOBILE_VAULT_FILES);
       localStorage.removeItem(STORAGE_KEYS.FINANCE_SETTINGS);
       localStorage.removeItem(STORAGE_KEYS.CHAT_LOGS);
+      localStorage.removeItem(STORAGE_KEYS.SUMMARY_LOGS);
       localStorage.setItem(STORAGE_KEYS.CLEAN_VERSION, CLEAN_SLATE_VERSION);
 
       if (typeof window !== "undefined" && "caches" in window) {
@@ -383,13 +425,14 @@ export class StorageService {
 
   exportFullBackup(): string {
     const backup = {
-      version: "3.0.0-clean",
+      version: "4.0.0-mobile",
       timestamp: new Date().toISOString(),
       userProfile: this.getUserProfile(),
       customization: this.getCustomization(),
       tasks: this.getTasks(),
       expenses: this.getExpenses(),
       health: this.getHealth(),
+      summaryLogs: this.getSummaryLogs(),
     };
     return JSON.stringify(backup, null, 2);
   }
@@ -402,6 +445,7 @@ export class StorageService {
       if (data.tasks) this.saveTasks(data.tasks);
       if (data.expenses) this.saveExpenses(data.expenses);
       if (data.health) this.saveHealth(data.health);
+      if (Array.isArray(data.summaryLogs)) this.saveSummaryLogs(data.summaryLogs);
       return true;
     } catch (e) {
       console.warn("Backup import warning:", e);

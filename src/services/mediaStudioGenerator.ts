@@ -120,7 +120,7 @@ export function renderProceduralCyberArt(
 
   ctx.fillStyle = `hsla(${hue1}, 100%, 75%, 1)`;
   ctx.font = 'bold 16px monospace';
-  ctx.fillText(`Q-NEXUS AI STUDIO // ${styleName.toUpperCase()}`, 52, height - 78);
+  ctx.fillText(`WASU'S JARVIS STUDIO // ${styleName.toUpperCase()}`, 52, height - 78);
 
   ctx.fillStyle = '#f8fafc';
   ctx.font = 'bold 22px sans-serif';
@@ -226,7 +226,7 @@ export async function generateThumbnailPoster(opts: {
   ctx.fillRect(54, h - 130, w - 108, 66);
   ctx.fillStyle = '#e2e8f0';
   ctx.font = '700 26px monospace';
-  ctx.fillText(opts.subtitle || 'Q-NEXUS JARVIS STUDIO • 4K ULTRA', 76, h - 88);
+  ctx.fillText(opts.subtitle || "WASU'S JARVIS STUDIO • 4K ULTRA", 76, h - 88);
 
   return canvas.toDataURL('image/png');
 }
@@ -334,7 +334,7 @@ async function synthesizeAnimatedWebMVideo(
       ctx.strokeRect(20, height - 74, width - 40, 54);
       ctx.fillStyle = '#22d3ee';
       ctx.font = 'bold 12px monospace';
-      ctx.fillText('Q-NEXUS VIDEO ENGINE // 60FPS HOLOGRAM STREAM', 34, height - 52);
+      ctx.fillText("WASU'S JARVIS ENGINE // 60FPS HOLOGRAM STREAM", 34, height - 52);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 16px sans-serif';
       ctx.fillText(prompt.slice(0, 48), 34, height - 30);

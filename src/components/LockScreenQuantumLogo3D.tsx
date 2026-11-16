@@ -163,12 +163,14 @@ export const LockScreenQuantumLogo3D: React.FC<LockScreenQuantumLogo3DProps> = (
     };
     window.addEventListener("resize", handleResize);
 
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
+    timer.connect(document);
 
-    const animate = () => {
+    const animate = (timestamp?: number) => {
       animFrameIdRef.current = requestAnimationFrame(animate);
-      const delta = clock.getDelta();
-      const time = clock.getElapsedTime();
+      timer.update(timestamp);
+      const delta = Math.min(timer.getDelta(), 0.05);
+      const time = timer.getElapsed();
 
       // Continuous Color Shifting
       colorT += delta * 0.35;
@@ -224,10 +226,12 @@ export const LockScreenQuantumLogo3D: React.FC<LockScreenQuantumLogo3DProps> = (
       renderer.render(scene, camera);
     };
 
-    animate();
+    animFrameIdRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
+      timer.disconnect();
+      timer.dispose();
       window.removeEventListener("resize", handleResize);
       container.removeEventListener("mousemove", handleMouseMove);
       renderer.dispose();

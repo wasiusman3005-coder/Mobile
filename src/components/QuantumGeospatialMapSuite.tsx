@@ -13,7 +13,6 @@ import {
   Layers,
   Crosshair,
   Smartphone,
-  Laptop,
   Radio,
   Search,
   Zap,
@@ -44,26 +43,26 @@ const PRESET_LOCATIONS: MapLocationItem[] = [
     category: "base",
     lat: 31.5204,
     lng: 74.3587,
-    description: "Primary Quantum Tachyon OS Host PC Workstation Node.",
+    description: "Primary Wasu's Jarvis Mobile Command Center Node.",
     accuracyMeters: 2,
   },
   {
     id: "loc-phone",
-    title: "Wasi Mobile Phone (Galaxy S24 Ultra)",
+    title: "Wasi Mobile Phone (Primary Android)",
     category: "device",
     lat: 31.5326,
     lng: 74.3412,
-    description: "Active Cellular Link • Battery 88% • 5G Ultra Wideband",
+    description: "Active Cellular Link • Battery & Live GPS Telemetry",
     accuracyMeters: 4,
     associatedDeviceId: "dev-mob-1",
   },
   {
     id: "loc-studio",
-    title: "Media Production & 4K Render Lab",
+    title: "Mobile Content & Creative Relay",
     category: "studio",
     lat: 31.4822,
     lng: 74.3033,
-    description: "Secondary studio node with Premiere Pro & After Effects render cluster.",
+    description: "Mobile media capture & on-the-go voice broadcast node.",
     accuracyMeters: 5,
   },
   {
@@ -380,7 +379,7 @@ export const QuantumGeospatialMapSuite: React.FC<QuantumGeospatialMapSuiteProps>
                 }`}
               >
                 {loc.category === "base" ? (
-                  <Laptop className="w-3 h-3" />
+                  <Radio className="w-3 h-3" />
                 ) : loc.category === "device" ? (
                   <Smartphone className="w-3 h-3" />
                 ) : (
@@ -594,7 +593,7 @@ export const QuantumGeospatialMapSuite: React.FC<QuantumGeospatialMapSuiteProps>
               className="w-full py-2 px-3 rounded-xl bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-200 text-xs font-mono transition flex items-center justify-between cursor-pointer"
             >
               <span className="flex items-center gap-1.5">
-                <Laptop className="w-3.5 h-3.5 text-cyan-400" />
+                <Radio className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Center Command Base</span>
               </span>
               <ChevronRight className="w-3.5 h-3.5 text-cyan-400" />

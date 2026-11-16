@@ -7,11 +7,18 @@ import android.content.Intent
 import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.speech.tts.TextToSpeech
 import com.getcapacitor.JSObject
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 class QNexusNotificationService : NotificationListenerService() {
+
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private var lastSpokenKey = ""
+    private var lastSpokenTime = 0L
 
     companion object {
         val recentNotifications = CopyOnWriteArrayList<JSObject>()
@@ -34,6 +41,54 @@ class QNexusNotificationService : NotificationListenerService() {
             } catch (e: Exception) {
                 false
             }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        initBackgroundTts()
+    }
+
+    private fun initBackgroundTts() {
+        if (tts != null) return
+        try {
+            tts = TextToSpeech(applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    val urResult = tts?.setLanguage(Locale("ur", "PK"))
+                    if (urResult == TextToSpeech.LANG_MISSING_DATA || urResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        tts?.setLanguage(Locale.US)
+                    }
+                    ttsReady = true
+                }
+            }
+        } catch (_: Exception) {
+            ttsReady = false
+        }
+    }
+
+    private fun speakNotificationInBackground(appName: String, title: String, text: String, key: String) {
+        val prefs = getSharedPreferences("WasuJarvisPrefs", Context.MODE_PRIVATE)
+        val autoAnnounce = prefs.getBoolean("bg_auto_announce", true)
+        if (!autoAnnounce) return
+
+        // If main UI is active & subscribed, JS layer already handles multilingual TTS cleanly
+        if (QNexusPlugin.instance != null) return
+
+        val now = System.currentTimeMillis()
+        if (key == lastSpokenKey && now - lastSpokenTime < 8000L) return
+        if (now - lastSpokenTime < 2200L) return
+
+        lastSpokenKey = key
+        lastSpokenTime = now
+
+        if (tts == null) initBackgroundTts()
+        if (!ttsReady) return
+
+        val cleanText = text.take(120)
+        val announcement = "$appName alert from $title: $cleanText"
+        try {
+            tts?.speak(announcement, TextToSpeech.QUEUE_ADD, null, "bg_notif_${now}")
+        } catch (_: Exception) {
         }
     }
 
@@ -88,5 +143,16 @@ class QNexusNotificationService : NotificationListenerService() {
         }
 
         QNexusPlugin.instance?.emitNotificationEvent(obj)
+        speakNotificationInBackground(appName, title, text, sbn.key)
+    }
+
+    override fun onDestroy() {
+        try {
+            tts?.stop()
+            tts?.shutdown()
+        } catch (_: Exception) {}
+        tts = null
+        ttsReady = false
+        super.onDestroy()
     }
 }

@@ -92,15 +92,15 @@ export const MandatoryHealthLockdown: React.FC<MandatoryHealthLockdownProps> = (
 
         <div>
           <span className="px-3 py-1 rounded-full bg-red-950/80 border border-red-500/40 text-red-300 text-xs font-mono tracking-widest uppercase">
-            MANDATORY ERGONOMIC HEALTH LOCKDOWN
+            MANDATORY MOBILE HEALTH LOCKDOWN
           </span>
           <h1 className="text-3xl md:text-4xl font-orbitron font-extrabold text-slate-100 mt-2 tracking-wider">
-            PC WORKSTATION LOCKED
+            PHONE SCREEN LOCKED
           </h1>
           <p className="text-xs md:text-sm font-mono text-slate-400 mt-2 leading-relaxed">
             {language === "pa"
-              ? "Wasi paji, tuhadi sehat sub to pehlan ae! Screen time limit mukammal ho gayi ae. Rest time khatam hon tak PC access block ae."
-              : "Commander Wasi, prolonged screen exposure detected. For your optic, spinal, and neurological recovery, this system is in mandatory rest mode."}
+              ? "Wasi paji, tuhadi sehat sub to pehlan ae! Mobile screen time limit mukammal ho gayi ae. Rest time khatam hon tak phone access block ae."
+              : "Commander Wasi, prolonged phone screen exposure detected. For your optic, neck, and neurological recovery, your mobile is in mandatory rest mode."}
           </p>
         </div>
 
@@ -111,7 +111,7 @@ export const MandatoryHealthLockdown: React.FC<MandatoryHealthLockdownProps> = (
           </div>
           <div className="text-xs font-mono text-slate-400 mt-2 flex items-center justify-center gap-2">
             <Lock className="w-3.5 h-3.5 text-red-400" />
-            <span>SYSTEM ENCRYPTION RESTRICTS PC ACCESS UNTIL 00:00</span>
+            <span>MOBILE SHIELD HOLDS ACCESS UNTIL 00:00</span>
           </div>
         </div>
 
@@ -129,9 +129,9 @@ export const MandatoryHealthLockdown: React.FC<MandatoryHealthLockdownProps> = (
           </div>
         </div>
 
-        {/* Fazool Kaam Warning Note */}
+        {/* Wellness Note */}
         <div className="text-[11px] font-mono text-slate-500">
-          🚫 Fazool kharchi, late-night strain aur bina maqsad scrolling strictly blocked by Quantum Jarvis Core.
+          Late-night eye strain aur bina maqsad scrolling se bachao — protected by Wasu&apos;s Jarvis Mobile Core.
         </div>
       </div>
     </div>

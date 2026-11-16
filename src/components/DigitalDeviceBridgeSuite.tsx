@@ -3,7 +3,6 @@ import {
   Smartphone,
   Tablet,
   Watch,
-  Monitor,
   Lightbulb,
   Headphones,
   Plug,
@@ -37,11 +36,11 @@ import {
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
 import {
-  fetchSystemTelemetry,
   readPhoneHardwareTelemetry,
   fetchMobileConnectInfo,
   MobileConnectInfo,
 } from "../services/systemTelemetry";
+import { playLocatorSiren, triggerHaptic } from "../services/mobileDeviceActions";
 import {
   LanguageCode,
   VoiceGender,
@@ -96,15 +95,14 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
   useEffect(() => {
     let cancelled = false;
     const syncDevices = async () => {
-      const [tel, phoneTel, lanInfo] = await Promise.all([
-        fetchSystemTelemetry(),
+      const [phoneTel, lanInfo] = await Promise.all([
         readPhoneHardwareTelemetry(),
         fetchMobileConnectInfo(),
       ]);
       if (cancelled) return;
       if (lanInfo) setMobileConnect(lanInfo);
-      setDevices((prev) => {
-        const nextList = prev.map((d) => {
+      setDevices((prev) =>
+        prev.map((d) => {
           if (d.id === "dev-mob-1") {
             return {
               ...d,
@@ -127,38 +125,8 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
             };
           }
           return d;
-        });
-
-        // Only add real local host PC bridge if server reports realHost === true
-        if (tel && tel.realHost) {
-          const pcObj: ConnectedDeviceItem = {
-            id: "dev-host-pc",
-            name: `${tel.hostname} (Connected Host)`,
-            type: "pc",
-            model: `${tel.cpuModel} • ${tel.gpuName}`,
-            osVersion: tel.osCaption,
-            protocol: "WiFi_LAN",
-            ipAddress: tel.ipAddress,
-            batteryPercent: tel.batteryPercent ?? undefined,
-            isCharging: tel.isCharging ?? undefined,
-            status: "online",
-            lastPing: "Host Bridge",
-            paired: true,
-            controllableStates: { power: true },
-            metrics: {
-              storageUsedGb: tel.primaryDisk.usedGb,
-              storageTotalGb: tel.primaryDisk.totalGb,
-              ramUsedPercent: tel.ramPercent,
-            },
-          };
-          const exists = nextList.some((x) => x.id === "dev-host-pc");
-          if (exists) {
-            return nextList.map((x) => (x.id === "dev-host-pc" ? pcObj : x));
-          }
-          return [...nextList, pcObj];
-        }
-        return nextList;
-      });
+        })
+      );
     };
     syncDevices();
     const timer = setInterval(syncDevices, 5000);
@@ -218,11 +186,13 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
 
   const handleRingPhone = (deviceId: string) => {
     soundEffects.playAlert();
+    triggerHaptic([150, 80, 150, 80, 200]);
+    playLocatorSiren(2800);
     setDevices((prev) =>
       prev.map((d) => {
         if (d.id === deviceId) {
           const nextRinging = !d.controllableStates.ringing;
-          addLog(d.id, d.name, nextRinging ? "TRIGGERED FIND MY PHONE ALARM" : "Stopped Alarm");
+          addLog(d.id, d.name, nextRinging ? "TRIGGERED FIND MY PHONE SIREN" : "Stopped Alarm");
           return {
             ...d,
             controllableStates: { ...d.controllableStates, ringing: nextRinging },
@@ -270,10 +240,10 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
 
   const handleSyncClipboard = (deviceId: string) => {
     soundEffects.playBeepConfirm();
-    navigator.clipboard.writeText("https://nexus.quantum-wasi.ai/token/4096-auth");
+    navigator.clipboard.writeText("Wasu's Jarvis Mobile Bridge Active");
     setCopiedText(true);
     setTimeout(() => setCopiedText(false), 2000);
-    addLog(deviceId, selectedDevice.name, "Synced bidirectional clipboard buffer between PC and Mobile.");
+    addLog(deviceId, selectedDevice.name, "Copied Mobile Clipboard Token.");
   };
 
   const handleLightColorChange = (hex: string) => {
@@ -429,13 +399,11 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
             </div>
 
             {devices
-              .filter((d) => d.type === "pc" || d.type === "mobile" || d.type === "tablet" || d.type === "wearable")
+              .filter((d) => d.type === "mobile" || d.type === "tablet" || d.type === "wearable")
               .map((device) => {
                 const isSelected = selectedDevice.id === device.id;
                 const IconComp =
-                  device.type === "pc"
-                    ? Monitor
-                    : device.type === "mobile"
+                  device.type === "mobile"
                     ? Smartphone
                     : device.type === "tablet"
                     ? Tablet
@@ -734,7 +702,7 @@ export const DigitalDeviceBridgeSuite: React.FC<DigitalDeviceBridgeSuiteProps> =
                 Connected Studio Hardware & Smart Peripherals
               </h3>
               <p className="text-xs font-mono text-slate-400">
-                Control studio lighting ambience, high-fidelity DAC audio, and workstation power distribution.
+                Control wireless lighting ambience, mobile Hi-Fi audio output, and Bluetooth accessories.
               </p>
             </div>
             <span className="text-xs font-mono text-purple-400">IoT Protocol: Local Socket & MQTT</span>

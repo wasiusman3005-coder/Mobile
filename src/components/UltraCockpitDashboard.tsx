@@ -7,11 +7,9 @@ import {
   Heart,
   MessageSquare,
   AudioWaveform,
-  Download,
   Settings,
   Lock,
   X,
-  Atom,
   Volume2,
   VolumeX,
   ScrollText,
@@ -26,7 +24,7 @@ import {
   GraduationCap,
   DollarSign,
   Mic,
-  Monitor,
+  Trash2,
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { triggerHaptic } from "../services/mobileDeviceActions";
@@ -34,12 +32,10 @@ import { UserProfile, DashboardCustomization, LanguageCode, VoiceGender } from "
 import { QuantumThemeColor } from "./AutoMorphingQuantumLogo";
 import {
   CockpitCorePhase,
-  CORE_TOPOLOGIES,
   QUANTUM_SPECTRUMS,
 } from "./CentralQuantumCoreHologram";
 import { DualCharacterHoloStage, HubPanelNotification } from "./DualCharacterHoloStage";
 import { QDynamicsBrandLogo3D } from "./QDynamicsBrandLogo3D";
-import { PWAInstallButton } from "./PWAInstallButton";
 import { getCharacterDisplayName } from "../data/jarvisCatalog";
 import type { MatrixModuleId } from "./QuantumAppsMatrix";
 import { MobileCommsControlHub } from "./MobileCommsControlHub";
@@ -108,7 +104,6 @@ interface UltraCockpitDashboardProps {
   onLockScreen?: () => void;
   onToggleAwayMode?: () => void;
   isAwayMode?: boolean;
-  onOpenPhoneInstall?: (tab?: "android" | "ios" | "apk") => void;
   language: LanguageCode;
   voiceGender: VoiceGender;
   cockpitPhase?: CockpitCorePhase;
@@ -121,6 +116,7 @@ interface UltraCockpitDashboardProps {
   onStartManualRecording?: () => void;
   onRenameAssistant?: (newName: string) => void;
   cockpitSummaries?: CockpitSummaryItem[];
+  onClearSummary?: () => void;
   topologyIndex?: number;
   onSelectTopology?: (idx: number) => void;
   onMorphNextTopology?: () => void;
@@ -155,7 +151,6 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
   onPrimeWakeMic,
   wakeReady,
   onLockScreen,
-  onOpenPhoneInstall,
   language,
   voiceGender,
   cockpitPhase = "galaxy",
@@ -168,15 +163,9 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
   onStartManualRecording,
   onRenameAssistant,
   cockpitSummaries = [],
-  topologyIndex = 0,
-  onSelectTopology,
-  onMorphNextTopology,
+  onClearSummary,
   spectrumIndex = 0,
-  onSelectSpectrum,
   energySurge = false,
-  onToggleEnergySurge,
-  hudHidden = false,
-  onToggleHudHidden,
   onShowIdentityVideo,
   onSpeakBriefing,
   liveReplyText = "",
@@ -187,7 +176,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
   pausedByFullscreen = false,
 }) => {
   const [soundOn, setSoundOn] = useState(soundEffects.soundEnabled);
-  const [sidebarDrawer, setSidebarDrawer] = useState<"none" | "characters" | "core" | "summary">("none");
+  const [sidebarDrawer, setSidebarDrawer] = useState<"none" | "characters" | "summary">("none");
   const [isIconFlightActive, setIsIconFlightActive] = useState(true);
   const summaryScrollRef = useRef<HTMLDivElement>(null);
 
@@ -265,23 +254,8 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       },
     },
     {
-      id: "core_controls",
-      label: "Core & Spectrum",
-      icon: Atom,
-      active: sidebarDrawer === "core",
-      color: "#818cf8",
-      bgFrom: "rgba(99, 102, 241, 0.36)",
-      bgTo: "rgba(56, 189, 248, 0.18)",
-      borderHex: "rgba(129, 140, 248, 0.55)",
-      glowHex: "rgba(99, 102, 241, 0.45)",
-      onClick: () => {
-        soundEffects.playClick();
-        setSidebarDrawer((prev) => (prev === "core" ? "none" : "core"));
-      },
-    },
-    {
       id: "summary",
-      label: "Detail Summary",
+      label: "Summary Log",
       icon: ScrollText,
       active: sidebarDrawer === "summary",
       badgeCount: cockpitSummaries.length,
@@ -465,20 +439,6 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       },
     },
     {
-      id: "install",
-      label: "Phone Link",
-      icon: Download,
-      color: "#a3e635",
-      bgFrom: "rgba(132, 204, 22, 0.32)",
-      bgTo: "rgba(16, 185, 129, 0.16)",
-      borderHex: "rgba(163, 230, 53, 0.5)",
-      glowHex: "rgba(132, 204, 22, 0.38)",
-      onClick: () => {
-        soundEffects.playClick();
-        onOpenPhoneInstall?.("android");
-      },
-    },
-    {
       id: "settings",
       label: "Settings",
       icon: Settings,
@@ -509,22 +469,23 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     },
   ];
 
+  const showDockLabels = customization.dockShowLabels !== false;
+  const dockSize = customization.dockIconSize || "normal";
+
   return (
     <div
       id="core"
       className="relative flex flex-col items-center justify-center min-h-[100dvh] h-[100dvh] w-full overflow-hidden select-none"
     >
-      {/* Top-Left Moving 3D Q-DYNAMICS Logo */}
+      {/* Top-Left Moving 3D Wasu's Jarvis Brand Logo */}
       <div className="q-hud-chrome fixed top-2.5 left-2.5 sm:top-4 sm:left-4 z-30 pointer-events-auto scale-90 origin-top-left sm:scale-100 transition-transform duration-300">
         <QDynamicsBrandLogo3D
           accentHex={activeSpec.hex}
           secondaryHex={activeSpec.secondaryHex}
+          brandTitle={customization.brandTitle || "WASU'S JARVIS"}
+          brandSubtitle={customization.brandSubtitle || "MOBILE QUANTUM OS"}
+          logoStyle={customization.logoStyle || "reactor"}
         />
-      </div>
-
-      {/* Top-Right Compact 1-Tap Install Trigger (Auto-hidden when already installed) */}
-      <div className="q-hud-chrome fixed top-3 right-3 sm:top-4 sm:right-4 z-30 pointer-events-auto">
-        <PWAInstallButton compact />
       </div>
 
       {/* ================================================================= */}
@@ -569,7 +530,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
             <div className="px-4 sm:px-5 py-3 bg-[#071127]/95 border-b border-cyan-500/30 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-400/45 flex items-center justify-center text-cyan-300 shrink-0">
-                  <Monitor className="w-4 h-4" />
+                  <Smartphone className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
                   <div className="font-orbitron font-bold text-xs sm:text-sm text-cyan-300 uppercase tracking-wider truncate">
@@ -635,7 +596,6 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
                 <MobileCommsControlHub
                   language={language}
                   voiceGender={voiceGender}
-                  onOpenApkGuide={() => onOpenPhoneInstall?.("apk")}
                 />
               )}
               {activeProjectedModule === "desktop" && (
@@ -847,133 +807,33 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       )}
 
       {/* ================================================================= */}
-      {/* SIDEBAR POPOVER DRAWER: CORE CONTROLS (TOPOLOGY/SPECTRUM/SURGE/HUD) */}
-      {/* ================================================================= */}
-      {sidebarDrawer === "core" && (
-        <div className="q-hud-chrome fixed z-40 bottom-16 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-auto md:right-24 md:top-1/2 md:-translate-y-1/2 w-[min(320px,calc(100vw-24px))] rounded-2xl bg-[#070d1c]/95 border border-slate-400/25 p-4 shadow-2xl space-y-4 animate-fadeIn">
-          <div className="flex items-center justify-between border-b border-slate-400/15 pb-2">
-            <span className="font-orbitron font-bold text-xs tracking-wider text-slate-100 uppercase">
-              3D Core &amp; Spectrum
-            </span>
-            <button
-              type="button"
-              onClick={() => setSidebarDrawer("none")}
-              className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
-              Topology
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {CORE_TOPOLOGIES.map((t) => {
-                const active = topologyIndex === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => onSelectTopology?.(t.id)}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer text-left ${
-                      active
-                        ? "text-slate-100"
-                        : "text-slate-400 bg-slate-900/75 border-slate-400/15 hover:text-slate-100"
-                    }`}
-                    style={
-                      active
-                        ? { borderColor: activeSpec.hex, backgroundColor: `${activeSpec.hex}24` }
-                        : undefined
-                    }
-                  >
-                    {t.shortLabel}
-                  </button>
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              onClick={onMorphNextTopology}
-              className="w-full py-1.5 rounded-lg text-xs font-semibold border border-slate-400/20 bg-slate-900/75 text-slate-200 hover:border-cyan-400 transition cursor-pointer"
-            >
-              Morph Next Topology
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
-              Spectrum
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {QUANTUM_SPECTRUMS.map((sp, idx) => {
-                const active = spectrumIndex === idx;
-                return (
-                  <button
-                    key={sp.name}
-                    type="button"
-                    onClick={() => onSelectSpectrum?.(idx)}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer flex items-center gap-1.5 ${
-                      active
-                        ? "text-slate-100"
-                        : "text-slate-400 bg-slate-900/75 border-slate-400/15 hover:text-slate-100"
-                    }`}
-                    style={
-                      active ? { borderColor: sp.hex, backgroundColor: `${sp.hex}24` } : undefined
-                    }
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: sp.hex }} />
-                    <span className="truncate">{sp.name.split(" ")[0]}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5 pt-1">
-            <button
-              type="button"
-              onClick={onToggleEnergySurge}
-              className={`py-2 rounded-lg text-xs font-bold transition cursor-pointer border ${
-                energySurge
-                  ? "text-[#030712] border-transparent"
-                  : "text-slate-200 bg-slate-900/75 border-slate-400/20 hover:border-cyan-400"
-              }`}
-              style={
-                energySurge
-                  ? { background: `linear-gradient(135deg, ${activeSpec.hex}, ${activeSpec.secondaryHex})` }
-                  : undefined
-              }
-            >
-              {energySurge ? "Surge Active" : "Energy Surge"}
-            </button>
-            <button
-              type="button"
-              onClick={onToggleHudHidden}
-              className="py-2 rounded-lg text-xs font-semibold border border-slate-400/20 bg-slate-900/75 text-slate-200 hover:border-cyan-400 transition cursor-pointer"
-            >
-              {hudHidden ? "Show HUD (H)" : "Hide HUD (H)"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================= */}
-      {/* SIDEBAR POPOVER DRAWER: VOICE & REMINDER SUMMARY                  */}
+      {/* SIDEBAR POPOVER DRAWER: NOTIFICATIONS & VOICE SUMMARY LOG         */}
       {/* ================================================================= */}
       {sidebarDrawer === "summary" && (
-        <div className="q-hud-chrome fixed z-50 bottom-16 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-auto md:right-24 md:top-1/2 md:-translate-y-1/2 w-[min(360px,calc(100vw-24px))] rounded-2xl bg-[#070d1c]/95 border border-slate-400/25 p-4 shadow-2xl animate-fadeIn">
+        <div className="q-hud-chrome fixed z-50 bottom-20 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-auto md:right-40 md:top-1/2 md:-translate-y-1/2 w-[min(360px,calc(100vw-24px))] rounded-2xl bg-[#070d1c]/95 border border-slate-400/25 p-4 shadow-2xl animate-fadeIn">
           <div className="flex items-center justify-between border-b border-slate-400/15 pb-2 mb-2.5">
-            <span className="font-orbitron font-bold text-xs tracking-wider text-slate-100 uppercase">
-              Voice &amp; Reminder Summary
+            <span className="font-orbitron font-bold text-xs tracking-wider text-amber-300 uppercase">
+              Alerts &amp; Summary Log
             </span>
-            <button
-              type="button"
-              onClick={() => setSidebarDrawer("none")}
-              className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              {onClearSummary && cockpitSummaries.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onClearSummary}
+                  title="Clear Log"
+                  className="p-1 rounded-lg text-slate-400 hover:text-rose-400 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSidebarDrawer("none")}
+                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div ref={summaryScrollRef} className="max-h-60 overflow-y-auto space-y-2.5 pr-1 text-xs">
             {cockpitSummaries.length === 0 ? (
@@ -1008,26 +868,29 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       )}
 
       {/* ================================================================= */}
-      {/* FIELD-COLORED 3D CRYSTAL ORBITAL DOCK WITH SCREEN-WIDE 3D ENTRY   */}
+      {/* FIELD-COLORED 3D CRYSTAL ORBITAL DOCK WITH VISIBLE ICON LABELS    */}
       {/* ================================================================= */}
       <nav
         id="jarvis-orbital-dock"
-        aria-label="Jarvis 3D Orbital Icon Dock"
-        className={`q-hud-chrome fixed z-30 bottom-[max(0.6rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 max-w-[95vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-4 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-center gap-1.5 md:gap-1.5 p-2 md:py-3 md:px-2.5 rounded-2xl md:rounded-[34px] transition-all duration-500 ${
+        aria-label="Wasu's Jarvis Mobile Dock"
+        className={`q-hud-chrome fixed z-30 bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 max-w-[96vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-3 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-stretch gap-1.5 md:gap-1 p-2 md:py-2.5 md:px-2 rounded-2xl md:rounded-3xl transition-all duration-500 ${
           isIconFlightActive
             ? "bg-transparent border border-transparent shadow-none overflow-visible"
-            : "bg-[#040916]/65 border border-white/15 md:border-cyan-400/25 shadow-2xl backdrop-blur-md overflow-x-auto md:overflow-visible"
+            : "bg-[#040916]/75 border border-white/15 md:border-cyan-400/30 shadow-2xl backdrop-blur-md overflow-x-auto md:max-h-[86vh] md:overflow-y-auto"
         }`}
-        style={{ perspective: "1200px", transformStyle: "preserve-3d" }}
+        style={{
+          perspective: "1200px",
+          transformStyle: "preserve-3d",
+          opacity: (customization.hudOpacity ?? 95) / 100,
+        }}
       >
         {sideActions.map((item, idx) => {
           const IconComponent = item.icon;
           const total = sideActions.length;
           const norm = total > 1 ? idx / (total - 1) : 0.5;
-          const curveX = -Math.round(Math.sin(norm * Math.PI) * 30);
+          const curveX = -Math.round(Math.sin(norm * Math.PI) * 14);
           const floatDelay = `${(idx * 0.14).toFixed(2)}s`;
 
-          // Screen-wide deterministic 3D flight trajectory from scattered viewport points into dock alignment
           const angle = (idx / total) * Math.PI * 2;
           const startX = `${(-44 - Math.abs(Math.cos(angle)) * 38).toFixed(1)}vw`;
           const startY = `${(Math.sin(angle * 2) * 38).toFixed(1)}vh`;
@@ -1038,6 +901,13 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
           const mobMidX = `${(Math.sin(angle) * 18).toFixed(1)}vw`;
           const mobMidY = `${(-14 - (idx % 3) * 6).toFixed(1)}vh`;
           const flyDelay = `${(idx * 0.04).toFixed(3)}s`;
+
+          const iconSizeClass =
+            dockSize === "large"
+              ? "w-[22px] h-[22px]"
+              : dockSize === "compact"
+              ? "w-[16px] h-[16px]"
+              : "w-[18px] h-[18px]";
 
           return (
             <button
@@ -1063,51 +933,34 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
                   borderColor: item.active ? item.color : item.borderHex,
                   color: "#ffffff",
                   boxShadow: item.active
-                    ? `0 0 22px ${item.glowHex}, 0 0 0 1.5px ${item.color}, inset 0 1.5px 2px rgba(255,255,255,0.5)`
-                    : `0 6px 18px -2px ${item.glowHex}, inset 0 1.5px 2px rgba(255,255,255,0.36), inset 0 -4px 8px rgba(2,6,18,0.45)`,
+                    ? `0 0 18px ${item.glowHex}, 0 0 0 1.5px ${item.color}, inset 0 1px 2px rgba(255,255,255,0.45)`
+                    : `0 4px 14px -2px ${item.glowHex}, inset 0 1px 2px rgba(255,255,255,0.28)`,
                 } as React.CSSProperties
               }
               className={`${
                 isIconFlightActive ? "q-orbital-enter" : "q-orbital-item"
-              } group relative w-9 h-9 md:w-10 md:h-10 rounded-2xl border flex items-center justify-center shrink-0 cursor-pointer transition-[filter,transform] duration-200 hover:scale-[1.18] hover:brightness-125`}
+              } group relative min-w-[54px] min-h-[46px] md:min-w-[122px] md:min-h-[34px] px-2 py-1.5 md:px-2.5 md:py-1 rounded-2xl md:rounded-xl border flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-2 shrink-0 cursor-pointer transition-[filter,transform] duration-200 hover:scale-[1.06] hover:brightness-125`}
             >
-              {/* Glossy Top Crystal Specular Highlight */}
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-1 top-0.5 h-2.5 rounded-t-xl opacity-65"
-                style={{
-                  background: "linear-gradient(180deg, rgba(255,255,255,0.45) 0%, transparent 100%)",
-                }}
-              />
-              {/* Hover Outer Orbital Energy Halo */}
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute -inset-1 rounded-[18px] opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-                style={{
-                  border: `1px solid ${item.color}`,
-                  boxShadow: `0 0 14px ${item.glowHex}`,
-                }}
-              />
               <IconComponent
-                className="relative z-10 w-[18px] h-[18px] shrink-0"
+                className={`relative z-10 ${iconSizeClass} shrink-0`}
                 style={{
                   color: item.color,
-                  filter: `drop-shadow(0 0 7px ${item.color}) drop-shadow(0 1px 2px rgba(0,0,0,0.85))`,
+                  filter: `drop-shadow(0 0 6px ${item.color})`,
                 }}
               />
+              {showDockLabels && (
+                <span className="relative z-10 text-[9px] md:text-[10px] font-mono font-semibold text-slate-100 leading-none tracking-tight whitespace-nowrap max-w-[66px] md:max-w-[96px] truncate">
+                  {item.label}
+                </span>
+              )}
               {item.badgeCount !== undefined && item.badgeCount > 0 && (
                 <span
-                  className="absolute -top-0.5 -right-0.5 z-20 w-2.5 h-2.5 rounded-full border border-[#040916]"
+                  className="absolute -top-1 -right-1 z-20 px-1 min-w-[16px] h-4 rounded-full border border-[#040916] text-[9px] font-mono font-bold text-slate-950 flex items-center justify-center"
                   style={{ backgroundColor: item.color, boxShadow: `0 0 8px ${item.color}` }}
-                />
+                >
+                  {item.badgeCount > 99 ? "99+" : item.badgeCount}
+                </span>
               )}
-              <span
-                className="hidden md:flex items-center gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 absolute right-full mr-3 px-2.5 py-1 rounded-lg bg-[#050b18]/95 text-[11px] font-mono text-slate-100 whitespace-nowrap shadow-xl transition-opacity border"
-                style={{ borderColor: item.borderHex, boxShadow: `0 0 16px ${item.glowHex}` }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                <span>{item.label}</span>
-              </span>
             </button>
           );
         })}

@@ -18,9 +18,9 @@ export default defineConfig(() => {
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
         manifest: {
           id: '/',
-          name: 'Q-NEXUS: Quantum Tachyon Jarvis OS',
-          short_name: 'Q-NEXUS',
-          description: 'Pakistani Urdu & English AI Companion, Wasu & Wasi ki Jan, Phone & PC Control OS.',
+          name: "Wasu's Jarvis — Mobile AI OS",
+          short_name: "Wasu's Jarvis",
+          description: 'Pakistani Urdu & English Mobile AI Companion, Wasu & Wasi ki Jan, Complete Phone Control OS.',
           theme_color: '#02050f',
           background_color: '#02050f',
           display: 'standalone',
@@ -127,6 +127,7 @@ export default defineConfig(() => {
       },
     },
     server: {
+      allowedHosts: true as const,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',

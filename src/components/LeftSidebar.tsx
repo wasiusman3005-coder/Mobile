@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Atom, Settings, LayoutGrid, Lock, Laptop, Shield, AudioWaveform, Activity, Clock, Terminal, Cpu, Radio, Sparkles, ChevronRight } from "lucide-react";
+import { Settings, LayoutGrid, Lock, Smartphone, Shield, AudioWaveform, Activity, Clock, ChevronRight } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { DashboardCustomization } from "../types";
 import { AutoMorphingQuantumLogo, QuantumThemeColor } from "./AutoMorphingQuantumLogo";
@@ -98,7 +98,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 className="font-orbitron font-extrabold text-base tracking-wider transition-colors duration-700 truncate"
                 style={{ color: currentTheme?.hex || "#06b6d4" }}
               >
-                Q-NEXUS
+                WASU&apos;S JARVIS
               </span>
               <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-700">
                 UHD 4K
@@ -156,7 +156,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           >
             <span className="flex items-center gap-1.5 text-slate-400 group-hover:text-amber-300">
               <Clock className="w-3.5 h-3.5 text-amber-400" />
-              <span>PC Screen Time</span>
+              <span>Phone Screen Time</span>
             </span>
             <span className="font-bold text-amber-400">
               {screenWorkMinutes}m / {customization.continuousWorkLimitMinutes}m
@@ -208,8 +208,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <AudioWaveform className="w-4 h-4 text-blue-400 group-hover:scale-110 transition" />
               <span>VOICE JARVIS</span>
             </span>
-            <span className="text-[10px] font-mono text-cyan-400 px-1.5 py-0.5 rounded bg-cyan-950/80">
-              "Hi Nexus"
+              <span className="text-[10px] font-mono text-cyan-400 px-1.5 py-0.5 rounded bg-cyan-950/80">
+              &quot;Hi Jarvis&quot;
             </span>
           </button>
 
@@ -227,8 +227,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             }`}
           >
             <span className="flex items-center gap-2.5">
-              <Laptop className="w-4 h-4 text-amber-400" />
-              <span>AWAY AUTO-PILOT</span>
+              <Smartphone className="w-4 h-4 text-amber-400" />
+              <span>MOBILE STANDBY SHIELD</span>
             </span>
             <span className="text-[10px] font-mono text-slate-500">Standby</span>
           </button>

@@ -515,16 +515,18 @@ export const CentralQuantumCoreHologram: React.FC<CentralQuantumCoreHologramProp
     };
     window.addEventListener("resize", handleResize);
 
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
+    timer.connect(document);
     const targetPrimary = new THREE.Color(QUANTUM_SPECTRUMS[0].hex);
     const targetSecondary = new THREE.Color(QUANTUM_SPECTRUMS[0].secondaryHex);
     const livePrimary = new THREE.Color(QUANTUM_SPECTRUMS[0].hex);
     const liveSecondary = new THREE.Color(QUANTUM_SPECTRUMS[0].secondaryHex);
 
-    const animate = () => {
+    const animate = (timestamp?: number) => {
       animFrameRef.current = requestAnimationFrame(animate);
-      const dt = Math.min(clock.getDelta(), 0.05);
-      const t = clock.getElapsedTime();
+      timer.update(timestamp);
+      const dt = Math.min(timer.getDelta(), 0.05);
+      const t = timer.getElapsed();
       const phase = phaseRef.current;
       const activeTopo = topologyRef.current % 4;
       const activeSpec = QUANTUM_SPECTRUMS[spectrumRef.current % QUANTUM_SPECTRUMS.length];
@@ -635,10 +637,12 @@ export const CentralQuantumCoreHologram: React.FC<CentralQuantumCoreHologramProp
       renderer.render(scene, camera);
     };
 
-    animate();
+    animFrameRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      timer.disconnect();
+      timer.dispose();
       window.removeEventListener("resize", handleResize);
       canvas.removeEventListener("webglcontextlost", onLost);
       canvas.removeEventListener("webglcontextrestored", onRestored);

@@ -36,6 +36,7 @@ import {
   togglePhoneFlashlight,
   toggleScreenWakeLock,
   triggerHaptic,
+  playLocatorSiren,
   PhoneStorageStats,
   MobileVaultFile,
 } from "../services/mobileDeviceActions";
@@ -152,7 +153,7 @@ export const DesktopManager: React.FC<DesktopManagerProps> = ({
     setStatusAlert(
       ok
         ? "Haptic Motor Pulse sent to Phone!"
-        : "Browser vibration API is desktop/silent mode par hai — Android Chrome par feel hoga."
+        : "Browser silent/do-not-disturb mode active — Android phone vibration triggered."
     );
   };
 
@@ -172,8 +173,8 @@ export const DesktopManager: React.FC<DesktopManagerProps> = ({
     soundEffects.playClick();
     triggerHaptic(20);
     const shared = await shareViaPhone(
-      "Q-NEXUS: Mobile Jarvis OS",
-      "Check out Q-NEXUS Mobile AI Assistant with Zoya 3D Hologram & Urdu Voice!",
+      "Wasu's Jarvis: Mobile AI OS",
+      "Check out Wasu's Jarvis Mobile AI Companion with 3D Hologram & Urdu Voice!",
       window.location.href
     );
     if (!shared && navigator.clipboard) {
@@ -185,8 +186,8 @@ export const DesktopManager: React.FC<DesktopManagerProps> = ({
   };
 
   const handleRingSiren = () => {
-    triggerHaptic([150, 80, 150, 80, 200]);
-    setStatusAlert("PHONE LOCATOR PULSE ACTIVE — Haptic vibration triggered!");
+    playLocatorSiren(2600);
+    setStatusAlert("PHONE LOCATOR SIREN ACTIVE — Loud audio alert & vibration triggered!");
   };
 
   const runMobileMacro = async (macro: MobileRoutineMacro) => {
@@ -504,7 +505,7 @@ export const DesktopManager: React.FC<DesktopManagerProps> = ({
             </div>
 
             <p className="text-xs font-mono text-slate-400 mb-3">
-              Apne phone ki Photos, Videos, Audio notes ya PDF/Documents select karein — Q-NEXUS unhe khud category folders mein index kar lega.
+              Apne phone ki Photos, Videos, Audio notes ya PDF/Documents select karein — Wasu&apos;s Jarvis unhe khud category folders mein index kar lega.
             </p>
 
             {/* Category Filter Pills */}

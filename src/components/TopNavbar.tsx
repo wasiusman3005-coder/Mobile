@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Atom, Settings, LayoutGrid, Lock, Laptop, Shield } from "lucide-react";
+import { Atom, Settings, LayoutGrid, Lock, Smartphone } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { DashboardCustomization } from "../types";
 
@@ -65,10 +65,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <span className="font-orbitron font-bold text-sm md:text-base tracking-wider text-cyan-400 glow-text-cyan">
-              Q-NEXUS
+              WASU&apos;S JARVIS
             </span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
-              JARVIS OS
+              MOBILE OS
             </span>
           </div>
           <div className="text-[10px] font-mono text-slate-400 flex items-center gap-2">
@@ -92,7 +92,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           title="Ergonomic Screen Rest Monitor - Click to test mandatory rest"
           className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 cursor-pointer"
         >
-          <span>PC WORK:</span>
+          <span>PHONE USE:</span>
           <span className="font-bold">{screenWorkMinutes}m / {customization.continuousWorkLimitMinutes}m</span>
           {screenWorkMinutes >= customization.continuousWorkLimitMinutes - 5 && (
             <span className="text-[10px] bg-red-950 text-red-400 px-1 rounded animate-pulse">REST DUE</span>
@@ -126,14 +126,14 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             soundEffects.playClick();
             onToggleAwayMode();
           }}
-          title="Away Mode: Auto-Pilot while you're away from PC"
+          title="Away Mode: Auto-Pilot Standby while away from phone"
           className={`p-2 rounded-xl text-xs font-mono border transition flex items-center gap-1.5 cursor-pointer ${
             isAwayMode
               ? "bg-amber-500 text-black border-amber-400 font-bold animate-pulse"
               : "bg-slate-900 border-slate-800 text-slate-300 hover:border-amber-400/50 hover:text-amber-300"
           }`}
         >
-          <Laptop className="w-4 h-4" />
+          <Smartphone className="w-4 h-4" />
         </button>
 
         {/* Settings & Customization Button */}

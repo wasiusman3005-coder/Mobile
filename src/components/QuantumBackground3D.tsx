@@ -76,7 +76,7 @@ function drawPanoramicLedScreen(
   ctx.fillRect(18, 18, w - 36, 46);
   ctx.font = "700 22px 'Orbitron', sans-serif";
   ctx.fillStyle = "#e0f2fe";
-  ctx.fillText("WASI'S TECHNOLOGY HUB • COMMAND WALL TELEMETRY", 36, 49);
+  ctx.fillText("WASU'S JARVIS • MOBILE OS TELEMETRY", 36, 49);
 
   // Left Panel: Live Radar Sweep Circle
   const rx = 185;
@@ -484,15 +484,17 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
     };
     window.addEventListener("resize", handleResize);
 
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
+    timer.connect(document);
     const liveAccent = new THREE.Color(customAccentHex);
     const liveSecondary = new THREE.Color(customSecondaryHex);
     let lastRedraw = 0;
 
-    const animate = () => {
+    const animate = (timestamp?: number) => {
       animFrameRef.current = requestAnimationFrame(animate);
-      const delta = Math.min(clock.getDelta(), 0.05);
-      const t = clock.getElapsedTime();
+      timer.update(timestamp);
+      const delta = Math.min(timer.getDelta(), 0.05);
+      const t = timer.getElapsed();
       const surgeMult = surgeRef.current ? 1.85 : 1.0;
 
       const cDamp = 1 - Math.exp(-2.4 * delta);
@@ -518,7 +520,7 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
           sideTexA.needsUpdate = true;
         }
         if (sideCtxB) {
-          drawSideHologramScreen(sideCtxB, "STUDY & BUSINESS SYNC", sHex, t * surgeMult);
+          drawSideHologramScreen(sideCtxB, "STUDY & TASKS SYNC", sHex, t * surgeMult);
           sideTexB.needsUpdate = true;
         }
       }
@@ -538,10 +540,12 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
       renderer.render(scene, camera);
     };
 
-    animate();
+    animFrameRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      timer.disconnect();
+      timer.dispose();
       canvas.removeEventListener("webglcontextlost", onLost);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", handleResize);

@@ -33,9 +33,18 @@ import {
   LanguageCode,
   VoiceGender,
   AppConnectorItem,
-  DockerContainerItem,
   ScheduledRoutineItem,
 } from "../types";
+
+interface MobileDaemonItem {
+  id: string;
+  name: string;
+  image: string;
+  status: "running" | "stopped";
+  ports: string;
+  cpuPercent: number;
+  uptime: string;
+}
 
 interface WorkflowAutomationSuiteProps {
   language: LanguageCode;
@@ -49,12 +58,12 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
   const [activeTab, setActiveTab] = useState<"screen" | "connectors" | "shell" | "routines">("screen");
 
   // ----------------------------------------------------
-  // 1. SCREEN & CONTEXT AWARENESS STATE
+  // 1. MOBILE SCREEN & CONTEXT AWARENESS STATE
   // ----------------------------------------------------
   const [screenContextType, setScreenContextType] = useState<"spreadsheet" | "code" | "document">("code");
   const [isScanning, setIsScanning] = useState(false);
   const [screenContent, setScreenContent] = useState(
-    `// authMiddleware.ts - Line 42\nexport const verifyToken = (req: Request, res: Response, next: NextFunction) => {\n  const token = req.headers.authorization?.split(" ")[1];\n  if (!token) return res.status(401).json({ error: "Missing Bearer Token" });\n  // TODO: Fix potential memory leak in JWT verify callback\n  jwt.verify(token, process.env.JWT_SECRET);\n  next();\n};`
+    `// mobileVoiceHandler.ts\nexport const handleWakeCommand = (phrase: string) => {\n  if (!phrase.trim()) return;\n  triggerHaptic([30, 40]);\n  return dispatchMobileCommand(phrase);\n};`
   );
   const [scanAnalysis, setScanAnalysis] = useState<{
     summary: string;
@@ -62,15 +71,14 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
     suggestedFix: string;
     actionLabel: string;
   } | null>({
-    summary: "Active VS Code Window: TypeScript authentication middleware with potential unhandled exception in jwt.verify.",
+    summary: "Mobile Script Buffer: Voice wake command dispatcher ready for optimization.",
     detectedIssues: [
-      "Missing try/catch around synchronous jwt.verify call.",
-      "Unfinished TODO: JWT verify callback memory leak at line 46.",
-      "CORS headers not validated before header extraction.",
+      "Add error boundary around offline voice recognition retry.",
+      "Cache last spoken notification reply for instant replay.",
     ],
     suggestedFix:
-      "Wrap jwt.verify in try/catch block and dispatch automated patch to VS Code buffer.",
-    actionLabel: "Auto-Apply Patch to VS Code",
+      "Wrap mobile command dispatcher in retry handler and sync to Phone Memory Vault.",
+    actionLabel: "Auto-Apply Mobile Optimization",
   });
 
   const handleScreenScan = () => {
@@ -82,33 +90,33 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
 
       if (screenContextType === "spreadsheet") {
         setScanAnalysis({
-          summary: "Active Excel / Google Sheets: Q4 Workstation Budget & Cash Flow Forecast.",
+          summary: "Mobile Expense Sheet: Monthly Phone Budget & Cash Flow Forecast.",
           detectedIssues: [
-            "Formula in cell G18 (#REF!) references deleted GPU depreciation row.",
-            "Fazool Kharchi detected: 3 duplicate SaaS recurring tool subscriptions.",
+            "Formula in cell G18 (#REF!) references removed expense row.",
+            "Duplicate recurring app subscriptions detected.",
           ],
-          suggestedFix: "Correct formula to =SUM(G4:G17) and flag redundant SaaS charges for Commander Wasi.",
-          actionLabel: "Auto-Clean Spreadsheet Formulas",
+          suggestedFix: "Correct formula to =SUM(G4:G17) and flag redundant app charges.",
+          actionLabel: "Auto-Clean Mobile Sheet Formulas",
         });
       } else if (screenContextType === "document") {
         setScanAnalysis({
-          summary: "Active Document: Client Video Production Service Level Agreement (SLA).",
+          summary: "Mobile Document: Service Agreement Draft.",
           detectedIssues: [
-            "Missing late delivery penalty clause on 4K video exports.",
-            "Payment milestone at Section 3.2 lacks bank transfer timeframe.",
+            "Missing delivery timeline clause on mobile export.",
+            "Payment milestone at Section 3.2 lacks transfer timeframe.",
           ],
-          suggestedFix: "Inject standard 5-day net revision clause and export signed PDF.",
-          actionLabel: "Insert Standard Terms & Export PDF",
+          suggestedFix: "Inject standard 5-day revision clause and save summary to Memory.",
+          actionLabel: "Insert Standard Terms & Save",
         });
       } else {
         setScanAnalysis({
-          summary: "Active VS Code Buffer: Node.js Express Controller with JWT authentication.",
+          summary: "Mobile Script Buffer: Android Bridge & Notification Listener.",
           detectedIssues: [
-            "Missing error handler for expired token.",
-            "Environment variable JWT_SECRET not asserted non-empty.",
+            "Add defensive fallback when phone is offline.",
+            "Persist summary log timestamps across app restarts.",
           ],
-          suggestedFix: "Inject defensive verification block with typed response payload.",
-          actionLabel: "Auto-Apply Patch to VS Code",
+          suggestedFix: "Inject offline queue safeguard into mobile handler.",
+          actionLabel: "Auto-Apply Mobile Optimization",
         });
       }
     }, 1100);
@@ -177,14 +185,33 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
   };
 
   // ----------------------------------------------------
-  // 3. SHELL COMMANDS & DOCKER CONSOLE STATE
+  // 3. MOBILE CONSOLE & BACKGROUND DAEMONS STATE
   // ----------------------------------------------------
   const [terminalHistory, setTerminalHistory] = useState<string[]>([
-    "Q-NEXUS Live Diagnostic Console ready. Run 'systeminfo' to inspect live device telemetry.",
+    "Wasu's Jarvis Mobile Diagnostic Console ready. Run 'phoneinfo' to inspect live device telemetry.",
   ]);
   const [cmdInput, setCmdInput] = useState("");
 
-  const [dockerContainers, setDockerContainers] = useState<DockerContainerItem[]>([]);
+  const [mobileDaemons, setMobileDaemons] = useState<MobileDaemonItem[]>([
+    {
+      id: "svc-wake",
+      name: "JarvisWakeForegroundService",
+      image: "Android Sticky Mic Wake",
+      status: "running",
+      ports: "BG Wake",
+      cpuPercent: 1.4,
+      uptime: "Active",
+    },
+    {
+      id: "svc-notif",
+      name: "QNexusNotificationService",
+      image: "Notification & Call Reader",
+      status: "running",
+      ports: "Listener",
+      cpuPercent: 0.6,
+      uptime: "Active",
+    },
+  ]);
 
   const runShellCommand = async (cmdToRun?: string) => {
     const command = (cmdToRun || cmdInput).trim();
@@ -194,39 +221,32 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
     setCmdInput("");
 
     let output = "";
-    if (command.toLowerCase().includes("docker ps")) {
-      output = "CONTAINER ID   IMAGE                 STATUS         NAMES\na4b2c1d0       postgres:16-alpine    Up 4 hours     q-nexus-db\ne7f8g9h0       redis:7.2-alpine      Up 4 hours     redis-cache\n11223344       ollama/ollama:latest  Up 2 hours     ollama-local-llm";
-    } else if (command.toLowerCase().includes("git status")) {
-      output = "On branch main\nYour branch is up to date with 'origin/main'.\nWorking tree telemetry active.";
-    } else if (command.toLowerCase().includes("git log")) {
-      output = "commit 7f4a2b9 (HEAD -> main) feat: real host pc telemetry & Pakistani Urdu Zoya voice\ncommit 9d1e8c4 fix: auto-morphing UHD logo design transitions";
-    } else if (command.toLowerCase().includes("systeminfo")) {
+    if (command.toLowerCase().includes("service") || command.toLowerCase().includes("status")) {
+      output = mobileDaemons.map((d) => `${d.name}: ${d.status.toUpperCase()} (${d.image})`).join("\n");
+    } else if (command.toLowerCase().includes("phoneinfo") || command.toLowerCase().includes("systeminfo")) {
       const tel = await fetchSystemTelemetry();
       if (tel) {
-        const diskLines = (tel.disks.length > 0 ? tel.disks : [tel.primaryDisk])
-          .map((d) => `Disk ${d.drive}: ${d.usedGb} GB used / ${d.totalGb} GB total (${d.freeGb} GB free)`)
-          .join("\n");
-        output = `Host: ${tel.hostname} (User: ${tel.username})\nOS: ${tel.osCaption} (${tel.platform} ${tel.arch})\nCPU: ${tel.cpuModel} (${tel.cpuCores} Cores @ ${tel.cpuSpeedGhz} GHz, Load ${tel.cpuUsagePercent}%)\nGPU: ${tel.gpuName}${tel.gpuVramGb ? ` (${tel.gpuVramGb} GB VRAM)` : ""}\nRAM: ${tel.ramUsedGb} / ${tel.ramTotalGb} GB (${tel.ramPercent}%)\nIPv4: ${tel.ipAddress} (${tel.netInterface})\n${diskLines}`;
+        output = `Device: ${tel.osCaption} • CPU ${tel.cpuCores} Cores • RAM ${tel.ramUsedGb}/${tel.ramTotalGb} GB • IP ${tel.ipAddress}`;
       } else {
-        output = "Unable to probe local telemetry endpoint right now.";
+        output = "Mobile hardware sensors active on-device.";
       }
     } else {
-      output = `[OK] Command executed: '${command}' (Status: Process 0 finished in 42ms)`;
+      output = `[OK] Mobile command executed: '${command}'`;
     }
 
     setTerminalHistory((prev) => [...prev, `> ${command}`, output]);
   };
 
-  const toggleDockerContainer = (id: string) => {
+  const toggleMobileDaemon = (id: string) => {
     soundEffects.playBeepConfirm();
-    setDockerContainers((prev) =>
+    setMobileDaemons((prev) =>
       prev.map((c) => {
         if (c.id === id) {
           const nextStatus = c.status === "running" ? "stopped" : "running";
           return {
             ...c,
             status: nextStatus,
-            uptime: nextStatus === "running" ? "Just started (0m)" : "Stopped by Commander",
+            uptime: nextStatus === "running" ? "Active" : "Paused",
           };
         }
         return c;
@@ -299,7 +319,7 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
           }`}
         >
           <Terminal className="w-4 h-4" />
-          <span>SHELL & DOCKER CONSOLE</span>
+          <span>MOBILE SHELL &amp; SERVICES</span>
         </button>
 
         <button
@@ -331,10 +351,10 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
                 <span className="text-[10px] font-mono text-emerald-400">NO MANUAL COPY-PASTING REQUIRED</span>
               </div>
               <h3 className="text-lg font-orbitron font-bold text-slate-100 mt-1">
-                Active Desktop Context Vision Scanner
+                Active Mobile Screen Context Scanner
               </h3>
               <p className="text-xs text-slate-400 font-mono">
-                Reads spreadsheets, code buffers, and contracts directly to suggest and execute instant fixes.
+                Reads phone notes, sheets, code snippets, and contracts to suggest instant fixes.
               </p>
             </div>
 
@@ -344,7 +364,7 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
                 onClick={() => {
                   setScreenContextType("code");
                   setScreenContent(
-                    `// authMiddleware.ts - Line 42\nexport const verifyToken = (req: Request, res: Response, next: NextFunction) => {\n  const token = req.headers.authorization?.split(" ")[1];\n  if (!token) return res.status(401).json({ error: "Missing Bearer Token" });\n  jwt.verify(token, process.env.JWT_SECRET);\n  next();\n};`
+                    `// mobileVoiceHandler.ts\nexport const verifyMobileSession = (token: string) => {\n  if (!token) throw new Error("Missing token");\n  return { verified: true };\n};`
                   );
                 }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
@@ -362,7 +382,7 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
                 onClick={() => {
                   setScreenContextType("spreadsheet");
                   setScreenContent(
-                    `[Excel: Workstation_Q4_Financials.xlsx]\nCell A1: Gross Revenue: PKR 850,000\nCell B2: Video Editing Retainers: PKR 420,000\nCell G18: #REF! [Formula Error in Depreciation]\nRow 22: Redundant SaaS Subscriptions: PKR 28,500`
+                    `[Mobile Budget Sheet: Monthly_Expenses.xlsx]\nIncome: PKR 850,000\nCell G18: #REF! [Formula Error]\nRow 22: Duplicate App Subscriptions: PKR 12,500`
                   );
                 }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-mono transition cursor-pointer flex items-center gap-1.5 ${
@@ -584,23 +604,23 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
         </div>
       )}
 
-      {/* Tab 3: Shell & Docker Console */}
+      {/* Tab 3: Mobile Shell & Background Services */}
       {activeTab === "shell" && (
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-          {/* Docker Containers Grid */}
+          {/* Background Mobile Services Grid */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-orbitron font-bold text-emerald-300 flex items-center gap-2">
                 <Database className="w-4 h-4 text-emerald-400" />
-                <span>LOCAL DOCKER MICROSERVICES & CONTAINERS</span>
+                <span>ANDROID BACKGROUND SERVICES &amp; LISTENERS</span>
               </span>
               <span className="text-[10px] font-mono text-slate-400">
-                Engine: Docker Desktop v27 • WSL2 Backend
+                Android Native • Background Guard
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {dockerContainers.map((container) => (
+              {mobileDaemons.map((container) => (
                 <div
                   key={container.id}
                   className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between"
@@ -619,14 +639,14 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-400 font-mono truncate">{container.image}</div>
-                    <div className="text-[10px] text-cyan-400 font-mono mt-1">Ports: {container.ports}</div>
+                    <div className="text-[10px] text-cyan-400 font-mono mt-1">Mode: {container.ports}</div>
                   </div>
 
                   <div className="mt-3 pt-2 border-t border-slate-800 text-[10px] font-mono flex items-center justify-between">
                     <span className="text-slate-400">CPU: {container.cpuPercent}%</span>
                     <button
                       type="button"
-                      onClick={() => toggleDockerContainer(container.id)}
+                      onClick={() => toggleMobileDaemon(container.id)}
                       className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-[10px] cursor-pointer flex items-center gap-1"
                     >
                       <Power className="w-2.5 h-2.5 text-cyan-400" />
@@ -638,34 +658,27 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
             </div>
           </div>
 
-          {/* Interactive Shell Console */}
+          {/* Interactive Mobile Diagnostic Console */}
           <div className="p-4 rounded-2xl bg-black border border-slate-800 flex flex-col font-mono text-xs">
             <div className="flex items-center justify-between text-slate-400 mb-2 border-b border-slate-800/80 pb-2">
               <span className="flex items-center gap-2 text-emerald-400">
                 <Terminal className="w-3.5 h-3.5" />
-                <span>Host OS Command Prompt [Administrator]</span>
+                <span>Wasu&apos;s Jarvis Mobile Command Console</span>
               </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => runShellCommand("git status")}
+                  onClick={() => runShellCommand("service status")}
                   className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 text-[10px] hover:text-cyan-300 cursor-pointer"
                 >
-                  git status
+                  service status
                 </button>
                 <button
                   type="button"
-                  onClick={() => runShellCommand("docker ps")}
+                  onClick={() => runShellCommand("phoneinfo")}
                   className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 text-[10px] hover:text-cyan-300 cursor-pointer"
                 >
-                  docker ps
-                </button>
-                <button
-                  type="button"
-                  onClick={() => runShellCommand("systeminfo")}
-                  className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 text-[10px] hover:text-cyan-300 cursor-pointer"
-                >
-                  systeminfo
+                  phoneinfo
                 </button>
               </div>
             </div>
@@ -690,7 +703,7 @@ export const WorkflowAutomationSuite: React.FC<WorkflowAutomationSuiteProps> = (
                 type="text"
                 value={cmdInput}
                 onChange={(e) => setCmdInput(e.target.value)}
-                placeholder="Type command (e.g. git log, docker restart q-nexus-db, npm test)..."
+                placeholder="Type mobile command (e.g. phoneinfo, service status)..."
                 className="flex-1 bg-transparent border-none text-slate-100 placeholder-slate-600 focus:outline-none font-mono text-xs"
               />
               <button
