@@ -222,7 +222,7 @@ export const CentralQuantumCoreHologram: React.FC<CentralQuantumCoreHologramProp
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.22;
     renderer.setSize(initW, initH);
-    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
     container.innerHTML = "";
     container.appendChild(canvas);
 

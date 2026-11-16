@@ -291,7 +291,7 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
               autoPlay={isCurrent}
               muted
               playsInline
-              preload="auto"
+              preload={isCurrent ? "auto" : "metadata"}
               disablePictureInPicture
               onCanPlay={(e) => {
                 if (!isCurrent && !e.currentTarget.paused) {
@@ -304,7 +304,6 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
               style={{
                 transform: "translateZ(0)",
                 backfaceVisibility: "hidden",
-                willChange: "opacity, transform",
               }}
               className={`absolute inset-0 w-full h-full min-w-full min-h-full max-w-none object-cover ${
                 shouldPanLandscapeOnMobile ? "q-mobile-video-pan" : "object-[50%_20%]"
@@ -332,7 +331,7 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
       {(activeHubNotification || cockpitPhase !== "galaxy") && (
         <div className="q-hud-chrome fixed z-20 bottom-[4.5rem] md:bottom-5 left-1/2 -translate-x-1/2 w-[min(460px,calc(100vw-24px))] flex flex-col items-center gap-2">
           {activeHubNotification && cockpitPhase === "galaxy" && (
-            <div className="w-full px-3.5 py-2.5 rounded-2xl bg-[#050d1e]/92 border border-amber-400/50 shadow-2xl backdrop-blur-md flex items-start gap-2.5 animate-fadeIn">
+            <div className="w-full px-3.5 py-2.5 rounded-2xl bg-[#050d1e]/95 border border-amber-400/50 shadow-2xl flex items-start gap-2.5 animate-fadeIn">
               <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300 shrink-0 mt-0.5">
                 <Bell className="w-3.5 h-3.5" />
               </div>
@@ -350,12 +349,12 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
           {cockpitPhase !== "galaxy" && (
             <div className="w-full flex flex-col items-center gap-2 animate-fadeIn">
               <div
-                className={`w-full flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-[#060f1f]/90 border shadow-2xl backdrop-blur-md ${
+                className={`w-full flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-[#060f1f]/95 border shadow-2xl ${
                   cockpitPhase === "recording"
-                    ? "border-emerald-500/55 shadow-[0_0_28px_rgba(16,185,129,0.28)]"
+                    ? "border-emerald-500/55 shadow-[0_0_24px_rgba(16,185,129,0.25)]"
                     : cockpitPhase === "processing"
-                    ? "border-purple-500/55 shadow-[0_0_28px_rgba(168,85,247,0.28)]"
-                    : "border-cyan-400/55 shadow-[0_0_28px_rgba(0,240,255,0.28)]"
+                    ? "border-purple-500/55 shadow-[0_0_24px_rgba(168,85,247,0.25)]"
+                    : "border-cyan-400/55 shadow-[0_0_24px_rgba(0,240,255,0.25)]"
                 }`}
               >
                 <div className="flex-1 flex items-center justify-center gap-[3px] h-7 overflow-hidden">
@@ -412,12 +411,12 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
               </div>
 
               {cockpitPhase === "recording" && liveTranscript && (
-                <div className="text-[11px] font-mono text-emerald-200/95 bg-black/70 px-3 py-1 rounded-lg backdrop-blur-sm text-center max-w-sm">
+                <div className="text-[11px] font-mono text-emerald-200/95 bg-black/85 px-3 py-1 rounded-lg text-center max-w-sm">
                   &quot;{liveTranscript}&quot;
                 </div>
               )}
               {cockpitPhase === "speaking" && liveReplyText && (
-                <div className="px-3.5 py-2 rounded-xl bg-black/80 border border-white/15 backdrop-blur-md text-xs font-mono text-slate-100 text-center max-w-md leading-snug">
+                <div className="px-3.5 py-2 rounded-xl bg-black/90 border border-white/15 text-xs font-mono text-slate-100 text-center max-w-md leading-snug">
                   {liveReplyText}
                 </div>
               )}

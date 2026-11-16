@@ -31,10 +31,16 @@ export const LockScreenQuantumLogo3D: React.FC<LockScreenQuantumLogo3DProps> = (
       return;
     }
 
+    const canvas = renderer.domElement;
+    const onLost = (e: Event) => {
+      e.preventDefault();
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
+
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5)); // UHD 4K sharpness
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     container.innerHTML = "";
-    container.appendChild(renderer.domElement);
+    container.appendChild(canvas);
 
     // Color Spectrum: Cyan -> Violet -> Emerald -> Solar Gold -> Rose -> Sapphire
     const palette = [
@@ -234,6 +240,7 @@ export const LockScreenQuantumLogo3D: React.FC<LockScreenQuantumLogo3DProps> = (
       timer.dispose();
       window.removeEventListener("resize", handleResize);
       container.removeEventListener("mousemove", handleMouseMove);
+      canvas.removeEventListener("webglcontextlost", onLost);
       renderer.dispose();
       coreGeo.dispose();
       coreMat.dispose();
@@ -249,8 +256,8 @@ export const LockScreenQuantumLogo3D: React.FC<LockScreenQuantumLogo3DProps> = (
       ring3Mat.dispose();
       particlesGeo.dispose();
       particlesMat.dispose();
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
+      if (container.contains(canvas)) {
+        container.removeChild(canvas);
       }
     };
   }, []);

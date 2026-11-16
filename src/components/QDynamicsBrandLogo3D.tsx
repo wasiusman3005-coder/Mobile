@@ -39,25 +39,35 @@ export const QDynamicsBrandLogo3D: React.FC<QDynamicsBrandLogo3DProps> = ({
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 30);
     camera.position.z = 4.3;
 
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth < 768;
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
+      renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: !isMobileViewport,
+        powerPreference: "high-performance",
+      });
     } catch {
       return;
     }
 
     renderer.setSize(w, h);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobileViewport ? 1.25 : 1.75));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.25;
     container.innerHTML = "";
     container.appendChild(renderer.domElement);
 
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const roomEnv = new RoomEnvironment();
-    const envRT = pmrem.fromScene(roomEnv, 0.04);
-    scene.environment = envRT.texture;
+    let pmrem: THREE.PMREMGenerator | null = null;
+    let roomEnv: RoomEnvironment | null = null;
+    let envRT: THREE.WebGLRenderTarget | null = null;
+    if (!isMobileViewport) {
+      pmrem = new THREE.PMREMGenerator(renderer);
+      roomEnv = new RoomEnvironment();
+      envRT = pmrem.fromScene(roomEnv, 0.04);
+      scene.environment = envRT.texture;
+    }
 
     const group = new THREE.Group();
     scene.add(group);
@@ -149,11 +159,17 @@ export const QDynamicsBrandLogo3D: React.FC<QDynamicsBrandLogo3DProps> = ({
     const liveA = new THREE.Color(accentHex);
     const liveB = new THREE.Color(secondaryHex);
     let rafId = 0;
+    let lastDrawTime = 0;
+    const minFrameMs = isMobileViewport ? 34 : 16;
 
-    const animate = (timestamp?: number) => {
+    const animate = (timestamp = 0) => {
       rafId = requestAnimationFrame(animate);
+      if (document.hidden) return;
+      if (timestamp - lastDrawTime < minFrameMs) return;
+      lastDrawTime = timestamp;
+
       timer.update(timestamp);
-      const dt = Math.min(timer.getDelta(), 0.05);
+      const dt = Math.min(timer.getDelta(), 0.06);
       const t = timer.getElapsed();
 
       liveA.lerp(accentRef.current, 1 - Math.exp(-3.2 * dt));
@@ -213,9 +229,9 @@ export const QDynamicsBrandLogo3D: React.FC<QDynamicsBrandLogo3DProps> = ({
       satGeo.dispose();
       satMatA.dispose();
       satMatB.dispose();
-      envRT.dispose();
-      roomEnv.dispose();
-      pmrem.dispose();
+      envRT?.dispose();
+      roomEnv?.dispose();
+      pmrem?.dispose();
       renderer.dispose();
       if (container.contains(canvas)) {
         container.removeChild(canvas);

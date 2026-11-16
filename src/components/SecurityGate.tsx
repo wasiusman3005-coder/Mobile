@@ -81,8 +81,11 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const tel = await readPhoneHardwareTelemetry();
-      if (!cancelled) setPhoneTelemetry(tel);
+      try {
+        const tel = await readPhoneHardwareTelemetry();
+        if (!cancelled) setPhoneTelemetry(tel);
+      } catch {
+      }
     };
     load();
     const timer = setInterval(load, 4000);

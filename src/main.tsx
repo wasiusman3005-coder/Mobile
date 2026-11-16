@@ -16,10 +16,16 @@ if (typeof window !== 'undefined') {
   });
 }
 
-registerSW({
-  immediate: true,
-  onRegisterError() {},
-});
+const isNativeCapacitor =
+  typeof window !== 'undefined' &&
+  Boolean((window as any).Capacitor?.isNativePlatform?.());
+
+if (!isNativeCapacitor) {
+  registerSW({
+    immediate: true,
+    onRegisterError() {},
+  });
+}
 
 // Google Maps Platform Quota Defense Handlers
 (window as any).gm_authFailure = () => {

@@ -237,6 +237,7 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
   }, [energySurge]);
 
   useEffect(() => {
+    if (!show3D) return;
     const container = mountRef.current;
     if (!container) return;
 
@@ -273,14 +274,21 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.18;
     renderer.setSize(width, height);
-    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
     container.innerHTML = "";
     container.appendChild(canvas);
 
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const roomEnv = new RoomEnvironment();
-    const envRT = pmrem.fromScene(roomEnv, 0.04);
-    scene.environment = envRT.texture;
+    let pmrem: THREE.PMREMGenerator | null = null;
+    let roomEnv: RoomEnvironment | null = null;
+    let envRT: THREE.WebGLRenderTarget | null = null;
+    try {
+      pmrem = new THREE.PMREMGenerator(renderer);
+      roomEnv = new RoomEnvironment();
+      envRT = pmrem.fromScene(roomEnv, 0.04);
+      scene.environment = envRT.texture;
+    } catch {
+      scene.environment = null;
+    }
 
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
     const glowSprite = createGlowSpriteTexture();
@@ -579,16 +587,16 @@ export const QuantumBackground3D: React.FC<QuantumBackground3DProps> = ({
           }
         });
       });
-      envRT.dispose();
-      roomEnv.dispose();
-      pmrem.dispose();
+      envRT?.dispose();
+      roomEnv?.dispose();
+      pmrem?.dispose();
       renderer.dispose();
 
       if (container.contains(canvas)) {
         container.removeChild(canvas);
       }
     };
-  }, []);
+  }, [show3D]);
 
   return (
     <div

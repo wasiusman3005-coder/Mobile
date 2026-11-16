@@ -2824,10 +2824,31 @@ async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     viteInitPromise = (async () => {
       const { createServer } = await import("vite");
+      const hmrDisabled =
+        process.env.DISABLE_HMR === "true" || Boolean(process.env.K_SERVICE);
       const vite = await createServer({
+        plugins: hmrDisabled
+          ? [
+              {
+                name: "ai-studio-disable-client-ws",
+                transform(code, id) {
+                  if (id.includes("vite/dist/client/client.mjs")) {
+                    return code
+                      .replace("transport.connect(createHMRHandler(handleMessage));", "/* HMR disabled */")
+                      .replace(
+                        'else throw new SendBeforeConnectError("send was called before connect");',
+                        "else return;"
+                      )
+                      .replace("ws.send(JSON.stringify(data));", "ws?.send(JSON.stringify(data));");
+                  }
+                },
+              },
+            ]
+          : [],
         server: {
           middlewareMode: true,
-          ws: { server: httpServer },
+          ws: hmrDisabled ? false : undefined,
+          hmr: hmrDisabled ? false : { server: httpServer },
         },
         appType: "spa",
       });

@@ -87,7 +87,7 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "revision": "054beebbac98a03a4c502c393422524d"
   }, {
     "url": "index.html",
-    "revision": "4bf15662eedcc0a9ccf44bc324bf1601"
+    "revision": "11e9c25b914214b51e7fce6a7a9e924e"
   }, {
     "url": "icon.svg",
     "revision": "fb188e33b292aced0e4bafba603c9f13"
@@ -110,10 +110,10 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "url": "assets/react-vendor-DsbKag4k.js",
     "revision": null
   }, {
-    "url": "assets/index-urRBW2oi.js",
+    "url": "assets/index-bR--YVcF.js",
     "revision": null
   }, {
-    "url": "assets/index-BO2pMhPc.css",
+    "url": "assets/index-DSd4-hkv.css",
     "revision": null
   }, {
     "url": "assets/aistudio/vector-hud-gui-interface-004_e93adaf2.jpg",
@@ -146,7 +146,31 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "url": "assets/aistudio/images_79a73411.jpg",
     "revision": null
   }, {
+    "url": "assets/aistudio/Screenshot_2026-11-16_154610_f2b815e9.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-16_154610_cc1a0762.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-16_154610_c683034e.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-16_154610_3db48aec.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-16_154610_2cc50839.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-13_162243_f4430d25.png",
+    "revision": null
+  }, {
     "url": "assets/aistudio/Screenshot_2026-11-13_162243_eaddbe9a.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-13_162243_65c18fd3.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/Screenshot_2026-11-13_162243_53ea10fd.png",
     "revision": null
   }, {
     "url": "assets/aistudio/Screenshot_2026-11-13_162243_4bb692fd.png",

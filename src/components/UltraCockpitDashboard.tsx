@@ -177,15 +177,17 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
 }) => {
   const [soundOn, setSoundOn] = useState(soundEffects.soundEnabled);
   const [sidebarDrawer, setSidebarDrawer] = useState<"none" | "characters" | "summary">("none");
-  const [isIconFlightActive, setIsIconFlightActive] = useState(true);
+  const isMobileScreen = typeof window !== "undefined" && window.innerWidth < 768;
+  const [isIconFlightActive, setIsIconFlightActive] = useState(!isMobileScreen);
   const summaryScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!isIconFlightActive) return;
     const settleTimer = setTimeout(() => {
       setIsIconFlightActive(false);
-    }, 2650);
+    }, 2200);
     return () => clearTimeout(settleTimer);
-  }, []);
+  }, [isIconFlightActive]);
 
   useEffect(() => {
     if (detailViewNonce > 0) {
@@ -524,8 +526,8 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       {/* PROJECTED BIG HUB SCREEN: CHARACTERS OPEN & CONTROL ALL PANELS    */}
       {/* ================================================================= */}
       {activeProjectedModule && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-2 sm:p-5 bg-[#020612]/80 backdrop-blur-xl animate-fadeIn">
-          <div className="relative w-full max-w-5xl h-[88dvh] rounded-3xl bg-[#040a18]/96 border border-cyan-400/45 shadow-[0_0_65px_rgba(6,182,212,0.28)] flex flex-col overflow-hidden text-slate-100">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-2 sm:p-5 bg-[#020612]/90 md:backdrop-blur-lg animate-fadeIn">
+          <div className="relative w-full max-w-5xl h-[88dvh] rounded-3xl bg-[#040a18] border border-cyan-400/45 shadow-2xl flex flex-col overflow-hidden text-slate-100">
             {/* Characters Live Working Terminal Bar */}
             <div className="px-4 sm:px-5 py-3 bg-[#071127]/95 border-b border-cyan-500/30 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -873,14 +875,12 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
       <nav
         id="jarvis-orbital-dock"
         aria-label="Wasu's Jarvis Mobile Dock"
-        className={`q-hud-chrome fixed z-30 bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 max-w-[96vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-3 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-stretch gap-1.5 md:gap-1 p-2 md:py-2.5 md:px-2 rounded-2xl md:rounded-3xl transition-all duration-500 ${
+        className={`q-hud-chrome fixed z-30 bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 max-w-[96vw] md:max-w-none md:left-auto md:translate-x-0 md:bottom-auto md:right-3 md:top-1/2 md:-translate-y-1/2 flex flex-row md:flex-col items-stretch gap-1.5 md:gap-1 p-2 md:py-2.5 md:px-2 rounded-2xl md:rounded-3xl transition-opacity duration-300 ${
           isIconFlightActive
             ? "bg-transparent border border-transparent shadow-none overflow-visible"
-            : "bg-[#040916]/75 border border-white/15 md:border-cyan-400/30 shadow-2xl backdrop-blur-md overflow-x-auto md:max-h-[86vh] md:overflow-y-auto"
+            : "bg-[#040916]/90 border border-white/15 md:border-cyan-400/30 shadow-2xl md:backdrop-blur-md overflow-x-auto md:max-h-[86vh] md:overflow-y-auto"
         }`}
         style={{
-          perspective: "1200px",
-          transformStyle: "preserve-3d",
           opacity: (customization.hudOpacity ?? 95) / 100,
         }}
       >
@@ -945,7 +945,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
                 className={`relative z-10 ${iconSizeClass} shrink-0`}
                 style={{
                   color: item.color,
-                  filter: `drop-shadow(0 0 6px ${item.color})`,
+                  filter: isMobileScreen ? undefined : `drop-shadow(0 0 6px ${item.color})`,
                 }}
               />
               {showDockLabels && (

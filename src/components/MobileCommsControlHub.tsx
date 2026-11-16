@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Reply,
   BatteryCharging,
+  LockOpen,
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
@@ -27,9 +28,16 @@ import {
   setNativeBackgroundWakeService,
   setNativeBackgroundAutoAnnounce,
   openAndroidBatteryOptimizationSettings,
+  requestIgnoreBatteryOptimizationAndroid,
+  getNativeBackgroundStatus,
+  openAndroidAppInfoSettings,
   openAndroidNotificationAccessSettings,
-  requestAndroidNativePermissions,
+  getAndroidPermissionStatus,
+  requestCorePermissionsAndroid,
+  requestCommsPermissionsAndroid,
   subscribeNativeEvents,
+  subscribeNativeSpeechEvents,
+  AndroidPermissionStatus,
   NativeNotificationItem,
   NativeCallLogItem,
   NativeSmsItem,
@@ -65,19 +73,28 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
   });
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [permStatus, setPermStatus] = useState<AndroidPermissionStatus | null>(null);
+  const [batteryUnrestricted, setBatteryUnrestricted] = useState(false);
 
   const refreshAll = async () => {
     setIsRefreshing(true);
     try {
-      const [notifRes, callRes, smsRes] = await Promise.all([
+      const [notifRes, callRes, smsRes, pStat, bgStat] = await Promise.all([
         getNativePhoneNotifications(),
         getNativeCallLogs(),
         getNativeSmsMessages(),
+        getAndroidPermissionStatus(),
+        getNativeBackgroundStatus(),
       ]);
       setListenerEnabled(notifRes.listenerEnabled);
       setNotifications(notifRes.notifications);
       setCalls(callRes);
       setSmsList(smsRes);
+      if (pStat) setPermStatus(pStat);
+      if (bgStat) {
+        setBgWakeActive(Boolean(bgStat.running || bgStat.wakeEnabled));
+        setBatteryUnrestricted(Boolean(bgStat.batteryUnrestricted));
+      }
     } finally {
       setIsRefreshing(false);
     }
@@ -85,6 +102,12 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
 
   useEffect(() => {
     refreshAll();
+    const unsubSpeech = subscribeNativeSpeechEvents({
+      onPermissionsChanged: (st) => {
+        setPermStatus(st);
+        setListenerEnabled(st.notifListener);
+      },
+    });
     const unsub = subscribeNativeEvents(
       () => {},
       (incoming) => {
@@ -106,7 +129,10 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
         }
       }
     );
-    return unsub;
+    return () => {
+      unsub();
+      unsubSpeech();
+    };
   }, [language, voiceGender]);
 
   const speakSummary = (text: string) => {
@@ -191,6 +217,9 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
     soundEffects.playClick();
     triggerHaptic(20);
     const next = !bgWakeActive;
+    try {
+      localStorage.setItem("wasu_jarvis_bg_opt_out", next ? "0" : "1");
+    } catch {}
     const res = await setNativeBackgroundWakeService(next, [
       "wake up jarvis",
       "hi jarvis",
@@ -200,6 +229,29 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
     ]);
     setBgWakeActive(res.active);
     setStatusNotice(res.message);
+    refreshAll();
+  };
+
+  const handleAllowUnrestrictedBattery = async () => {
+    soundEffects.playClick();
+    triggerHaptic(20);
+    if (!isNative) {
+      setStatusNotice("Yeh button Android APK mein Battery Saver bypass dialog kholta hai.");
+      return;
+    }
+    const res = await requestIgnoreBatteryOptimizationAndroid();
+    if (res.unrestricted) {
+      setBatteryUnrestricted(true);
+      setStatusNotice("Battery Unrestricted pehle se ACTIVE hai! App background mein band nahi hogi.");
+    } else if (res.ok) {
+      setStatusNotice("System popup mein 'Allow' dabayein taake Android app close hone ke baad service band na kare.");
+      setTimeout(() => {
+        refreshAll();
+      }, 1500);
+    } else {
+      await openAndroidBatteryOptimizationSettings();
+      setStatusNotice("Battery settings khul gayi hain — Wasu's Jarvis ko 'Unrestricted' select karein.");
+    }
   };
 
   const handleToggleAutoAnnounce = async () => {
@@ -213,69 +265,127 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
     );
   };
 
-  const handleGrantPermissions = async () => {
+  const handleGrantCorePermissions = async () => {
     soundEffects.playClick();
-    const res = await requestAndroidNativePermissions();
-    setStatusNotice(
-      res.ok
-        ? `Permissions — Mic: ${res.mic ? "ON" : "NO"} • Calls: ${res.phone ? "ON" : "NO"} • SMS: ${res.sms ? "ON" : "NO"}`
-        : "Native Android APK mein hi system permissions grant hoti hain."
-    );
+    const res = await requestCorePermissionsAndroid();
+    if (res) {
+      setPermStatus(res);
+      setStatusNotice(
+        `Core Permissions — Mic: ${res.mic ? "ON" : "NO"} • Notifications: ${res.notifications ? "ON" : "NO"} • Camera: ${res.camera ? "ON" : "NO"}`
+      );
+      if (res.mic) {
+        speechService.primeMicrophoneAccess().catch(() => {});
+      }
+    } else {
+      setStatusNotice("Native Android APK mein hi system permissions grant hoti hain.");
+    }
+    refreshAll();
+  };
+
+  const handleGrantCommsPermissions = async () => {
+    soundEffects.playClick();
+    const res = await requestCommsPermissionsAndroid();
+    if (res) {
+      setPermStatus(res);
+      if (!res.phone || !res.sms) {
+        setStatusNotice(
+          "Android 15 block kar raha ho to pehle 'Unlock Android 15 Lock' dabayein -> App Info -> upar right 3 dots (⋮) -> 'Allow restricted settings' on karein."
+        );
+      } else {
+        setStatusNotice(`Calls: ${res.phone ? "ON" : "NO"} • SMS: ${res.sms ? "ON" : "NO"}`);
+      }
+    }
     refreshAll();
   };
 
   return (
     <div className="w-full h-full flex flex-col font-rajdhani text-slate-100 space-y-3 overflow-y-auto">
-      {/* Top Runtime Mode & Permissions Banner */}
+      {/* Top Runtime Mode & Android 15 4-Step Permissions Banner */}
       <div
-        className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+        className={`p-3.5 rounded-2xl border flex flex-col gap-3 ${
           isNative
-            ? "bg-emerald-950/40 border-emerald-500/40"
+            ? "bg-emerald-950/35 border-emerald-500/40"
             : "bg-amber-950/35 border-amber-500/45"
         }`}
       >
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            {isNative ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              {isNative ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              )}
+              <span className="font-orbitron font-bold text-xs sm:text-sm text-white">
+                {isNative
+                  ? `NATIVE ANDROID ${permStatus?.sdkInt ? `API ${permStatus.sdkInt} ` : ""}BRIDGE ACTIVE`
+                  : "WEB PREVIEW MODE — SYSTEM ACCESS SANDBOXED"}
+              </span>
+            </div>
+            {isNative && permStatus && (
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+                <span className={`px-2 py-0.5 rounded border ${permStatus.mic ? "bg-emerald-950/80 border-emerald-400 text-emerald-300" : "bg-red-950/70 border-red-400/50 text-red-200"}`}>
+                  MIC: {permStatus.mic ? "ON" : "OFF"}
+                </span>
+                <span className={`px-2 py-0.5 rounded border ${permStatus.notifListener ? "bg-emerald-950/80 border-emerald-400 text-emerald-300" : "bg-amber-950/70 border-amber-400/50 text-amber-200"}`}>
+                  WHATSAPP/ALERTS: {permStatus.notifListener ? "ON" : "LOCKED"}
+                </span>
+                <span className={`px-2 py-0.5 rounded border ${permStatus.phone ? "bg-emerald-950/80 border-emerald-400 text-emerald-300" : "bg-slate-900 border-slate-700 text-slate-300"}`}>
+                  CALLS: {permStatus.phone ? "ON" : "OFF"}
+                </span>
+                <span className={`px-2 py-0.5 rounded border ${permStatus.sms ? "bg-emerald-950/80 border-emerald-400 text-emerald-300" : "bg-slate-900 border-slate-700 text-slate-300"}`}>
+                  SMS: {permStatus.sms ? "ON" : "OFF"}
+                </span>
+              </div>
             )}
-            <span className="font-orbitron font-bold text-xs sm:text-sm text-white">
-              {isNative
-                ? "NATIVE ANDROID APK BRIDGE ACTIVE"
-                : "CHROME WEB MODE — SYSTEM ACCESS SANDBOXED"}
-            </span>
           </div>
           <p className="text-[11px] font-mono text-slate-300 leading-relaxed">
             {isNative
-              ? "Wasu's Jarvis Native Android APK active hai. Notification Access aur Permissions allow kar ke WhatsApp, Messenger, SMS, Calls aur Always-On Background Service chalayein."
+              ? "Android 15 Security Rule: WhatsApp Notification Access, Calls aur SMS kholne ke liye pehle Step 2 ('Unlock Android 15 Lock' -> App Info -> top-right 3 dots ⋮ -> Allow restricted settings) on karein, phir Step 3 mein Notification Access allow karein."
               : "Live Android WhatsApp/Messenger notifications, Call Logs, SMS, aur app band hone ke baad background service sirf compiled Wasu's Jarvis Android APK mein kaam karti hai."}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {isNative && (
-            <>
-              <button
-                type="button"
-                onClick={handleGrantPermissions}
-                className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-orbitron font-bold text-[11px] cursor-pointer flex items-center gap-1.5"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>ALLOW PERMISSIONS</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => openAndroidNotificationAccessSettings()}
-                className="px-3 py-1.5 rounded-xl bg-cyan-950 hover:bg-cyan-900 border border-cyan-400 text-cyan-200 font-mono text-[11px] cursor-pointer flex items-center gap-1.5"
-              >
-                <Settings className="w-3.5 h-3.5" />
-                <span>NOTIFICATION ACCESS</span>
-              </button>
-            </>
-          )}
-        </div>
+        {isNative && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <button
+              type="button"
+              onClick={handleGrantCorePermissions}
+              className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-orbitron font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>1. MIC &amp; NOTIFICATIONS</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                soundEffects.playClick();
+                setStatusNotice("App Info khul raha hai: Upar right corner 3 dots (⋮) -> 'Allow restricted settings' -> Fingerprint lagayein.");
+                openAndroidAppInfoSettings();
+              }}
+              className="px-3 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-orbitron font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <LockOpen className="w-3.5 h-3.5 shrink-0" />
+              <span>2. UNLOCK ANDROID 15 LOCK</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openAndroidNotificationAccessSettings()}
+              className="px-3 py-2 rounded-xl bg-cyan-950 hover:bg-cyan-900 border border-cyan-400 text-cyan-200 font-mono font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Settings className="w-3.5 h-3.5 shrink-0" />
+              <span>3. WHATSAPP ALERTS ACCESS</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleGrantCommsPermissions}
+              className="px-3 py-2 rounded-xl bg-purple-950 hover:bg-purple-900 border border-purple-400 text-purple-200 font-mono font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Phone className="w-3.5 h-3.5 shrink-0" />
+              <span>4. ALLOW CALLS &amp; SMS</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {statusNotice && (
@@ -455,7 +565,7 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
             <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 text-center text-xs font-mono text-slate-400">
               {isNative
                 ? "Koi recent call nahi mili ya Call Log permission allow nahi hai."
-                : "Chrome browser phone ki Call Logs read nahi kar sakta — .APK build install karne par real calls yahan dikhengi."}
+                : "Browser phone ki Call Logs read nahi kar sakta — .APK build install karne par real calls yahan dikhengi."}
             </div>
           ) : (
             <div className="space-y-2">
@@ -546,14 +656,34 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
       {/* TAB 4: ALWAYS-ON BACKGROUND WAKE & VOICE SERVICE */}
       {activeTab === "background" && (
         <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/40 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="space-y-1.5 flex-1 min-w-[220px]">
               <h4 className="font-orbitron font-bold text-sm text-amber-300 flex items-center gap-2">
                 <Smartphone className="w-4 h-4" />
                 <span>ALWAYS-ON BACKGROUND SERVICE</span>
               </h4>
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+                <span
+                  className={`px-2 py-0.5 rounded border ${
+                    bgWakeActive
+                      ? "bg-emerald-950/80 border-emerald-400 text-emerald-300"
+                      : "bg-red-950/70 border-red-400/50 text-red-200"
+                  }`}
+                >
+                  SERVICE: {bgWakeActive ? "ACTIVE" : "STOPPED"}
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded border ${
+                    batteryUnrestricted
+                      ? "bg-emerald-950/80 border-emerald-400 text-emerald-300"
+                      : "bg-amber-950/70 border-amber-400/60 text-amber-200"
+                  }`}
+                >
+                  BATTERY: {batteryUnrestricted ? "UNRESTRICTED" : "RESTRICTED"}
+                </span>
+              </div>
               <p className="text-xs font-mono text-slate-300 mt-1 leading-relaxed">
-                Android Foreground Service app close hone ke baad bhi background mein chalegi, incoming alerts voice se batayegi aur wake word sun kar Wasu&apos;s Jarvis open karegi.
+                Android Foreground Service app close ya swipe karne ke baad bhi background mein chalegi, incoming alerts voice se batayegi aur wake word sun kar Wasu&apos;s Jarvis open karegi.
               </p>
             </div>
             <button
@@ -585,16 +715,29 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
 
             <button
               type="button"
-              onClick={() => openAndroidBatteryOptimizationSettings()}
-              className="px-3 py-2.5 rounded-xl bg-cyan-950/70 border border-cyan-500/45 text-cyan-200 text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer"
+              onClick={handleAllowUnrestrictedBattery}
+              className={`px-3 py-2.5 rounded-xl border text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer ${
+                batteryUnrestricted
+                  ? "bg-emerald-950/70 border-emerald-400 text-emerald-200"
+                  : "bg-cyan-950/70 border-cyan-500/45 text-cyan-200 hover:bg-cyan-900/80"
+              }`}
             >
               <BatteryCharging className="w-4 h-4" />
-              <span>Allow Unrestricted Battery Run</span>
+              <span>
+                {batteryUnrestricted
+                  ? "Always-On Battery: UNRESTRICTED ✓"
+                  : "Allow Always-On (No Sleep)"}
+              </span>
             </button>
           </div>
 
-          <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-400">
-            Active Phrases: <span className="text-cyan-300">&quot;Wake up Jarvis&quot;, &quot;Hi Jarvis&quot;, &quot;Hey Jarvis&quot;, &quot;Wasu&quot;, &quot;Wasi ki Jan&quot;</span>
+          <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 space-y-1">
+            <div>
+              Active Phrases: <span className="text-cyan-300">&quot;Wake up Jarvis&quot;, &quot;Hi Jarvis&quot;, &quot;Hey Jarvis&quot;, &quot;Wasu&quot;, &quot;Wasi ki Jan&quot;</span>
+            </div>
+            <div className="text-slate-400">
+              Android 15 / Xiaomi / Vivo / Samsung Tip: Agar phone app swipe karne par service band kare to Recents screen mein Wasu&apos;s Jarvis card ko lock (Lock icon) karein aur App Info &gt; Battery mein &quot;Unrestricted&quot; rakhein.
+            </div>
           </div>
         </div>
       )}

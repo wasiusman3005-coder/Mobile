@@ -25,6 +25,9 @@ import {
   getNativePhoneNotifications,
   getNativeCallLogs,
   getNativeSmsMessages,
+  getAndroidPermissionStatus,
+  requestCorePermissionsAndroid,
+  setNativeBackgroundWakeService,
 } from "./services/nativeAndroidBridge";
 import {
   LanguageCode,
@@ -731,12 +734,18 @@ export default function App() {
     window.addEventListener("pointerdown", armOnceOnTouch, { once: true, passive: true });
 
     const unsubNative = subscribeNativeEvents(
-      (nativePhrase) => {
+      (nativePhrase, trailingCommand) => {
         setIsAuthenticated(true);
         setIsVoiceModalOpen(false);
         setIsWakeWaveOpen(false);
-        speechService.startListening(languageRef.current);
-        showToast(`Background Wake: '${nativePhrase}'`);
+        soundEffects.playBeepConfirm();
+        if (trailingCommand && trailingCommand.trim().length >= 3) {
+          processCockpitCommandRef.current(trailingCommand.trim());
+        } else {
+          setCockpitLiveTranscript("");
+          speechService.startListening(languageRef.current);
+        }
+        showToast(`Wake Active: '${nativePhrase}'`);
       },
       (notif) => {
         const alertsCfg = proactiveAlertsRef.current;
@@ -954,7 +963,7 @@ export default function App() {
     }
   };
 
-  // Run one clean startup briefing after loading screen closes (zero voice collision)
+  // Run immediate female Assalam-o-Alaikum welcome + safe Android mic/core permission priming on launch
   useEffect(() => {
     if (!isAuthenticated) {
       initialBriefingDoneRef.current = false;
@@ -964,13 +973,52 @@ export default function App() {
 
     let initTimer: ReturnType<typeof setTimeout> | undefined;
     if (!initialBriefingDoneRef.current) {
-      initTimer = setTimeout(() => {
+      initTimer = setTimeout(async () => {
         if (initialBriefingDoneRef.current) return;
         initialBriefingDoneRef.current = true;
-        if (!speechService.getSpeakingState() && !speechService.getListeningState()) {
-          speakProactiveBriefing("full");
+
+        if (isNativeAndroidApk()) {
+          try {
+            let st = await getAndroidPermissionStatus();
+            if (!st || !st.mic || !st.notifications) {
+              const reqRes = await requestCorePermissionsAndroid();
+              if (reqRes) st = reqRes;
+            }
+            await speechService.primeMicrophoneAccess();
+            const optedOut =
+              typeof localStorage !== "undefined" &&
+              localStorage.getItem("wasu_jarvis_bg_opt_out") === "1";
+            if (!optedOut && st?.mic) {
+              setNativeBackgroundWakeService(true).catch(() => {});
+            }
+          } catch {}
         }
-      }, 2400);
+
+        if (!speechService.getSpeakingState() && !speechService.getListeningState()) {
+          const cfg = customization.avatarConfig;
+          const femaleName = getCharacterDisplayName(cfg, "female");
+          const salamMsg =
+            language === "en"
+              ? `Assalam-o-Alaikum Wasi Sahab! Welcome back. I am ${femaleName}, your Wasu's Jarvis assistant. All systems are online and listening for your command.`
+              : `Assalam-o-Alaikum Wasi Sahab! Khush amdeed. Main ${femaleName} hoon, aapki Wasu's Jarvis. Tamaam systems online hain, farmaiye main aapki kya madad karoon?`;
+          const femaleSlot = cfg?.femaleVoiceSettings;
+          setCockpitLiveReply(salamMsg);
+          appendCockpitSummary("reminder", `${femaleName} Welcome`, salamMsg);
+          speechService.speak(salamMsg, {
+            lang: language,
+            gender: "female",
+            pitch: femaleSlot?.pitch ?? 1.06,
+            rate: Math.max(femaleSlot?.rate ?? 0.98, 1.0),
+            fast: cfg?.fastTalkingMode ?? true,
+            forceCustomTest: true,
+            useElevenLabs: cfg?.useElevenLabs,
+            elevenLabsVoiceId: cfg?.elevenLabsVoiceId,
+            onEnd: () => {
+              setCockpitLiveReply("");
+            },
+          });
+        }
+      }, 650);
     }
 
     const periodicTimer = setInterval(() => {
@@ -1312,7 +1360,7 @@ export default function App() {
       />
 
       <QuantumBackground3D
-        show3D={customization.show3DBackground && (!isAuthenticated || showLoadingScreen)}
+        show3D={customization.show3DBackground && isAuthenticated && showLoadingScreen}
         customBgUrl={customization.customBgUrl}
         customAccentHex={isAuthenticated ? activeStageSpectrum.hex : "#00f0ff"}
         customSecondaryHex={isAuthenticated ? activeStageSpectrum.secondaryHex : "#8b5cf6"}
@@ -1520,7 +1568,13 @@ export default function App() {
           onTriggerWakeWord={() => speechService.triggerWakeWordManually("Hi Jarvis")}
           onPrimeWakeMic={() => {
             speechService.primeMicrophoneAccess().then((ok) => {
-              showToast(ok ? "Mic Armed — Say 'Hi Jarvis'" : "Allow Mic permission in Chrome");
+              showToast(
+                ok
+                  ? "Mic Armed — Say 'Hi Jarvis'"
+                  : isNativeAndroidApk()
+                  ? "Allow Android Microphone permission"
+                  : "Allow Mic permission in browser"
+              );
             });
           }}
           onSpeakBriefing={() => speakProactiveBriefing("full")}

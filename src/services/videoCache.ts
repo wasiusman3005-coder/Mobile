@@ -38,7 +38,16 @@ export function isVideoCached(url: string): boolean {
   return blobUrlMap.has(url);
 }
 
+function isNativeCapEnv(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    Boolean((window as any).Capacitor?.isNativePlatform?.())
+  );
+}
+
 export async function preloadVideoBlob(url: string): Promise<string> {
+  if (isNativeCapEnv()) return url;
+
   const existing = blobUrlMap.get(url);
   if (existing) return existing;
 
@@ -70,6 +79,8 @@ export async function preloadVideoBlob(url: string): Promise<string> {
  * preventing simultaneous multi-stream network bottlenecks on Main Cockpit entry.
  */
 export function startSequentialHubWarmup(initialDelayMs = 1600): () => void {
+  if (isNativeCapEnv()) return () => {};
+
   let cancelled = false;
   const list = getHubPlaylist();
   const timer = setTimeout(async () => {

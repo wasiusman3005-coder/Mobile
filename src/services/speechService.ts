@@ -1,5 +1,17 @@
 import { DashboardCustomization, LanguageCode, VoiceGender } from "../types";
 import { WAKE_WORDS_100_PLUS } from "../data/jarvisCatalog";
+import { getRemotePcUrl } from "./systemTelemetry";
+import {
+  isNativeAndroidApk,
+  requestMicPermissionAndroid,
+  speakNativeAndroid,
+  stopNativeAndroidSpeech,
+  startNativeAndroidListening,
+  stopNativeAndroidListening,
+  cancelNativeAndroidListening,
+  setNativeAndroidWakeWord,
+  subscribeNativeSpeechEvents,
+} from "./nativeAndroidBridge";
 
 export interface SpeechListenerCallbacks {
   onStart?: () => void;
@@ -122,9 +134,15 @@ class SpeechService {
   private voiceCustomization: DashboardCustomization | null = null;
 
   private cachedVoices: SpeechSynthesisVoice[] = [];
+  private nativeSpeechUnsub: (() => void) | null = null;
+  private nativeTtsResolve: (() => void) | null = null;
 
   constructor() {
-    this.initWakeWordDetector();
+    if (isNativeAndroidApk()) {
+      this.initNativeSpeechBridge();
+    } else {
+      this.initWakeWordDetector();
+    }
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       const loadVoices = () => {
         const list = window.speechSynthesis.getVoices();
@@ -133,6 +151,69 @@ class SpeechService {
       loadVoices();
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
+  }
+
+  private initNativeSpeechBridge() {
+    if (this.nativeSpeechUnsub) return;
+    this.wakeSupported = true;
+    this.nativeSpeechUnsub = subscribeNativeSpeechEvents({
+      onStart: () => {
+        this.notifyListening(true);
+      },
+      onPartial: (text) => {
+        if (!this.isListening) return;
+        this.bestTranscript = text;
+        this.speechEnergyDetected = true;
+        this.commandCallbacks.onResult?.(text, false);
+      },
+      onResult: (text) => {
+        if (text && text.trim()) {
+          this.finalizeSpeechTranscript(this.captureSessionId, text.trim());
+        }
+      },
+      onRms: (level) => {
+        if (this.isListening) {
+          this.notifyAudioLevel(level);
+        }
+      },
+      onError: (message) => {
+        const sid = this.captureSessionId;
+        if (this.finalizedSessionId === sid) return;
+        if (this.bestTranscript.trim()) {
+          this.finalizeSpeechTranscript(sid, this.bestTranscript.trim());
+          return;
+        }
+        this.finalizedSessionId = sid;
+        this.notifyListening(false);
+        this.cleanupCaptureResources(true);
+        this.commandCallbacks.onError?.(message || "Awaaz detect nahi hui. Dobara bolein.");
+        this.commandCallbacks.onEnd?.();
+      },
+      onEnd: () => {
+        const sid = this.captureSessionId;
+        if (this.finalizedSessionId === sid) return;
+        if (this.bestTranscript.trim()) {
+          this.finalizeSpeechTranscript(sid, this.bestTranscript.trim());
+          return;
+        }
+        this.finalizedSessionId = sid;
+        this.notifyListening(false);
+        this.cleanupCaptureResources(true);
+        this.commandCallbacks.onEnd?.();
+      },
+      onTtsStart: () => {
+        this.notifySpeaking(true);
+      },
+      onTtsDone: () => {
+        const doneCb = this.nativeTtsResolve;
+        this.nativeTtsResolve = null;
+        if (doneCb) doneCb();
+      },
+      onWakeStatus: (active, status) => {
+        this.wakeEngineState = active ? "running" : "idle";
+        this.wakeCallbacks.onWakeStatusChange?.(active, status || "LISTENING — Say 'Hi Jarvis' anytime");
+      },
+    });
   }
 
   public setWakeWords(extraWords: string[] = [], customCharacterNames: string[] = []) {
@@ -466,6 +547,20 @@ class SpeechService {
     this.wakePausedForCommand = false;
     this.wakeNetworkFailures = 0;
 
+    if (isNativeAndroidApk()) {
+      const granted = await requestMicPermissionAndroid();
+      if (granted) {
+        this.isWakeWordActive = true;
+        const wakeRes = await setNativeAndroidWakeWord(true, this.activeWakeWords);
+        this.wakeEngineState = wakeRes.active ? "running" : "idle";
+        this.wakeCallbacks.onWakeStatusChange?.(true, "LISTENING — Say 'Hi Jarvis' anytime");
+        return true;
+      }
+      this.wakePermissionDenied = true;
+      this.wakeCallbacks.onWakeStatusChange?.(false, "Tap Mic & Allow Android Microphone permission");
+      return false;
+    }
+
     // Never disrupt an already healthy running wake engine
     if (this.wakeEngineState === "running" || this.burstWakeActive) {
       this.wakeCallbacks.onWakeStatusChange?.(true, "LISTENING — Say 'Hi Jarvis' anytime");
@@ -514,6 +609,10 @@ class SpeechService {
     this.wakePausedForCommand = false;
     this.wakeCooldownUntil = Date.now() + 350;
     if (this.isWakeWordActive) {
+      if (isNativeAndroidApk()) {
+        setNativeAndroidWakeWord(true, this.activeWakeWords).catch(() => {});
+        return;
+      }
       this.ensureWakeWatchdog(true);
       this.scheduleWakeRestart(220);
     }
@@ -540,6 +639,14 @@ class SpeechService {
   private resumeWakeDetectorSoon() {
     this.wakePausedForCommand = false;
     if (this.isWakeWordActive && !this.isListening && !this.isSpeaking) {
+      if (isNativeAndroidApk()) {
+        setTimeout(() => {
+          if (this.isWakeWordActive && !this.isListening && !this.isSpeaking) {
+            setNativeAndroidWakeWord(true, this.activeWakeWords).catch(() => {});
+          }
+        }, 320);
+        return;
+      }
       this.scheduleWakeRestart(320);
     }
   }
@@ -830,6 +937,25 @@ class SpeechService {
 
   public enableWakeWord(enabled: boolean) {
     this.isWakeWordActive = enabled;
+    if (isNativeAndroidApk()) {
+      if (enabled) {
+        if (!this.isListening && !this.isSpeaking && !this.wakePausedForCommand) {
+          setNativeAndroidWakeWord(true, this.activeWakeWords).then((res) => {
+            this.wakeEngineState = res.active ? "running" : "idle";
+            this.wakeCallbacks.onWakeStatusChange?.(
+              res.active,
+              res.active ? "LISTENING — Say 'Hi Jarvis' anytime" : "Tap Wake Card to allow Android Mic"
+            );
+          });
+        }
+      } else {
+        setNativeAndroidWakeWord(false, []).catch(() => {});
+        this.wakeEngineState = "idle";
+        this.wakeCallbacks.onWakeStatusChange?.(false, "Wake trigger off");
+      }
+      return;
+    }
+
     if (enabled) {
       this.ensureWakeWatchdog(true);
       if (!this.isListening && !this.isSpeaking && !this.wakePausedForCommand && !this.wakePermissionDenied) {
@@ -991,7 +1117,7 @@ class SpeechService {
     this.resumeWakeDetectorSoon();
   }
 
-  // Starts one-shot command recording: SpeechRecognition + MediaRecorder silence-VAD fallback
+  // Starts one-shot command recording: Native Android SpeechRecognizer (in APK) or Web Speech API + MediaRecorder (in Browser)
   public startListening(lang: LanguageCode = "ur"): boolean {
     if (typeof window === "undefined") return false;
 
@@ -1003,7 +1129,7 @@ class SpeechService {
     this.discardMediaFallback = false;
     this.cancelSpeech();
 
-    // Release continuous wake recognition first so Android/Chrome mic stream unlocks cleanly
+    // Release continuous wake recognition first so hardware mic stream unlocks cleanly
     this.wakePausedForCommand = true;
     this.clearWakeTimers();
     this.abortWakeRecognitionSafely();
@@ -1018,6 +1144,43 @@ class SpeechService {
 
     this.notifyListening(true);
     this.commandCallbacks.onStart?.();
+
+    if (isNativeAndroidApk()) {
+      this.maxCaptureTimer = setTimeout(() => {
+        if (this.captureSessionId === sessionId && this.isListening) {
+          this.stopListening();
+        }
+      }, 15000);
+
+      (async () => {
+        const micOk = await requestMicPermissionAndroid();
+        if (this.captureSessionId !== sessionId || this.finalizedSessionId === sessionId) return;
+        if (!micOk) {
+          this.finalizedSessionId = sessionId;
+          this.notifyListening(false);
+          this.cleanupCaptureResources(true);
+          this.commandCallbacks.onError?.(
+            "Android Microphone permission allow karein (Popup par Allow dabayein ya Phone Hub se permissions kholein)."
+          );
+          this.commandCallbacks.onEnd?.();
+          this.resumeWakeDetectorSoon();
+          return;
+        }
+        const nativeRes = await startNativeAndroidListening(lang);
+        if (this.captureSessionId !== sessionId || this.finalizedSessionId === sessionId) return;
+        if (!nativeRes.ok) {
+          this.finalizedSessionId = sessionId;
+          this.notifyListening(false);
+          this.cleanupCaptureResources(true);
+          this.commandCallbacks.onError?.(
+            nativeRes.message || "Android Voice engine start nahi ho saka. Dobara Mic par tap karein."
+          );
+          this.commandCallbacks.onEnd?.();
+          this.resumeWakeDetectorSoon();
+        }
+      })();
+      return true;
+    }
 
     // Safety cap: one-shot command mic turns OFF cleanly after 15s max
     this.maxCaptureTimer = setTimeout(() => {
@@ -1271,7 +1434,9 @@ class SpeechService {
           this.notifyListening(false);
           this.cleanupCaptureResources(true);
           this.commandCallbacks.onError?.(
-            "Microphone permission blocked hai! Chrome settings mein Microphone Allow karein."
+            isNativeAndroidApk()
+              ? "Android Microphone permission allow karein."
+              : "Microphone permission blocked hai! Browser settings mein Microphone Allow karein."
           );
           this.commandCallbacks.onEnd?.();
           this.resumeWakeDetectorSoon();
@@ -1291,6 +1456,20 @@ class SpeechService {
 
     if (this.bestTranscript.trim()) {
       this.finalizeSpeechTranscript(sessionId, this.bestTranscript.trim());
+      return;
+    }
+
+    if (isNativeAndroidApk()) {
+      stopNativeAndroidListening();
+      setTimeout(() => {
+        if (this.captureSessionId === sessionId && this.finalizedSessionId !== sessionId) {
+          this.finalizedSessionId = sessionId;
+          this.notifyListening(false);
+          this.cleanupCaptureResources(true);
+          this.commandCallbacks.onEnd?.();
+          this.resumeWakeDetectorSoon();
+        }
+      }, 1400);
       return;
     }
 
@@ -1325,9 +1504,13 @@ class SpeechService {
     this.bestTranscript = "";
     this.notifyListening(false);
     this.cleanupCaptureResources(true);
-    try {
-      this.recognition?.abort();
-    } catch {}
+    if (isNativeAndroidApk()) {
+      cancelNativeAndroidListening();
+    } else {
+      try {
+        this.recognition?.abort();
+      } catch {}
+    }
     this.resumeWakeMode();
   }
 
@@ -1411,6 +1594,23 @@ class SpeechService {
     // Pause wake detector cleanly while TTS plays so Jarvis doesn't hear itself
     this.abortWakeRecognitionSafely();
 
+    // Native Android APK Direct Offline-Ready TextToSpeech (Guaranteed female/male greeting & replies without WebView autoplay block)
+    const isApkWithoutRemoteServer = isNativeAndroidApk() && !getRemotePcUrl();
+    if (isApkWithoutRemoteServer && !useElevenLabs) {
+      this.nativeTtsResolve = finishSpeaking;
+      const spokeOk = await speakNativeAndroid({
+        text: cleanText,
+        lang,
+        gender: effectiveGender,
+        pitch: effectivePitch,
+        rate: effectiveRate,
+      });
+      if (spokeOk || mySpeakId !== this.speakSeqId) {
+        return;
+      }
+      this.nativeTtsResolve = null;
+    }
+
     // 1. Real ElevenLabs TTS
     if (useElevenLabs) {
       try {
@@ -1462,7 +1662,7 @@ class SpeechService {
 
     if (mySpeakId !== this.speakSeqId) return;
 
-    // 2. Server-side 100% Pakistani Urdu Neural TTS
+    // 2. Server-side 100% Pakistani Urdu Neural TTS (Web preview or linked PC server)
     try {
       const controller = new AbortController();
       this.activeTtsAbort = controller;
@@ -1583,6 +1783,30 @@ class SpeechService {
     } = {},
     onComplete?: () => void
   ) {
+    if (isNativeAndroidApk()) {
+      this.nativeTtsResolve = () => {
+        if (onComplete) onComplete();
+        else {
+          this.notifySpeaking(false);
+          options.onEnd?.();
+        }
+      };
+      speakNativeAndroid({
+        text,
+        lang: options.lang || "ur",
+        gender: options.gender === "male" ? "male" : "female",
+        pitch: options.pitch,
+        rate: options.rate,
+      }).then((ok) => {
+        if (!ok) {
+          const cb = this.nativeTtsResolve;
+          this.nativeTtsResolve = null;
+          cb?.();
+        }
+      });
+      return;
+    }
+
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       if (onComplete) onComplete();
       else options.onEnd?.();
@@ -1715,6 +1939,10 @@ class SpeechService {
 
   public cancelSpeech() {
     this.speakSeqId += 1;
+    this.nativeTtsResolve = null;
+    if (isNativeAndroidApk()) {
+      stopNativeAndroidSpeech().catch(() => {});
+    }
     if (this.activeTtsAbort) {
       try {
         this.activeTtsAbort.abort();

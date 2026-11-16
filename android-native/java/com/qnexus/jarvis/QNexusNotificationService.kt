@@ -93,57 +93,60 @@ class QNexusNotificationService : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        if (sbn == null) return
-        if (sbn.packageName == packageName) return
+        try {
+            if (sbn == null) return
+            if (sbn.packageName == packageName) return
 
-        val extras = sbn.notification?.extras ?: return
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
-            ?: extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
-            ?: ""
-        if (title.isEmpty() && text.isEmpty()) return
+            val extras = sbn.notification?.extras ?: return
+            val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
+            val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                ?: extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+                ?: ""
+            if (title.isEmpty() && text.isEmpty()) return
 
-        var canReply = false
-        val actions = sbn.notification.actions
-        if (actions != null) {
-            for (act in actions) {
-                if (act.remoteInputs != null && act.remoteInputs.isNotEmpty()) {
-                    replyActions[sbn.key] = act
-                    canReply = true
-                    break
+            var canReply = false
+            val actions = sbn.notification.actions
+            if (actions != null) {
+                for (act in actions) {
+                    if (act.remoteInputs != null && act.remoteInputs.isNotEmpty()) {
+                        replyActions[sbn.key] = act
+                        canReply = true
+                        break
+                    }
                 }
             }
+
+            val appName = when {
+                sbn.packageName.contains("whatsapp") -> "WhatsApp"
+                sbn.packageName.contains("orca") || sbn.packageName.contains("facebook.katana") -> "Messenger"
+                sbn.packageName.contains("instagram") -> "Instagram"
+                sbn.packageName.contains("telegram") -> "Telegram"
+                sbn.packageName.contains("gm") -> "Gmail"
+                sbn.packageName.contains("dialer") || sbn.packageName.contains("telecom") -> "Phone Call"
+                sbn.packageName.contains("messaging") -> "SMS"
+                else -> sbn.packageName.substringAfterLast('.')
+            }
+
+            val obj = JSObject()
+            obj.put("key", sbn.key)
+            obj.put("packageName", sbn.packageName)
+            obj.put("appName", appName)
+            obj.put("title", title)
+            obj.put("text", text)
+            obj.put("timestamp", sbn.postTime)
+            obj.put("canReply", canReply)
+            obj.put("isCallNotification", appName == "Phone Call")
+
+            recentNotifications.removeAll { it.getString("key") == sbn.key }
+            recentNotifications.add(0, obj)
+            if (recentNotifications.size > 40) {
+                recentNotifications.removeAt(recentNotifications.size - 1)
+            }
+
+            QNexusPlugin.instance?.emitNotificationEvent(obj)
+            speakNotificationInBackground(appName, title, text, sbn.key)
+        } catch (_: Exception) {
         }
-
-        val appName = when {
-            sbn.packageName.contains("whatsapp") -> "WhatsApp"
-            sbn.packageName.contains("orca") || sbn.packageName.contains("facebook.katana") -> "Messenger"
-            sbn.packageName.contains("instagram") -> "Instagram"
-            sbn.packageName.contains("telegram") -> "Telegram"
-            sbn.packageName.contains("gm") -> "Gmail"
-            sbn.packageName.contains("dialer") || sbn.packageName.contains("telecom") -> "Phone Call"
-            sbn.packageName.contains("messaging") -> "SMS"
-            else -> sbn.packageName.substringAfterLast('.')
-        }
-
-        val obj = JSObject()
-        obj.put("key", sbn.key)
-        obj.put("packageName", sbn.packageName)
-        obj.put("appName", appName)
-        obj.put("title", title)
-        obj.put("text", text)
-        obj.put("timestamp", sbn.postTime)
-        obj.put("canReply", canReply)
-        obj.put("isCallNotification", appName == "Phone Call")
-
-        recentNotifications.removeAll { it.getString("key") == sbn.key }
-        recentNotifications.add(0, obj)
-        if (recentNotifications.size > 40) {
-            recentNotifications.removeAt(recentNotifications.size - 1)
-        }
-
-        QNexusPlugin.instance?.emitNotificationEvent(obj)
-        speakNotificationInBackground(appName, title, text, sbn.key)
     }
 
     override fun onDestroy() {

@@ -33,9 +33,8 @@
     font-feature-settings: "kern" 1, "liga" 1;
   }
 
-  img, canvas, svg {
-    image-rendering: high-quality;
-    shape-rendering: geometricPrecision;
+  img, canvas {
+    image-rendering: auto;
   }
 }
 
@@ -450,53 +449,48 @@ body.hud-hidden .q-hud-top {
   }
 }
 
-/* Smooth full-bleed camera sweep on narrow mobile portrait viewports */
+/* GPU-friendly subtle pan using transform instead of object-position rasterization */
 @keyframes qMobilePortraitSweep {
   0%, 100% {
-    object-position: 26% 22%;
+    transform: translate3d(-1.5%, 0, 0) scale(1.03);
   }
   50% {
-    object-position: 74% 22%;
+    transform: translate3d(1.5%, 0, 0) scale(1.03);
   }
 }
 
 .q-mobile-video-pan {
-  animation: qMobilePortraitSweep 10s ease-in-out infinite;
+  animation: qMobilePortraitSweep 12s ease-in-out infinite;
+  will-change: transform;
 }
 
-/* Lock Screen Continuous Motion, Color Shifting & Geometric Morphing */
+/* Lock Screen Continuous Motion (GPU transform only, no heavy full-screen shader filters on mobile) */
 @keyframes qLockBgMotion {
   0%, 100% {
-    transform: scale(1.06) translate3d(0, 0, 0);
+    transform: scale(1.04) translate3d(0, 0, 0);
   }
-  33% {
-    transform: scale(1.13) translate3d(-1.5%, 1%, 0);
-  }
-  66% {
-    transform: scale(1.1) translate3d(1.5%, -1.2%, 0);
+  50% {
+    transform: scale(1.09) translate3d(-1%, 0.6%, 0);
   }
 }
 
 @keyframes qLockColorShift {
-  0% {
-    filter: hue-rotate(0deg) saturate(1.15) contrast(1.04);
+  0%, 100% {
+    opacity: 0.9;
   }
   50% {
-    filter: hue-rotate(155deg) saturate(1.32) contrast(1.08);
-  }
-  100% {
-    filter: hue-rotate(360deg) saturate(1.15) contrast(1.04);
+    opacity: 1;
   }
 }
 
 @keyframes qLockGeoMorph {
   0%, 100% {
-    border-radius: 42% 58% 60% 40% / 44% 46% 54% 56%;
+    border-radius: 46% 54% 56% 44% / 46% 48% 52% 54%;
     transform: rotate(0deg) scale(1);
   }
   50% {
-    border-radius: 58% 42% 40% 60% / 56% 54% 46% 44%;
-    transform: rotate(180deg) scale(1.08);
+    border-radius: 54% 46% 44% 56% / 52% 54% 46% 48%;
+    transform: rotate(180deg) scale(1.05);
   }
 }
 
@@ -506,13 +500,13 @@ body.hud-hidden .q-hud-top {
 }
 
 .q-lock-color-shift {
-  animation: qLockColorShift 14s linear infinite;
-  will-change: filter;
+  animation: qLockColorShift 6s ease-in-out infinite;
+  will-change: opacity;
 }
 
 .q-lock-geo-morph {
   animation: qLockGeoMorph 10s ease-in-out infinite;
-  will-change: transform, border-radius;
+  will-change: transform;
 }
 
 
