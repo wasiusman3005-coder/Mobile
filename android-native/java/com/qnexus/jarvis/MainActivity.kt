@@ -2,15 +2,20 @@ package com.qnexus.jarvis
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.view.View
 import android.view.WindowManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebSettings
+import android.webkit.WebView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.WindowCompat
 import com.getcapacitor.BridgeActivity
+import com.getcapacitor.BridgeWebViewClient
 
 class MainActivity : BridgeActivity() {
 
@@ -29,6 +34,8 @@ class MainActivity : BridgeActivity() {
             QNexusPlugin.instance?.onSystemSpeechDialogResult(pendingDialogSessionId, ok, text)
         }
         super.onCreate(savedInstanceState)
+
+        configureEdgeToEdgeCutoutWindow()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -41,6 +48,23 @@ class MainActivity : BridgeActivity() {
         }
         configureWebViewAudioAndSpeed()
         handleLaunchExtras(intent)
+    }
+
+    private fun configureEdgeToEdgeCutoutWindow() {
+        try {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            window.statusBarColor = Color.TRANSPARENT
+            window.navigationBarColor = Color.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val lp = window.attributes
+                lp.layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                } else {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+                window.attributes = lp
+            }
+        } catch (_: Exception) {}
     }
 
     fun launchSystemSpeechDialog(sessionId: Int, lang: String): Boolean {
@@ -68,6 +92,7 @@ class MainActivity : BridgeActivity() {
 
     override fun onStart() {
         super.onStart()
+        configureEdgeToEdgeCutoutWindow()
         configureWebViewAudioAndSpeed()
     }
 
@@ -95,13 +120,27 @@ class MainActivity : BridgeActivity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
+
+            val curBridge = bridge
+            if (curBridge != null) {
+                webView.webViewClient = object : BridgeWebViewClient(curBridge) {
+                    override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                        try {
+                            view?.post {
+                                try { view.reload() } catch (_: Exception) {}
+                            }
+                            return true
+                        } catch (_: Exception) {}
+                        return false
+                    }
+                }
+            }
         } catch (_: Exception) {
         }
     }
 
     private fun handleLaunchExtras(intent: Intent?) {
         try {
-            // 1. Check if opened from separate One UI 9 Studio app icon (Activity Alias)
             val compName = intent?.component?.className ?: ""
             val studioExtra = intent?.getStringExtra("open_studio") ?: ""
             if (compName.contains("OneUiStudioAlias") || studioExtra == "oneui9") {
@@ -110,7 +149,6 @@ class MainActivity : BridgeActivity() {
                 QNexusPlugin.instance?.emitStudioLaunchEvent("oneui9")
             }
 
-            // 2. Handle wake word launch intent
             val phrase = intent?.getStringExtra("wake_phrase") ?: return
             val trailing = intent.getStringExtra("wake_trailing_cmd") ?: ""
             intent.removeExtra("wake_phrase")

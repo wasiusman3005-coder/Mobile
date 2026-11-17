@@ -33,7 +33,10 @@ import { OneUiClockPreview } from "./OneUiClockPreview";
 import { FingerprintAnimView } from "./FingerprintAnimView";
 
 interface SecurityGateProps {
-  onAuthenticated: (commanderName?: string) => void;
+  onAuthenticated: (
+    commanderName?: string,
+    unlockMethod?: "Fingerprint" | "Face" | "Passkey"
+  ) => void;
   preferredLanguage: LanguageCode;
   customization?: DashboardCustomization;
 }
@@ -144,7 +147,13 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
           localStorage.setItem("q_nexus_wasi_auth", "active");
         }
       } catch {}
-      onAuthenticated(name);
+      const resolvedMethod: "Fingerprint" | "Face" | "Passkey" =
+        method.toLowerCase().includes("face")
+          ? "Face"
+          : method.toLowerCase().includes("finger")
+          ? "Fingerprint"
+          : "Passkey";
+      onAuthenticated(name, resolvedMethod);
     }, 360);
   };
 

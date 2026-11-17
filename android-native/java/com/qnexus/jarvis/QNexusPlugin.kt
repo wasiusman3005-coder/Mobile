@@ -470,6 +470,81 @@ class QNexusPlugin : Plugin() {
         }
     }
 
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        if (JarvisAccessibilityOverlayService.isRunning || DynamicIslandOverlayController.isAccessibilityOverlayActive) {
+            return true
+        }
+        return try {
+            val enabledServices = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            enabledServices.contains("${context.packageName}/.JarvisAccessibilityOverlayService") ||
+                enabledServices.contains("JarvisAccessibilityOverlayService")
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @PluginMethod
+    fun getAccessibilityStatus(call: PluginCall) {
+        val enabled = isAccessibilityServiceEnabled()
+        val res = JSObject()
+        res.put("ok", true)
+        res.put("enabled", enabled)
+        call.resolve(res)
+    }
+
+    @PluginMethod
+    fun openAccessibilitySettings(call: PluginCall) {
+        try {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            val res = JSObject()
+            res.put("ok", true)
+            call.resolve(res)
+        } catch (_: Exception) {
+            openAppInfoSettings(call)
+        }
+    }
+
+    @PluginMethod
+    fun syncCustomMediaImage(call: PluginCall) {
+        val kind = (call.getString("kind") ?: "bio").lowercase(Locale.US)
+        val dataUrl = call.getString("dataUrl") ?: ""
+        val fileName = if (kind == "wallpaper") "custom_lock_wallpaper.png" else "custom_biometric.png"
+        wakeExecutor.execute {
+            try {
+                val outFile = File(context.filesDir, fileName)
+                if (dataUrl.isBlank()) {
+                    if (outFile.exists()) outFile.delete()
+                } else {
+                    val b64 = if (dataUrl.contains(",")) dataUrl.substringAfter(",") else dataUrl
+                    val bytes = Base64.decode(b64, Base64.DEFAULT)
+                    FileOutputStream(outFile).use { fos ->
+                        fos.write(bytes)
+                        fos.flush()
+                    }
+                }
+                mainHandler.post {
+                    DynamicIslandOverlayController.dispatchRefreshConfig()
+                    val res = JSObject()
+                    res.put("ok", true)
+                    call.resolve(res)
+                }
+            } catch (e: Exception) {
+                mainHandler.post {
+                    val res = JSObject()
+                    res.put("ok", false)
+                    res.put("message", e.message ?: "Media sync error")
+                    call.resolve(res)
+                }
+            }
+        }
+    }
+
     @PluginMethod
     fun requestMicPermission(call: PluginCall) {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -2185,12 +2260,14 @@ class QNexusPlugin : Plugin() {
         } catch (_: Exception) {
             false
         }
+        val accessibilityEnabled = isAccessibilityServiceEnabled()
         val res = JSObject()
         res.put("ok", true)
         res.put("running", JarvisWakeForegroundService.isServiceActive)
         res.put("wakeEnabled", wakeEnabled)
         res.put("batteryUnrestricted", batteryUnrestricted)
         res.put("overlayGranted", overlayGranted)
+        res.put("accessibilityEnabled", accessibilityEnabled)
         call.resolve(res)
     }
 
@@ -2496,7 +2573,16 @@ class QNexusPlugin : Plugin() {
             try {
                 val cleanB64 = if (dataUrl.contains(",")) dataUrl.substringAfter(",") else dataUrl
                 val bytes = Base64.decode(cleanB64, Base64.DEFAULT)
-                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
+                // Safe memory decode for high-res photos
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                var sample = 1
+                while (bounds.outWidth / sample > 1440 || bounds.outHeight / sample > 3000) {
+                    sample *= 2
+                }
+                val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
                 if (bmp == null) {
                     mainHandler.post {
                         val res = JSObject()
@@ -2506,6 +2592,14 @@ class QNexusPlugin : Plugin() {
                     }
                     return@execute
                 }
+                try {
+                    val customWpFile = File(context.filesDir, "custom_lock_wallpaper.png")
+                    FileOutputStream(customWpFile).use { fos ->
+                        fos.write(bytes)
+                        fos.flush()
+                    }
+                } catch (_: Exception) {}
+
                 val wm = WallpaperManager.getInstance(context)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     val flags = when (target) {
@@ -2517,6 +2611,7 @@ class QNexusPlugin : Plugin() {
                 } else {
                     wm.setBitmap(bmp)
                 }
+                try { bmp.recycle() } catch (_: Exception) {}
                 mainHandler.post {
                     val res = JSObject()
                     res.put("ok", true)
@@ -2545,12 +2640,17 @@ class QNexusPlugin : Plugin() {
     fun syncOneUiOverlayConfig(call: PluginCall) {
         try {
             val dynamicBarStyle = call.getString("dynamicBarStyle") ?: "now_bar_pill"
-            val dynamicBarAnchor = call.getString("dynamicBarAnchor") ?: "top-center"
+            val dynamicBarAnchor = call.getString("dynamicBarAnchor") ?: "camera-island"
             val dynamicBarOffsetX = call.getInt("dynamicBarOffsetX") ?: 0
-            val dynamicBarOffsetY = call.getInt("dynamicBarOffsetY") ?: 10
+            val dynamicBarOffsetY = call.getInt("dynamicBarOffsetY") ?: 6
+            val dynamicBarCameraGapPx = call.getInt("dynamicBarCameraGapPx") ?: 34
             val dynamicBarCustomLabel = call.getString("dynamicBarCustomLabel") ?: "Wasu's Jarvis"
             val dynamicBarOutside = call.getBoolean("dynamicBarShowOutsideApp") ?: true
             val unlockBarAnim = call.getString("unlockBarAnimStyle") ?: "aurora_bloom"
+            val fingerprintAnimId = call.getString("fingerprintAnimId") ?: "ripple_wave"
+            val faceAnimId = call.getString("faceAnimId") ?: "hologram_mesh"
+            val fingerprintOnAnyWallpaper = call.getBoolean("fingerprintOnAnyWallpaper") ?: true
+            val biometricUnlockAnimDisplay = call.getString("biometricUnlockAnimDisplay") ?: "auto"
             val chargingAnim = call.getString("chargingAnim") ?: "oneui9_turbo"
             val chargingEnabled = call.getBoolean("chargingOverlayEnabled") ?: true
             val accentHex = call.getString("accentHex") ?: "#00f0ff"
@@ -2561,16 +2661,20 @@ class QNexusPlugin : Plugin() {
             val followUpEnabled = call.getBoolean("followUpListeningEnabled") ?: true
             val vipContactsJson = call.getString("vipContactsJson")
             val perAppRulesJson = call.getString("perAppRulesJson")
-            val customBioDataUrl = call.getString("customBiometricImageDataUrl")
 
             val editor = context.getSharedPreferences("WasuJarvisPrefs", Context.MODE_PRIVATE).edit()
                 .putString("dynamic_bar_style", dynamicBarStyle)
                 .putString("dynamic_bar_anchor", dynamicBarAnchor)
                 .putInt("dynamic_bar_offset_x", dynamicBarOffsetX)
                 .putInt("dynamic_bar_offset_y", dynamicBarOffsetY)
+                .putInt("dynamic_bar_camera_gap_px", dynamicBarCameraGapPx)
                 .putString("dynamic_bar_custom_label", dynamicBarCustomLabel)
                 .putBoolean("dynamic_bar_outside_app", dynamicBarOutside)
                 .putString("unlock_bar_anim_style", unlockBarAnim)
+                .putString("fingerprint_anim_id", fingerprintAnimId)
+                .putString("face_anim_id", faceAnimId)
+                .putBoolean("fingerprint_on_any_wallpaper", fingerprintOnAnyWallpaper)
+                .putString("biometric_unlock_anim_display", biometricUnlockAnimDisplay)
                 .putString("charging_anim_id", chargingAnim)
                 .putBoolean("charging_overlay_enabled", chargingEnabled)
                 .putString("oneui_accent_hex", accentHex)
@@ -2584,22 +2688,12 @@ class QNexusPlugin : Plugin() {
             if (perAppRulesJson != null) editor.putString("per_app_rules_json", perAppRulesJson)
             editor.apply()
 
-            if (!customBioDataUrl.isNullOrBlank()) {
-                wakeExecutor.execute {
-                    try {
-                        val b64 = if (customBioDataUrl.contains(",")) customBioDataUrl.substringAfter(",") else customBioDataUrl
-                        val bytes = Base64.decode(b64, Base64.DEFAULT)
-                        val outFile = File(context.filesDir, "custom_biometric.png")
-                        FileOutputStream(outFile).use { fos ->
-                            fos.write(bytes)
-                            fos.flush()
-                        }
-                    } catch (_: Exception) {}
-                }
-            }
-
+            val accessibilityEnabled = isAccessibilityServiceEnabled()
             val overlayGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
-            if (overlayGranted) {
+
+            if (DynamicIslandOverlayController.activeController != null) {
+                DynamicIslandOverlayController.dispatchRefreshConfig()
+            } else if (overlayGranted && !accessibilityEnabled && isForegroundActive) {
                 val svc = Intent(context, OneUiOverlayService::class.java).apply {
                     action = if (dynamicBarStyle == "hidden" || !dynamicBarOutside) {
                         OneUiOverlayService.ACTION_STOP
@@ -2607,11 +2701,13 @@ class QNexusPlugin : Plugin() {
                         OneUiOverlayService.ACTION_UPDATE
                     }
                 }
-                context.startService(svc)
+                try { context.startService(svc) } catch (_: Exception) {}
             }
+
             val res = JSObject()
             res.put("ok", true)
             res.put("overlayGranted", overlayGranted)
+            res.put("accessibilityEnabled", accessibilityEnabled)
             call.resolve(res)
         } catch (e: Exception) {
             val res = JSObject()
@@ -2688,9 +2784,12 @@ class QNexusPlugin : Plugin() {
 
     @PluginMethod
     fun triggerDynamicBarUnlockEffect(call: PluginCall) {
-        val method = call.getString("method") ?: "Biometric"
+        val method = call.getString("method") ?: "Fingerprint"
+        DynamicIslandOverlayController.lastInteractiveUnlockHint = method
         val overlayGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
-        if (overlayGranted) {
+        if (DynamicIslandOverlayController.activeController != null) {
+            DynamicIslandOverlayController.dispatchUnlockEffect(method)
+        } else if (overlayGranted) {
             try {
                 context.startService(Intent(context, OneUiOverlayService::class.java).apply {
                     action = OneUiOverlayService.ACTION_SHOW_UNLOCK_EFFECT
@@ -2707,7 +2806,9 @@ class QNexusPlugin : Plugin() {
     @PluginMethod
     fun triggerChargingOverlayTest(call: PluginCall) {
         val overlayGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
-        if (overlayGranted) {
+        if (DynamicIslandOverlayController.activeController != null) {
+            DynamicIslandOverlayController.dispatchCharging()
+        } else if (overlayGranted) {
             try {
                 context.startService(Intent(context, OneUiOverlayService::class.java).apply {
                     action = OneUiOverlayService.ACTION_SHOW_CHARGING
@@ -2715,7 +2816,7 @@ class QNexusPlugin : Plugin() {
             } catch (_: Exception) {}
         }
         val res = JSObject()
-        res.put("ok", overlayGranted)
+        res.put("ok", overlayGranted || DynamicIslandOverlayController.activeController != null)
         res.put("overlayGranted", overlayGranted)
         call.resolve(res)
     }

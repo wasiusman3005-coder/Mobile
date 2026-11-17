@@ -13,6 +13,16 @@ class ChargingBroadcastReceiver : BroadcastReceiver() {
         val chargingEnabled = prefs.getBoolean("charging_overlay_enabled", true)
         if (!chargingEnabled) return
 
+        // Prefer in-process dispatch to active controller (works cleanly in Android 12-15 background without IllegalStateException)
+        if (DynamicIslandOverlayController.activeController != null) {
+            if (action == Intent.ACTION_POWER_CONNECTED) {
+                DynamicIslandOverlayController.dispatchCharging()
+            } else if (action == Intent.ACTION_POWER_DISCONNECTED) {
+                DynamicIslandOverlayController.dispatchRefreshConfig()
+            }
+            return
+        }
+
         val canOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
         if (!canOverlay) return
 

@@ -88,9 +88,11 @@ interface QNexusPluginInterface {
   requestIgnoreBatteryOptimization?(): Promise<{ ok: boolean; unrestricted?: boolean }>;
   getOverlayPermissionStatus?(): Promise<{ ok: boolean; granted: boolean }>;
   openOverlayPermissionSettings?(): Promise<{ ok: boolean }>;
+  getAccessibilityStatus?(): Promise<{ ok: boolean; enabled: boolean }>;
+  openAccessibilitySettings?(): Promise<{ ok: boolean }>;
   consumePendingWakeEvent?(): Promise<{ hasPending: boolean; phrase: string; trailingCommand: string }>;
   setCloudApiBaseUrl?(opts: { url: string }): Promise<{ ok: boolean; url: string }>;
-  getBackgroundStatus?(): Promise<{ ok: boolean; running: boolean; wakeEnabled: boolean; batteryUnrestricted: boolean; overlayGranted?: boolean }>;
+  getBackgroundStatus?(): Promise<{ ok: boolean; running: boolean; wakeEnabled: boolean; batteryUnrestricted: boolean; overlayGranted?: boolean; accessibilityEnabled?: boolean }>;
   openAppInfoSettings?(): Promise<{ ok: boolean }>;
   setBackgroundWakeService(opts: { enabled: boolean; phrases?: string[] }): Promise<{ ok: boolean; active: boolean; message: string }>;
   openNotificationAccessSettings(): Promise<{ ok: boolean }>;
@@ -117,14 +119,20 @@ interface QNexusPluginInterface {
   consumePendingStudioLaunch?(): Promise<{ hasPending: boolean; target: string }>;
   applyLiveWallpaperOnPhone?(opts: { style: string; accentHex: string; clockHex: string; showClock: boolean }): Promise<{ ok: boolean; message: string }>;
   applyBitmapWallpaperOnPhone?(opts: { dataUrl: string; target: "home" | "lock" | "both" }): Promise<{ ok: boolean; message: string }>;
+  syncCustomMediaImage?(opts: { kind: "bio" | "wallpaper"; dataUrl: string }): Promise<{ ok: boolean }>;
   syncOneUiOverlayConfig?(opts: {
     dynamicBarStyle: string;
     dynamicBarAnchor?: string;
     dynamicBarOffsetX?: number;
     dynamicBarOffsetY?: number;
+    dynamicBarCameraGapPx?: number;
     dynamicBarCustomLabel?: string;
     dynamicBarShowOutsideApp?: boolean;
     unlockBarAnimStyle?: string;
+    fingerprintAnimId?: string;
+    fingerprintOnAnyWallpaper?: boolean;
+    biometricUnlockAnimDisplay?: string;
+    faceAnimId?: string;
     chargingAnim: string;
     chargingOverlayEnabled: boolean;
     accentHex: string;
@@ -135,8 +143,7 @@ interface QNexusPluginInterface {
     followUpListeningEnabled?: boolean;
     vipContactsJson?: string;
     perAppRulesJson?: string;
-    customBiometricImageDataUrl?: string;
-  }): Promise<{ ok: boolean; overlayGranted?: boolean; message?: string }>;
+  }): Promise<{ ok: boolean; overlayGranted?: boolean; accessibilityEnabled?: boolean; message?: string }>;
   answerOrRejectCall?(opts: { action: "answer" | "reject" }): Promise<{ ok: boolean; message: string }>;
   getUserActivityState?(): Promise<{ ok: boolean; state: string }>;
   acknowledgeVipReminders?(): Promise<{ ok: boolean }>;
@@ -254,6 +261,7 @@ export async function getNativeBackgroundStatus(): Promise<{
   wakeEnabled: boolean;
   batteryUnrestricted: boolean;
   overlayGranted?: boolean;
+  accessibilityEnabled?: boolean;
 } | null> {
   const plugin = getNativePlugin();
   if (!plugin?.getBackgroundStatus) return null;
@@ -332,6 +340,28 @@ export async function openOverlayPermissionSettingsAndroid(): Promise<boolean> {
   if (!plugin?.openOverlayPermissionSettings) return false;
   try {
     const res = await plugin.openOverlayPermissionSettings();
+    return Boolean(res.ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function getAccessibilityStatusAndroid(): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin?.getAccessibilityStatus) return false;
+  try {
+    const res = await plugin.getAccessibilityStatus();
+    return Boolean(res.enabled);
+  } catch {
+    return false;
+  }
+}
+
+export async function openAccessibilitySettingsAndroid(): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin?.openAccessibilitySettings) return false;
+  try {
+    const res = await plugin.openAccessibilitySettings();
     return Boolean(res.ok);
   } catch {
     return false;
@@ -770,14 +800,33 @@ export async function applyBitmapWallpaperOnPhoneAndroid(
   }
 }
 
+export async function syncCustomMediaImageAndroid(
+  kind: "bio" | "wallpaper",
+  dataUrl: string
+): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin?.syncCustomMediaImage) return false;
+  try {
+    const res = await plugin.syncCustomMediaImage({ kind, dataUrl });
+    return Boolean(res.ok);
+  } catch {
+    return false;
+  }
+}
+
 export async function syncOneUiOverlayConfigAndroid(opts: {
   dynamicBarStyle: string;
   dynamicBarAnchor?: string;
   dynamicBarOffsetX?: number;
   dynamicBarOffsetY?: number;
+  dynamicBarCameraGapPx?: number;
   dynamicBarCustomLabel?: string;
   dynamicBarShowOutsideApp?: boolean;
   unlockBarAnimStyle?: string;
+  fingerprintAnimId?: string;
+  fingerprintOnAnyWallpaper?: boolean;
+  biometricUnlockAnimDisplay?: string;
+  faceAnimId?: string;
   chargingAnim: string;
   chargingOverlayEnabled: boolean;
   accentHex: string;
@@ -788,8 +837,7 @@ export async function syncOneUiOverlayConfigAndroid(opts: {
   followUpListeningEnabled?: boolean;
   vipContactsJson?: string;
   perAppRulesJson?: string;
-  customBiometricImageDataUrl?: string;
-}): Promise<{ ok: boolean; overlayGranted?: boolean }> {
+}): Promise<{ ok: boolean; overlayGranted?: boolean; accessibilityEnabled?: boolean }> {
   const plugin = getNativePlugin();
   if (!plugin?.syncOneUiOverlayConfig) return { ok: false };
   try {

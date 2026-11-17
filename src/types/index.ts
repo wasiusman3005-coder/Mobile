@@ -233,6 +233,7 @@ export type WaveVisualizerStyleId =
   | 'liquid_neon';
 
 export type DynamicBarAnchor =
+  | 'camera-island'
   | 'top-center'
   | 'top-left'
   | 'top-right'
@@ -250,10 +251,13 @@ export interface OneUiStudioConfig {
   dynamicBarAnchor: DynamicBarAnchor;
   dynamicBarOffsetX: number;
   dynamicBarOffsetY: number;
+  dynamicBarCameraGapPx: number;
   dynamicBarCustomLabel: string;
   dynamicBarShowOutsideApp: boolean;
   unlockBarAnimStyle: UnlockBarAnimStyleId;
   fingerprintAnimId: FingerprintAnimId;
+  fingerprintOnAnyWallpaper: boolean;
+  biometricUnlockAnimDisplay: 'auto' | 'fingerprint' | 'face';
   faceAnimId: FaceAnimId;
   chargingAnimId: ChargingAnimId;
   chargingOverlayEnabled: boolean;

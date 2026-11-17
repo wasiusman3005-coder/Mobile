@@ -53,7 +53,6 @@ import {
   OneUiStudioConfig,
   ProactiveAlertConfig,
   UserActivityState,
-  DynamicBarAnchor,
 } from "./types";
 import { QUANTUM_THEMES, QuantumThemeColor } from "./components/AutoMorphingQuantumLogo";
 import {
@@ -1673,31 +1672,42 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isAuthenticated, showLoadingScreen, isSettingsOpen, isAppsMatrixOpen, isVoiceModalOpen]);
 
+  const overlaySyncTimerRef = useRef<number | null>(null);
+
   const syncAllOverlayToNative = (
     nextOneUi: OneUiStudioConfig,
     nextAlerts?: ProactiveAlertConfig
   ) => {
     const alerts = nextAlerts || customization.proactiveAlerts;
-    syncOneUiOverlayConfigAndroid({
-      dynamicBarStyle: nextOneUi.dynamicBarStyleId,
-      dynamicBarAnchor: nextOneUi.dynamicBarAnchor,
-      dynamicBarOffsetX: nextOneUi.dynamicBarOffsetX,
-      dynamicBarOffsetY: nextOneUi.dynamicBarOffsetY,
-      dynamicBarCustomLabel: nextOneUi.dynamicBarCustomLabel,
-      dynamicBarShowOutsideApp: nextOneUi.dynamicBarShowOutsideApp,
-      unlockBarAnimStyle: nextOneUi.unlockBarAnimStyle,
-      chargingAnim: nextOneUi.chargingAnimId,
-      chargingOverlayEnabled: nextOneUi.chargingOverlayEnabled,
-      accentHex: nextOneUi.accentColorHex,
-      liveWallpaperStyle: nextOneUi.liveWallpaperId,
-      clockHex: nextOneUi.clockColorHex,
-      waveVisualizerStyle: nextOneUi.waveVisualizerStyle,
-      waveColorTheme: nextOneUi.waveColorTheme,
-      followUpListeningEnabled: nextOneUi.followUpListeningEnabled,
-      vipContactsJson: JSON.stringify(alerts?.vipContacts || []),
-      perAppRulesJson: JSON.stringify(alerts?.appRules || DEFAULT_APP_ALERT_RULES),
-      customBiometricImageDataUrl: nextOneUi.customBiometricImageDataUrl || "",
-    }).catch(() => {});
+    if (overlaySyncTimerRef.current) {
+      window.clearTimeout(overlaySyncTimerRef.current);
+    }
+    overlaySyncTimerRef.current = window.setTimeout(() => {
+      syncOneUiOverlayConfigAndroid({
+        dynamicBarStyle: nextOneUi.dynamicBarStyleId,
+        dynamicBarAnchor: nextOneUi.dynamicBarAnchor,
+        dynamicBarOffsetX: nextOneUi.dynamicBarOffsetX,
+        dynamicBarOffsetY: nextOneUi.dynamicBarOffsetY,
+        dynamicBarCameraGapPx: nextOneUi.dynamicBarCameraGapPx ?? 34,
+        dynamicBarCustomLabel: nextOneUi.dynamicBarCustomLabel,
+        dynamicBarShowOutsideApp: nextOneUi.dynamicBarShowOutsideApp,
+        unlockBarAnimStyle: nextOneUi.unlockBarAnimStyle,
+        fingerprintAnimId: nextOneUi.fingerprintAnimId,
+        faceAnimId: nextOneUi.faceAnimId,
+        fingerprintOnAnyWallpaper: nextOneUi.fingerprintOnAnyWallpaper !== false,
+        biometricUnlockAnimDisplay: nextOneUi.biometricUnlockAnimDisplay || "auto",
+        chargingAnim: nextOneUi.chargingAnimId,
+        chargingOverlayEnabled: nextOneUi.chargingOverlayEnabled,
+        accentHex: nextOneUi.accentColorHex,
+        liveWallpaperStyle: nextOneUi.liveWallpaperId,
+        clockHex: nextOneUi.clockColorHex,
+        waveVisualizerStyle: nextOneUi.waveVisualizerStyle,
+        waveColorTheme: nextOneUi.waveColorTheme,
+        followUpListeningEnabled: nextOneUi.followUpListeningEnabled,
+        vipContactsJson: JSON.stringify(alerts?.vipContacts || []),
+        perAppRulesJson: JSON.stringify(alerts?.appRules || DEFAULT_APP_ALERT_RULES),
+      }).catch(() => {});
+    }, 180);
   };
 
   useEffect(() => {
@@ -1903,8 +1913,15 @@ export default function App() {
       {!isAuthenticated ? (
         <div className="relative z-10 flex-1 min-h-[100dvh] flex items-center justify-center overflow-hidden">
           <SecurityGate
-            onAuthenticated={() => {
-              setUnlockMethodLabel("Biometric");
+            onAuthenticated={(_name, method) => {
+              const displayPref = oneUiConfig.biometricUnlockAnimDisplay || "auto";
+              const chosenLabel =
+                displayPref === "face"
+                  ? "Face"
+                  : displayPref === "fingerprint"
+                  ? "Fingerprint"
+                  : method || "Fingerprint";
+              setUnlockMethodLabel(chosenLabel);
               setUnlockPulseNonce((n) => n + 1);
               triggerWormhole("Entering Wasu's Jarvis Mobile Core", () => {
                 sessionStorage.setItem("q_nexus_session_auth", "active");
@@ -2050,17 +2067,22 @@ export default function App() {
         </div>
       )}
 
-      {/* Live Animated + Gallery Wallpaper Layer behind Home Mode & In-App Customizations */}
-      {isAuthenticated && !showLoadingScreen && (isHomeGridMode || oneUiConfig.liveWallpaperEnabledInApp) && (
-        <div className="fixed inset-0 z-[5] pointer-events-none">
-          <LiveWallpaperCanvas
-            styleId={oneUiConfig.liveWallpaperId}
-            accentHex={oneUiConfig.accentColorHex}
-            galleryImageUrl={oneUiConfig.galleryWallpaperDataUrl || undefined}
-            interactive={isHomeGridMode}
-          />
-        </div>
-      )}
+      {/* Live Animated + Gallery Wallpaper Layer behind Home Mode & In-App Customizations (unmounted during Studio to save GPU/RAM) */}
+      {isAuthenticated &&
+        !showLoadingScreen &&
+        !isOneUiStudioOpen &&
+        !isAwayMode &&
+        !isHealthLockdownActive &&
+        (isHomeGridMode || oneUiConfig.liveWallpaperEnabledInApp) && (
+          <div className="fixed inset-0 z-[5] pointer-events-none">
+            <LiveWallpaperCanvas
+              styleId={oneUiConfig.liveWallpaperId}
+              accentHex={oneUiConfig.accentColorHex}
+              galleryImageUrl={oneUiConfig.galleryWallpaperDataUrl || undefined}
+              interactive={isHomeGridMode}
+            />
+          </div>
+        )}
 
       {/* One UI 9 Edge Lighting Border Aura */}
       {isAuthenticated && !showLoadingScreen && oneUiConfig.edgeLightingStyle !== "off" && (
@@ -2078,13 +2100,14 @@ export default function App() {
         />
       )}
 
-      {/* One UI 9 Top Dynamic Bar / Now Bar */}
+      {/* One UI 9 Top Dynamic Bar / Now Bar (Settings-locked position — zero touch drag) */}
       {isAuthenticated && !showLoadingScreen && !isOneUiStudioOpen && !isAwayMode && !isHealthLockdownActive && (
         <OneUiDynamicBar
           styleId={oneUiConfig.dynamicBarStyleId}
           anchor={oneUiConfig.dynamicBarAnchor}
           offsetX={oneUiConfig.dynamicBarOffsetX}
           offsetY={oneUiConfig.dynamicBarOffsetY}
+          cameraGapPx={oneUiConfig.dynamicBarCameraGapPx ?? 34}
           customLabel={oneUiConfig.dynamicBarCustomLabel}
           accentHex={oneUiConfig.accentColorHex}
           isListening={isJarvisListening}
@@ -2108,14 +2131,6 @@ export default function App() {
             const res = await answerOrRejectCallAndroid("reject");
             setIncomingCallLabel(null);
             showToast(res.message);
-          }}
-          onUpdatePosition={(anchor: DynamicBarAnchor, x: number, y: number) => {
-            handleUpdateOneUiConfig({
-              ...oneUiConfig,
-              dynamicBarAnchor: anchor,
-              dynamicBarOffsetX: x,
-              dynamicBarOffsetY: y,
-            });
           }}
           onTapVoice={() => {
             if (speechService.getListeningState()) {
@@ -2171,8 +2186,8 @@ export default function App() {
         onUpdateProactiveAlerts={handleUpdateProactiveAlerts}
         activityState={activityState}
         onTestChargingAnim={() => setIsChargingAnimOpen(true)}
-        onTestUnlockEffect={() => {
-          setUnlockMethodLabel("Studio Preview");
+        onTestUnlockEffect={(method) => {
+          setUnlockMethodLabel(method || "Fingerprint");
           setUnlockPulseNonce((n) => n + 1);
         }}
         onOpenQuickPanel={() => setIsQuickPanelOpen(true)}

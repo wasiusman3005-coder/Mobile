@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   X,
   Sparkles,
@@ -21,6 +21,8 @@ import {
   UserPlus,
   Waves,
   CheckCheck,
+  Lock,
+  RefreshCw,
 } from "lucide-react";
 import type {
   OneUiStudioConfig,
@@ -64,7 +66,11 @@ import {
   applyLiveWallpaperOnPhoneAndroid,
   applyBitmapWallpaperOnPhoneAndroid,
   syncOneUiOverlayConfigAndroid,
+  syncCustomMediaImageAndroid,
   openOverlayPermissionSettingsAndroid,
+  openAccessibilitySettingsAndroid,
+  getAccessibilityStatusAndroid,
+  getNativeBackgroundStatus,
   triggerDynamicBarUnlockEffectAndroid,
   triggerChargingOverlayTestAndroid,
   acknowledgeVipRemindersAndroid,
@@ -91,7 +97,7 @@ interface OneUi9StudioProps {
   onUpdateProactiveAlerts?: (next: ProactiveAlertConfig) => void;
   activityState?: UserActivityState;
   onTestChargingAnim: () => void;
-  onTestUnlockEffect?: () => void;
+  onTestUnlockEffect?: (method?: "Fingerprint" | "Face") => void;
   onOpenQuickPanel: () => void;
   onOpenHomeMode: () => void;
   onOpenLockPreview: () => void;
@@ -128,6 +134,8 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
 }) => {
   const [tab, setTab] = useState<StudioCategory>("wallpapers");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [overlayGranted, setOverlayGranted] = useState<boolean | null>(null);
+  const [accessibilityEnabled, setAccessibilityEnabled] = useState<boolean | null>(null);
   const [customLabelDraft, setCustomLabelDraft] = useState(
     config.dynamicBarCustomLabel || "Wasu's Jarvis"
   );
@@ -138,6 +146,29 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
 
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const bioImgInputRef = useRef<HTMLInputElement | null>(null);
+  const syncTimerRef = useRef<number | null>(null);
+
+  const refreshOverlayPermissions = async () => {
+    try {
+      const [bg, acc] = await Promise.all([
+        getNativeBackgroundStatus().catch(() => null),
+        getAccessibilityStatusAndroid().catch(() => false),
+      ]);
+      if (bg && typeof bg.overlayGranted === "boolean") {
+        setOverlayGranted(bg.overlayGranted);
+      }
+      if (typeof acc === "boolean") {
+        setAccessibilityEnabled(acc || Boolean(bg?.accessibilityEnabled));
+      } else if (bg && typeof bg.accessibilityEnabled === "boolean") {
+        setAccessibilityEnabled(bg.accessibilityEnabled);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    refreshOverlayPermissions();
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -151,26 +182,35 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
     nextCfg: OneUiStudioConfig,
     nextAlerts: ProactiveAlertConfig = alertsCfg
   ) => {
-    syncOneUiOverlayConfigAndroid({
-      dynamicBarStyle: nextCfg.dynamicBarStyleId,
-      dynamicBarAnchor: nextCfg.dynamicBarAnchor,
-      dynamicBarOffsetX: nextCfg.dynamicBarOffsetX,
-      dynamicBarOffsetY: nextCfg.dynamicBarOffsetY,
-      dynamicBarCustomLabel: nextCfg.dynamicBarCustomLabel,
-      dynamicBarShowOutsideApp: nextCfg.dynamicBarShowOutsideApp,
-      unlockBarAnimStyle: nextCfg.unlockBarAnimStyle,
-      chargingAnim: nextCfg.chargingAnimId,
-      chargingOverlayEnabled: nextCfg.chargingOverlayEnabled,
-      accentHex: nextCfg.accentColorHex,
-      liveWallpaperStyle: nextCfg.liveWallpaperId,
-      clockHex: nextCfg.clockColorHex,
-      waveVisualizerStyle: nextCfg.waveVisualizerStyle,
-      waveColorTheme: nextCfg.waveColorTheme,
-      followUpListeningEnabled: nextCfg.followUpListeningEnabled,
-      vipContactsJson: JSON.stringify(nextAlerts.vipContacts || []),
-      perAppRulesJson: JSON.stringify(nextAlerts.appRules || DEFAULT_APP_ALERT_RULES),
-      customBiometricImageDataUrl: nextCfg.customBiometricImageDataUrl || "",
-    }).catch(() => {});
+    if (syncTimerRef.current) {
+      window.clearTimeout(syncTimerRef.current);
+    }
+    syncTimerRef.current = window.setTimeout(() => {
+      syncOneUiOverlayConfigAndroid({
+        dynamicBarStyle: nextCfg.dynamicBarStyleId,
+        dynamicBarAnchor: nextCfg.dynamicBarAnchor,
+        dynamicBarOffsetX: nextCfg.dynamicBarOffsetX,
+        dynamicBarOffsetY: nextCfg.dynamicBarOffsetY,
+        dynamicBarCameraGapPx: nextCfg.dynamicBarCameraGapPx ?? 34,
+        dynamicBarCustomLabel: nextCfg.dynamicBarCustomLabel,
+        dynamicBarShowOutsideApp: nextCfg.dynamicBarShowOutsideApp,
+        unlockBarAnimStyle: nextCfg.unlockBarAnimStyle,
+        fingerprintAnimId: nextCfg.fingerprintAnimId,
+        faceAnimId: nextCfg.faceAnimId,
+        fingerprintOnAnyWallpaper: nextCfg.fingerprintOnAnyWallpaper !== false,
+        biometricUnlockAnimDisplay: nextCfg.biometricUnlockAnimDisplay || "auto",
+        chargingAnim: nextCfg.chargingAnimId,
+        chargingOverlayEnabled: nextCfg.chargingOverlayEnabled,
+        accentHex: nextCfg.accentColorHex,
+        liveWallpaperStyle: nextCfg.liveWallpaperId,
+        clockHex: nextCfg.clockColorHex,
+        waveVisualizerStyle: nextCfg.waveVisualizerStyle,
+        waveColorTheme: nextCfg.waveColorTheme,
+        followUpListeningEnabled: nextCfg.followUpListeningEnabled,
+        vipContactsJson: JSON.stringify(nextAlerts.vipContacts || []),
+        perAppRulesJson: JSON.stringify(nextAlerts.appRules || DEFAULT_APP_ALERT_RULES),
+      }).catch(() => {});
+    }, 200);
   };
 
   const update = (patch: Partial<OneUiStudioConfig>, toastMsg?: string) => {
@@ -194,10 +234,11 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
     try {
       setBusyAction("gallery_upload");
       const dataUrl = await compressGalleryImageFile(file, {
-        maxWidth: 1080,
-        maxHeight: 1920,
-        quality: 0.85,
+        maxWidth: 900,
+        maxHeight: 1600,
+        quality: 0.80,
       });
+      await syncCustomMediaImageAndroid("wallpaper", dataUrl).catch(() => {});
       update({ galleryWallpaperDataUrl: dataUrl }, "Gallery wallpaper loaded! Tap Apply Home / Lock / Both.");
     } catch (err: any) {
       onToast(err?.message || "Image load nahi ho saki.");
@@ -213,11 +254,12 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
     try {
       setBusyAction("bio_upload");
       const dataUrl = await compressGalleryImageFile(file, {
-        maxWidth: 512,
-        maxHeight: 512,
-        quality: 0.86,
-        preferPng: true,
+        maxWidth: 300,
+        maxHeight: 300,
+        quality: 0.80,
+        preferPng: false,
       });
+      await syncCustomMediaImageAndroid("bio", dataUrl).catch(() => {});
       update(
         { customBiometricImageDataUrl: dataUrl },
         "Custom Biometric & Charging photo applied to Fingerprint, Face & Charging animations!"
@@ -256,10 +298,10 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
     onToast(res.message);
   };
 
-  const handleTestUnlock = async () => {
-    await triggerDynamicBarUnlockEffectAndroid("Studio Preview");
-    onTestUnlockEffect?.();
-    onToast("Unlock animation triggered on Dynamic Bar!");
+  const handleTestUnlock = async (method: "Fingerprint" | "Face" = "Fingerprint") => {
+    await triggerDynamicBarUnlockEffectAndroid(method);
+    onTestUnlockEffect?.(method);
+    onToast(`${method} unlock animation triggered on Dynamic Bar!`);
   };
 
   const handleTestCharging = async () => {
@@ -396,20 +438,70 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
                 />
               </div>
 
-              {/* Top Dynamic Bar Preview */}
-              <div className="relative z-10 flex justify-center pt-1">
-                {config.dynamicBarStyleId !== "hidden" && (
-                  <div
-                    className="px-3 py-1 rounded-full bg-black/85 border text-[10px] font-mono text-white flex items-center gap-1.5 shadow-lg max-w-full"
-                    style={{ borderColor: config.accentColorHex }}
-                  >
-                    <Sparkles className="w-3 h-3 shrink-0" style={{ color: config.accentColorHex }} />
-                    <span className="truncate">
-                      {config.dynamicBarCustomLabel?.trim() || "Wasu's Jarvis"}
-                    </span>
-                  </div>
-                )}
-              </div>
+              {/* Front Camera Punch-Hole Punchout */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute top-2.5 left-1/2 -translate-x-1/2 z-20 w-3.5 h-3.5 rounded-full bg-black border border-slate-700/80 shadow-inner"
+              />
+
+              {/* Live Positioned Dynamic Bar Preview */}
+              {config.dynamicBarStyleId !== "hidden" && (
+                <div
+                  className="absolute z-30 flex justify-center pointer-events-none"
+                  style={
+                    config.dynamicBarAnchor === "bottom-center"
+                      ? {
+                          bottom: `${Math.max(12, Math.min(240, Math.round(config.dynamicBarOffsetY * 0.45)))}px`,
+                          left: `calc(50% + ${Math.round(config.dynamicBarOffsetX * 0.45)}px)`,
+                          transform: "translateX(-50%)",
+                        }
+                      : config.dynamicBarAnchor === "top-left"
+                      ? {
+                          top: `${Math.max(8, Math.min(340, Math.round(config.dynamicBarOffsetY * 0.48)))}px`,
+                          left: `${Math.max(8, 10 + Math.round(config.dynamicBarOffsetX * 0.45))}px`,
+                        }
+                      : config.dynamicBarAnchor === "top-right"
+                      ? {
+                          top: `${Math.max(8, Math.min(340, Math.round(config.dynamicBarOffsetY * 0.48)))}px`,
+                          right: `${Math.max(8, 10 - Math.round(config.dynamicBarOffsetX * 0.45))}px`,
+                        }
+                      : {
+                          top: `${Math.max(4, Math.min(340, Math.round(config.dynamicBarOffsetY * 0.48)))}px`,
+                          left: `calc(50% + ${Math.round(config.dynamicBarOffsetX * 0.45)}px)`,
+                          transform: "translateX(-50%)",
+                        }
+                  }
+                >
+                  {config.dynamicBarAnchor === "camera-island" ? (
+                    <div
+                      className="px-2.5 py-1 rounded-full bg-black border-[1.5px] border-amber-400 text-[9px] font-mono text-emerald-300 flex items-center gap-1.5 shadow-[0_0_16px_rgba(245,158,11,0.35)]"
+                    >
+                      <span className="truncate max-w-[54px]">
+                        {(config.dynamicBarCustomLabel?.trim() || "Jarvis").slice(0, 8)}
+                      </span>
+                      <span
+                        style={{
+                          width: `${Math.max(10, Math.round((config.dynamicBarCameraGapPx ?? 34) * 0.55))}px`,
+                        }}
+                      />
+                      <span className="w-7 h-2 rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-purple-400" />
+                    </div>
+                  ) : (
+                    <div
+                      className="px-3 py-1 rounded-full bg-black/90 border text-[10px] font-mono text-white flex items-center gap-1.5 shadow-lg max-w-[240px]"
+                      style={{ borderColor: config.accentColorHex }}
+                    >
+                      <Sparkles className="w-3 h-3 shrink-0" style={{ color: config.accentColorHex }} />
+                      <span className="truncate">
+                        {config.dynamicBarCustomLabel?.trim() || "Wasu's Jarvis"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Top Spacer */}
+              <div className="h-8 shrink-0" />
 
               {/* Middle Clock & Icon Sample */}
               <div className="relative z-10 flex flex-col items-center gap-3 my-auto">
@@ -570,7 +662,10 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
                       {config.galleryWallpaperDataUrl && (
                         <button
                           type="button"
-                          onClick={() => update({ galleryWallpaperDataUrl: "" }, "Gallery photo removed.")}
+                          onClick={() => {
+                            syncCustomMediaImageAndroid("wallpaper", "").catch(() => {});
+                            update({ galleryWallpaperDataUrl: "" }, "Gallery photo removed.");
+                          }}
                           className="min-h-[44px] px-3 py-2 rounded-xl bg-rose-950/60 border border-rose-500/40 text-xs font-mono text-rose-200 flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -787,16 +882,59 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
             {/* 3. DYNAMIC BAR / NOW BAR & COLORFUL VOICE WAVE */}
             {tab === "dynamic_bar" && (
               <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-orbitron font-bold text-base text-white">
-                      Always-On Outside-App Dynamic Bar & Position
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                      App close ya recent apps se clear hone ke baad bhi phone ke upar zinda rehta hai. Custom position, brand naam aur unlock effects set karein.
-                    </p>
+                {/* Lockscreen & Camera Punch-Hole Accessibility Setup Banner */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-950/50 via-[#071127] to-cyan-950/40 border border-amber-400/50 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1 max-w-xl">
+                      <h2 className="font-orbitron font-bold text-sm sm:text-base text-white flex items-center gap-2">
+                        <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Camera Cutout + Lockscreen Dynamic Bar Permissions</span>
+                      </h2>
+                      <p className="text-xs text-slate-300">
+                        Dynamic Bar ko bilkul Front Camera punch-hole ke upar, aur phone Lockscreen ke upar chalane ke liye Accessibility aur Overlay dono ON karein.
+                      </p>
+                      <div className="flex flex-wrap gap-3 pt-1 text-[11px] font-mono">
+                        <span className={overlayGranted ? "text-emerald-300" : "text-amber-300"}>
+                          Display Over Apps: {overlayGranted ? "Active" : "Required"}
+                        </span>
+                        <span className="text-slate-600">•</span>
+                        <span className={accessibilityEnabled ? "text-emerald-300" : "text-amber-300"}>
+                          Lockscreen & Camera Island: {accessibilityEnabled ? "Active" : "Turn ON in Accessibility"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => refreshOverlayPermissions()}
+                      className="min-h-[40px] px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-600 text-xs font-mono text-slate-200 flex items-center gap-1.5 cursor-pointer shrink-0"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Refresh</span>
+                    </button>
                   </div>
+
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await openAccessibilitySettingsAndroid();
+                        onToast("Accessibility -> Installed Apps -> Wasu's Jarvis Camera Island & Lockscreen ON karein.");
+                      }}
+                      className="min-h-[44px] px-4 py-2 rounded-xl bg-amber-500 text-black font-orbitron font-bold text-xs cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      Enable Lockscreen & Camera Island
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await openOverlayPermissionSettingsAndroid();
+                        onToast("Display Over Other Apps enable karein taake Dynamic Bar har app ke upar dikhe.");
+                      }}
+                      className="min-h-[44px] px-4 py-2 rounded-xl bg-cyan-500/20 border border-cyan-400/60 text-xs font-mono text-cyan-200 cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      Allow Overlay Permission
+                    </button>
                     <button
                       type="button"
                       onClick={() =>
@@ -812,20 +950,10 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
                     >
                       {config.dynamicBarShowOutsideApp ? "Outside-App Bar: ON" : "Outside-App Bar: OFF"}
                     </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await openOverlayPermissionSettingsAndroid();
-                        onToast("Display Over Other Apps enable karein taake Dynamic Bar har app ke upar dikhe.");
-                      }}
-                      className="min-h-[44px] px-4 py-2 rounded-xl bg-cyan-500/20 border border-cyan-400/60 text-xs font-mono text-cyan-200 cursor-pointer whitespace-nowrap shrink-0"
-                    >
-                      Allow Overlay Permission
-                    </button>
                   </div>
                 </div>
 
-                {/* Custom Brand Text + Position Anchor & Offset Sliders */}
+                {/* Custom Brand Text + Position Anchor & Locked Position Sliders */}
                 <div className="p-4 rounded-2xl bg-[#050b1c]/90 border border-slate-500/30 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                     <div className="flex-1 space-y-1.5">
@@ -857,21 +985,36 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
 
                   {/* Anchor Positions */}
                   <div className="space-y-2">
-                    <div className="text-xs font-mono text-slate-300">Bar Position Anchor</div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-mono text-slate-300">
+                        Settings-Locked Dynamic Bar Position Anchor
+                      </span>
+                      <span className="text-[11px] font-mono text-emerald-300">
+                        Touch Lock Active — Screen par haath lagane se nahi hilega
+                      </span>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {(
                         [
+                          { id: "camera-island", label: "Camera Punch-Hole Island (Top)" },
                           { id: "top-center", label: "Top Center" },
                           { id: "top-left", label: "Top Left" },
                           { id: "top-right", label: "Top Right" },
                           { id: "bottom-center", label: "Bottom Center" },
-                          { id: "custom", label: "Custom Drag / Offset" },
+                          { id: "custom", label: "Full-Screen Position (X / Y)" },
                         ] as Array<{ id: DynamicBarAnchor; label: string }>
                       ).map((a) => (
                         <button
                           key={a.id}
                           type="button"
-                          onClick={() => update({ dynamicBarAnchor: a.id })}
+                          onClick={() =>
+                            update(
+                              a.id === "camera-island"
+                                ? { dynamicBarAnchor: a.id, dynamicBarOffsetX: 0, dynamicBarOffsetY: 6 }
+                                : { dynamicBarAnchor: a.id },
+                              `Anchor set: ${a.label}`
+                            )
+                          }
                           className={`min-h-[44px] px-3 py-2 rounded-xl border text-xs font-mono cursor-pointer whitespace-nowrap ${
                             config.dynamicBarAnchor === a.id
                               ? "bg-cyan-950/60 border-cyan-400 text-cyan-200"
@@ -884,8 +1027,22 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
                     </div>
                   </div>
 
-                  {/* X / Y Fine Tune Sliders */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Camera Cutout Width + Full Screen X / Y Fine Tune Sliders */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs font-mono text-slate-300">
+                        <span>Camera Cutout Gap</span>
+                        <span className="tabular">{config.dynamicBarCameraGapPx ?? 34} px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={70}
+                        value={config.dynamicBarCameraGapPx ?? 34}
+                        onChange={(e) => update({ dynamicBarCameraGapPx: Number(e.target.value) })}
+                        className="w-full accent-amber-400 cursor-pointer"
+                      />
+                    </div>
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs font-mono text-slate-300">
                         <span>Left / Right (X Offset)</span>
@@ -902,18 +1059,67 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs font-mono text-slate-300">
-                        <span>Up / Down (Y Offset)</span>
+                        <span>Up / Down (Y Full Screen)</span>
                         <span className="tabular">{config.dynamicBarOffsetY} px</span>
                       </div>
                       <input
                         type="range"
-                        min={6}
-                        max={520}
+                        min={0}
+                        max={780}
                         value={config.dynamicBarOffsetY}
                         onChange={(e) => update({ dynamicBarOffsetY: Number(e.target.value) })}
                         className="w-full accent-cyan-400 cursor-pointer"
                       />
                     </div>
+                  </div>
+
+                  {/* Quick Nudge Pad + Reset Camera Top */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => update({ dynamicBarOffsetX: Math.max(-160, config.dynamicBarOffsetX - 8) })}
+                      className="min-h-[40px] px-3 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-slate-200 cursor-pointer"
+                    >
+                      Left -8
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => update({ dynamicBarOffsetX: Math.min(160, config.dynamicBarOffsetX + 8) })}
+                      className="min-h-[40px] px-3 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-slate-200 cursor-pointer"
+                    >
+                      Right +8
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => update({ dynamicBarOffsetY: Math.max(0, config.dynamicBarOffsetY - 12) })}
+                      className="min-h-[40px] px-3 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-slate-200 cursor-pointer"
+                    >
+                      Up -12
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => update({ dynamicBarOffsetY: Math.min(780, config.dynamicBarOffsetY + 12) })}
+                      className="min-h-[40px] px-3 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-slate-200 cursor-pointer"
+                    >
+                      Down +12
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        update(
+                          {
+                            dynamicBarAnchor: "camera-island",
+                            dynamicBarOffsetX: 0,
+                            dynamicBarOffsetY: 6,
+                            dynamicBarCameraGapPx: 34,
+                          },
+                          "Reset directly onto Front Camera punch-hole!"
+                        )
+                      }
+                      className="min-h-[40px] px-3.5 rounded-xl bg-amber-500/20 border border-amber-400/60 text-xs font-mono text-amber-200 cursor-pointer"
+                    >
+                      Snap Over Camera Hole
+                    </button>
                   </div>
                 </div>
 
@@ -946,24 +1152,60 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
                 </div>
 
                 {/* Unlock Bar Animations (Finger / Face Unlock) */}
-                <div className="p-4 rounded-2xl bg-[#050b1c]/90 border border-slate-500/25 space-y-3">
+                <div className="p-4 rounded-2xl bg-[#050b1c]/90 border border-slate-500/25 space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="font-orbitron font-bold text-sm text-white">
-                        Finger & Face Unlock Dynamic Bar Animation (5 Styles)
+                        Distinct Finger vs Face Unlock Bar Animation
                       </h3>
                       <p className="text-xs text-slate-400">
-                        Lock open karte waqt Dynamic Bar par glow shimmer effect show hota hai.
+                        Finger se unlock par Emerald Fingerprint ripple chalti hai, aur Face se unlock par Violet Face Reticle animation chalti hai.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleTestUnlock}
-                      className="min-h-[44px] px-3.5 py-2 rounded-xl bg-cyan-950/70 border border-cyan-400/60 text-xs font-mono text-cyan-200 flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>Test Unlock Effect</span>
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleTestUnlock("Fingerprint")}
+                        className="min-h-[44px] px-3 py-2 rounded-xl bg-emerald-950/70 border border-emerald-400/70 text-xs font-mono text-emerald-200 flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        <Fingerprint className="w-3.5 h-3.5" />
+                        <span>Test Finger Unlock</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTestUnlock("Face")}
+                        className="min-h-[44px] px-3 py-2 rounded-xl bg-purple-950/70 border border-purple-400/70 text-xs font-mono text-purple-200 flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                      >
+                        <ScanFace className="w-3.5 h-3.5" />
+                        <span>Test Face Unlock</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mode Selector */}
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        { id: "auto", label: "Auto Detect (Finger / Face)" },
+                        { id: "fingerprint", label: "Force Fingerprint Style" },
+                        { id: "face", label: "Force Face ID Style" },
+                      ] as const
+                    ).map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() =>
+                          update({ biometricUnlockAnimDisplay: m.id }, `Unlock Mode: ${m.label}`)
+                        }
+                        className={`min-h-[40px] px-3 py-1.5 rounded-xl border text-xs font-mono cursor-pointer ${
+                          (config.biometricUnlockAnimDisplay || "auto") === m.id
+                            ? "bg-cyan-950/60 border-cyan-400 text-cyan-200"
+                            : "bg-slate-900 border-slate-700 text-slate-300"
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
@@ -1126,9 +1368,10 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
                     {config.customBiometricImageDataUrl && (
                       <button
                         type="button"
-                        onClick={() =>
-                          update({ customBiometricImageDataUrl: "" }, "Reset to default Cyber Portrait.")
-                        }
+                        onClick={() => {
+                          syncCustomMediaImageAndroid("bio", "").catch(() => {});
+                          update({ customBiometricImageDataUrl: "" }, "Reset to default Cyber Portrait.");
+                        }}
                         className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-900 border border-slate-600 text-xs font-mono text-slate-200 cursor-pointer whitespace-nowrap shrink-0"
                       >
                         Reset Default
@@ -1139,9 +1382,36 @@ export const OneUi9Studio: React.FC<OneUi9StudioProps> = ({
 
                 {/* Fingerprint Unlock Animations */}
                 <div className="space-y-3">
-                  <h3 className="font-orbitron font-bold text-sm text-white">
-                    Fingerprint Unlock Animations (8 Styles)
-                  </h3>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-orbitron font-bold text-sm text-white">
+                        Fingerprint Unlock Animations (8 Styles)
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Lockscreen ke kisi bhi wallpaper (apne phone ki photo ya Live Wallpaper) ke upar Fingerprint glow chalega.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        update(
+                          { fingerprintOnAnyWallpaper: !(config.fingerprintOnAnyWallpaper !== false) },
+                          config.fingerprintOnAnyWallpaper !== false
+                            ? "Fingerprint on Any Lock Wallpaper: OFF"
+                            : "Fingerprint on Any Lock Wallpaper: ON"
+                        )
+                      }
+                      className={`min-h-[44px] px-3.5 py-2 rounded-xl border text-xs font-mono cursor-pointer whitespace-nowrap shrink-0 ${
+                        config.fingerprintOnAnyWallpaper !== false
+                          ? "bg-emerald-950/70 border-emerald-400 text-emerald-300"
+                          : "bg-slate-900 border-slate-700 text-slate-400"
+                      }`}
+                    >
+                      {config.fingerprintOnAnyWallpaper !== false
+                        ? "Lockscreen Finger Overlay: ON"
+                        : "Lockscreen Finger Overlay: OFF"}
+                    </button>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {FINGERPRINT_ANIM_PRESETS.map((fp) => {
                       const active = config.fingerprintAnimId === fp.id;

@@ -90,7 +90,21 @@ fs.writeFileSync(
 `,
   "utf8"
 );
-console.log("Wrote network_security_config.xml, data_extraction_rules.xml, backup_rules.xml & jarvis_wallpaper.xml.");
+
+fs.writeFileSync(
+  path.join(resXmlDir, "jarvis_accessibility_config.xml"),
+  `<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canRetrieveWindowContent="false"
+    android:notificationTimeout="100"
+    android:packageNames="com.android.systemui" />
+`,
+  "utf8"
+);
+console.log("Wrote network_security_config.xml, data_extraction_rules.xml, backup_rules.xml, jarvis_wallpaper.xml & jarvis_accessibility_config.xml.");
 
 const stringsPath = path.join(root, "android", "app", "src", "main", "res", "values", "strings.xml");
 if (fs.existsSync(stringsPath)) {
@@ -177,12 +191,17 @@ if (fs.existsSync(manifestPath)) {
     }
   }
 
-  // Harden application attributes (disable insecure cloud backup + enforce TLS network security config)
+  // Harden application attributes (disable insecure cloud backup + enforce TLS network security config + largeHeap)
   manifest = manifest.replace(/android:allowBackup="true"/g, 'android:allowBackup="false"');
   if (!manifest.includes("android:networkSecurityConfig=")) {
     manifest = manifest.replace(
       "<application",
-      `<application\n        android:networkSecurityConfig="@xml/network_security_config"\n        android:dataExtractionRules="@xml/data_extraction_rules"\n        android:fullBackupContent="@xml/backup_rules"`
+      `<application\n        android:largeHeap="true"\n        android:hardwareAccelerated="true"\n        android:networkSecurityConfig="@xml/network_security_config"\n        android:dataExtractionRules="@xml/data_extraction_rules"\n        android:fullBackupContent="@xml/backup_rules"`
+    );
+  } else if (!manifest.includes("android:largeHeap=")) {
+    manifest = manifest.replace(
+      "<application",
+      `<application\n        android:largeHeap="true"\n        android:hardwareAccelerated="true"`
     );
   }
   if (!manifest.includes('android:showWhenLocked="true"')) {
@@ -225,6 +244,18 @@ if (fs.existsSync(manifestPath)) {
             android:name=".OneUiOverlayService"
             android:enabled="true"
             android:exported="false" />
+        <service
+            android:name=".JarvisAccessibilityOverlayService"
+            android:label="Wasu's Jarvis Camera Island &amp; Lockscreen"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/jarvis_accessibility_config" />
+        </service>
         <receiver
             android:name=".ChargingBroadcastReceiver"
             android:enabled="true"
@@ -305,6 +336,18 @@ if (fs.existsSync(manifestPath)) {
             android:name=".OneUiOverlayService"
             android:enabled="true"
             android:exported="false" />
+        <service
+            android:name=".JarvisAccessibilityOverlayService"
+            android:label="Wasu's Jarvis Camera Island &amp; Lockscreen"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/jarvis_accessibility_config" />
+        </service>
         <receiver
             android:name=".ChargingBroadcastReceiver"
             android:enabled="true"
@@ -334,6 +377,23 @@ if (fs.existsSync(manifestPath)) {
       manifest = manifest.replace(
         `<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />`,
         `<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />\n                <action android:name="com.qnexus.jarvis.ACTION_RESTART_WAKE_SERVICE" />`
+      );
+    }
+    if (!manifest.includes("JarvisAccessibilityOverlayService")) {
+      manifest = manifest.replace(
+        "</application>",
+        `        <service
+            android:name=".JarvisAccessibilityOverlayService"
+            android:label="Wasu's Jarvis Camera Island &amp; Lockscreen"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/jarvis_accessibility_config" />
+        </service>\n    </application>`
       );
     }
   }

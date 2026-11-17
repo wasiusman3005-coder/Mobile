@@ -59,6 +59,7 @@ class JarvisWakeForegroundService : Service() {
 
     private var chargingReceiver: ChargingBroadcastReceiver? = null
     private var phoneStateReceiver: BroadcastReceiver? = null
+    private var screenLockReceiver: BroadcastReceiver? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val wakeExecutor = Executors.newSingleThreadExecutor()
@@ -123,6 +124,31 @@ class JarvisWakeForegroundService : Service() {
                 registerReceiver(phoneStateReceiver, pFilter, Context.RECEIVER_EXPORTED)
             } else {
                 registerReceiver(phoneStateReceiver, pFilter)
+            }
+        } catch (_: Exception) {}
+
+        // Screen lock/unlock receiver so lock/unlock animations fire even if Accessibility is off
+        try {
+            screenLockReceiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    when (intent?.action) {
+                        Intent.ACTION_SCREEN_OFF -> {
+                            DynamicIslandOverlayController.activeController?.onScreenLocked()
+                        }
+                        Intent.ACTION_USER_PRESENT -> {
+                            DynamicIslandOverlayController.activeController?.onUserUnlockedScreen()
+                        }
+                    }
+                }
+            }
+            val sFilter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_USER_PRESENT)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(screenLockReceiver, sFilter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(screenLockReceiver, sFilter)
             }
         } catch (_: Exception) {}
     }
@@ -198,6 +224,10 @@ class JarvisWakeForegroundService : Service() {
 
     private fun ensureOneUiOverlaySynced() {
         try {
+            if (DynamicIslandOverlayController.activeController != null) {
+                DynamicIslandOverlayController.dispatchRefreshConfig()
+                return
+            }
             val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val showOutside = prefs.getBoolean("dynamic_bar_outside_app", true)
             val barStyle = prefs.getString("dynamic_bar_style", "now_bar_pill") ?: "now_bar_pill"
@@ -213,6 +243,10 @@ class JarvisWakeForegroundService : Service() {
 
     private fun pushOverlayVoiceState(state: String, text: String, rms: Float) {
         try {
+            if (DynamicIslandOverlayController.activeController != null) {
+                DynamicIslandOverlayController.dispatchVoiceState(state, text, rms)
+                return
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) return
             val i = Intent(this, OneUiOverlayService::class.java).apply {
                 action = OneUiOverlayService.ACTION_VOICE_STATE
@@ -226,6 +260,10 @@ class JarvisWakeForegroundService : Service() {
 
     private fun pushOverlayIncomingCall(caller: String) {
         try {
+            if (DynamicIslandOverlayController.activeController != null) {
+                DynamicIslandOverlayController.dispatchIncomingCall(caller)
+                return
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) return
             val i = Intent(this, OneUiOverlayService::class.java).apply {
                 action = OneUiOverlayService.ACTION_SHOW_INCOMING_CALL
@@ -877,6 +915,7 @@ class JarvisWakeForegroundService : Service() {
         try { activityMonitor?.stop() } catch (_: Exception) {}
         try { chargingReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
         try { phoneStateReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
+        try { screenLockReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
         try { bgTts?.stop(); bgTts?.shutdown() } catch (_: Exception) {}
         releasePartialWakeLock()
         try { wakeExecutor.shutdownNow() } catch (_: Exception) {}

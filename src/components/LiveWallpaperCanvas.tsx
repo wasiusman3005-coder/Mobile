@@ -45,8 +45,9 @@ export const LiveWallpaperCanvas: React.FC<LiveWallpaperCanvasProps> = ({
 
     let rafId = 0;
     const start = performance.now();
+    let lastDraw = 0;
 
-    const drops = Array.from({ length: 72 }, (_, idx) => ({
+    const drops = Array.from({ length: 48 }, (_, idx) => ({
       x: (idx * 73 % 100) / 100,
       y: Math.random(),
       speed: 0.18 + Math.random() * 0.55,
@@ -59,7 +60,7 @@ export const LiveWallpaperCanvas: React.FC<LiveWallpaperCanvasProps> = ({
       const parent = canvas.parentElement;
       const w = parent ? parent.clientWidth : window.innerWidth;
       const h = parent ? parent.clientHeight : window.innerHeight;
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.2);
       canvas.width = Math.max(1, Math.floor(w * dpr));
       canvas.height = Math.max(1, Math.floor(h * dpr));
     };
@@ -67,6 +68,9 @@ export const LiveWallpaperCanvas: React.FC<LiveWallpaperCanvasProps> = ({
     window.addEventListener("resize", resize);
 
     const draw = (now: number) => {
+      rafId = requestAnimationFrame(draw);
+      if (document.hidden || now - lastDraw < 32) return;
+      lastDraw = now;
       const t = (now - start) * 0.001;
       const w = canvas.width;
       const h = canvas.height;

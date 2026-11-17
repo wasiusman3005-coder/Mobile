@@ -1,10 +1,14 @@
 package com.qnexus.jarvis
 
+import android.app.KeyguardManager
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -13,10 +17,10 @@ import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -37,10 +41,17 @@ class JarvisLiveWallpaperService : WallpaperService() {
         private var width = 1080
         private var height = 2400
 
+        private var cachedBgBitmap: Bitmap? = null
+        private var cachedBgModTime: Long = -1L
+        private var cachedBioBitmap: Bitmap? = null
+        private var cachedBioModTime: Long = -1L
+
         private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val bmpPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
         }
         private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -66,7 +77,7 @@ class JarvisLiveWallpaperService : WallpaperService() {
             override fun run() {
                 drawFrame()
                 if (visible) {
-                    handler.postDelayed(this, 33L) // Smooth ~30fps battery-friendly live wallpaper
+                    handler.postDelayed(this, 36L)
                 }
             }
         }
@@ -74,6 +85,7 @@ class JarvisLiveWallpaperService : WallpaperService() {
         override fun onVisibilityChanged(visible: Boolean) {
             this.visible = visible
             if (visible) {
+                reloadBitmapsIfNeeded()
                 handler.removeCallbacks(drawRunner)
                 handler.post(drawRunner)
             } else {
@@ -91,6 +103,54 @@ class JarvisLiveWallpaperService : WallpaperService() {
             super.onSurfaceDestroyed(holder)
             visible = false
             handler.removeCallbacks(drawRunner)
+            try { cachedBgBitmap?.recycle() } catch (_: Exception) {}
+            cachedBgBitmap = null
+            try { cachedBioBitmap?.recycle() } catch (_: Exception) {}
+            cachedBioBitmap = null
+        }
+
+        private fun reloadBitmapsIfNeeded() {
+            try {
+                val wpFile = File(filesDir, "custom_lock_wallpaper.png")
+                if (wpFile.exists()) {
+                    val mod = wpFile.lastModified()
+                    if (mod != cachedBgModTime) {
+                        cachedBgModTime = mod
+                        val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                        val decoded = BitmapFactory.decodeFile(wpFile.absolutePath, opts)
+                        val prev = cachedBgBitmap
+                        cachedBgBitmap = decoded
+                        if (prev != null && prev !== decoded) {
+                            try { prev.recycle() } catch (_: Exception) {}
+                        }
+                    }
+                } else {
+                    cachedBgModTime = -1L
+                    cachedBgBitmap?.let { try { it.recycle() } catch (_: Exception) {} }
+                    cachedBgBitmap = null
+                }
+            } catch (_: Exception) {}
+
+            try {
+                val bioFile = File(filesDir, "custom_biometric.png")
+                if (bioFile.exists()) {
+                    val mod = bioFile.lastModified()
+                    if (mod != cachedBioModTime) {
+                        cachedBioModTime = mod
+                        val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                        val decoded = BitmapFactory.decodeFile(bioFile.absolutePath, opts)
+                        val prev = cachedBioBitmap
+                        cachedBioBitmap = decoded
+                        if (prev != null && prev !== decoded) {
+                            try { prev.recycle() } catch (_: Exception) {}
+                        }
+                    }
+                } else {
+                    cachedBioModTime = -1L
+                    cachedBioBitmap?.let { try { it.recycle() } catch (_: Exception) {} }
+                    cachedBioBitmap = null
+                }
+            } catch (_: Exception) {}
         }
 
         private fun parseColorSafe(hex: String?, fallback: Int): Int {
@@ -98,6 +158,19 @@ class JarvisLiveWallpaperService : WallpaperService() {
                 if (hex.isNullOrBlank()) fallback else Color.parseColor(hex)
             } catch (_: Exception) {
                 fallback
+            }
+        }
+
+        private fun fpColorForStyle(fpStyle: String, fallback: Int): Int {
+            return when (fpStyle) {
+                "quantum_iris" -> Color.parseColor("#a855f7")
+                "neon_shockwave" -> Color.parseColor("#38bdf8")
+                "honeycomb_scan" -> Color.parseColor("#22d3ee")
+                "liquid_gold" -> Color.parseColor("#f59e0b")
+                "particle_burst" -> Color.parseColor("#f472b6")
+                "emerald_pulse" -> Color.parseColor("#10b981")
+                "starlight_ring" -> Color.parseColor("#e0f2fe")
+                else -> fallback
             }
         }
 
@@ -111,6 +184,8 @@ class JarvisLiveWallpaperService : WallpaperService() {
                 val accentColor = parseColorSafe(prefs.getString("oneui_accent_hex", "#00f0ff"), Color.parseColor("#00f0ff"))
                 val clockColor = parseColorSafe(prefs.getString("oneui_clock_hex", "#e0f2fe"), Color.parseColor("#e0f2fe"))
                 val showClock = prefs.getBoolean("wallpaper_show_clock", true)
+                val fpOnAny = prefs.getBoolean("fingerprint_on_any_wallpaper", true)
+                val fpStyle = prefs.getString("fingerprint_anim_id", "ripple_wave") ?: "ripple_wave"
 
                 val t = (System.currentTimeMillis() - startTimeMs) / 1000f
                 val w = canvas.width.toFloat()
@@ -118,23 +193,36 @@ class JarvisLiveWallpaperService : WallpaperService() {
                 val cx = w / 2f
                 val cy = h / 2f
 
-                // 1. Base Gradient
-                val (cTop, cBot) = when (style) {
-                    "emerald_matrix" -> Color.parseColor("#02110b") to Color.parseColor("#041c13")
-                    "solar_plasma" -> Color.parseColor("#18060d") to Color.parseColor("#250e04")
-                    "deep_ocean" -> Color.parseColor("#020c1b") to Color.parseColor("#051e34")
-                    "velvet_ripples" -> Color.parseColor("#140622") to Color.parseColor("#060b1e")
-                    else -> Color.parseColor("#030714") to Color.parseColor("#0b112a")
+                // 1. Custom Gallery Wallpaper Backdrop OR Theme Base Gradient
+                val customBg = cachedBgBitmap
+                if (customBg != null && !customBg.isRecycled) {
+                    val scale = maxOf(w / customBg.width.coerceAtLeast(1), h / customBg.height.coerceAtLeast(1))
+                    val dw = customBg.width * scale
+                    val dh = customBg.height * scale
+                    val dst = RectF((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f)
+                    bmpPaint.alpha = 255
+                    canvas.drawBitmap(customBg, null, dst, bmpPaint)
+                    bgPaint.shader = null
+                    bgPaint.color = Color.argb(86, 3, 7, 20)
+                    canvas.drawRect(0f, 0f, w, h, bgPaint)
+                } else {
+                    val (cTop, cBot) = when (style) {
+                        "emerald_matrix" -> Color.parseColor("#02110b") to Color.parseColor("#041c13")
+                        "solar_plasma" -> Color.parseColor("#18060d") to Color.parseColor("#250e04")
+                        "deep_ocean" -> Color.parseColor("#020c1b") to Color.parseColor("#051e34")
+                        "velvet_ripples" -> Color.parseColor("#140622") to Color.parseColor("#060b1e")
+                        else -> Color.parseColor("#030714") to Color.parseColor("#0b112a")
+                    }
+                    bgPaint.shader = LinearGradient(0f, 0f, w, h, cTop, cBot, Shader.TileMode.CLAMP)
+                    canvas.drawRect(0f, 0f, w, h, bgPaint)
                 }
-                bgPaint.shader = LinearGradient(0f, 0f, w, h, cTop, cBot, Shader.TileMode.CLAMP)
-                canvas.drawRect(0f, 0f, w, h, bgPaint)
 
                 // 2. Dynamic Aurora / Nebula Orbs
                 val orb1X = cx + cos(t * 0.45f) * (w * 0.28f)
                 val orb1Y = cy * 0.65f + sin(t * 0.38f) * (h * 0.14f)
                 glowPaint.shader = RadialGradient(
                     orb1X, orb1Y, min(w, h) * 0.68f,
-                    Color.argb(115, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)),
+                    Color.argb(105, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)),
                     Color.TRANSPARENT,
                     Shader.TileMode.CLAMP
                 )
@@ -150,7 +238,7 @@ class JarvisLiveWallpaperService : WallpaperService() {
                 val orb2Y = cy * 1.38f + cos(t * 0.42f) * (h * 0.12f)
                 glowPaint.shader = RadialGradient(
                     orb2X, orb2Y, min(w, h) * 0.62f,
-                    Color.argb(95, Color.red(secColor), Color.green(secColor), Color.blue(secColor)),
+                    Color.argb(88, Color.red(secColor), Color.green(secColor), Color.blue(secColor)),
                     Color.TRANSPARENT,
                     Shader.TileMode.CLAMP
                 )
@@ -203,7 +291,6 @@ class JarvisLiveWallpaperService : WallpaperService() {
                         }
                     }
                     else -> {
-                        // Gentle floating prism waves & starlight particles
                         for (i in drops.indices) {
                             val d = drops[i]
                             val px = ((d.x + sin(t * 0.25f + i) * 0.04f) * w)
@@ -214,7 +301,7 @@ class JarvisLiveWallpaperService : WallpaperService() {
                     }
                 }
 
-                // 4. Optional Live One UI 9 Wallpaper Clock
+                // 4. Live One UI 9 Wallpaper Clock
                 if (showClock) {
                     val timeStr = SimpleDateFormat("hh:mm", Locale.getDefault()).format(Date())
                     val dateStr = SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date()).uppercase(Locale.US)
@@ -225,6 +312,37 @@ class JarvisLiveWallpaperService : WallpaperService() {
                     subTextPaint.textSize = min(w, h) * 0.032f
                     subTextPaint.color = Color.argb(210, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor))
                     canvas.drawText("$dateStr • WASU'S JARVIS ONE UI 9", cx, h * 0.29f, subTextPaint)
+                }
+
+                // 5. Animated Fingerprint Ring Emblem over ANY Wallpaper on Lockscreen
+                val km = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+                if (fpOnAny && (km?.isKeyguardLocked == true || isPreview)) {
+                    val fpCy = h * 0.84f
+                    val fpR = min(w, h) * 0.095f
+                    val fpCol = fpColorForStyle(fpStyle, accentColor)
+                    val pulse = (t * 0.7f) % 1f
+
+                    strokePaint.strokeWidth = 5f
+                    strokePaint.color = Color.argb(((1f - pulse) * 195).toInt().coerceIn(0, 210), Color.red(fpCol), Color.green(fpCol), Color.blue(fpCol))
+                    canvas.drawCircle(cx, fpCy, fpR * (0.85f + pulse * 0.5f), strokePaint)
+
+                    val bioBmp = cachedBioBitmap
+                    if (bioBmp != null && !bioBmp.isRecycled) {
+                        val save = canvas.save()
+                        val clip = Path().apply { addCircle(cx, fpCy, fpR * 0.76f, Path.Direction.CW) }
+                        canvas.clipPath(clip)
+                        bmpPaint.alpha = 115
+                        canvas.drawBitmap(bioBmp, null, RectF(cx - fpR * 0.76f, fpCy - fpR * 0.76f, cx + fpR * 0.76f, fpCy + fpR * 0.76f), bmpPaint)
+                        canvas.restoreToCount(save)
+                    }
+
+                    strokePaint.color = fpCol
+                    strokePaint.strokeWidth = 4.2f
+                    for (ring in 1..4) {
+                        val rr = fpR * (0.18f + ring * 0.145f)
+                        val startA = (t * (48f + ring * 18f) * (if (ring % 2 == 0) 1 else -1)) % 360f
+                        canvas.drawArc(RectF(cx - rr, fpCy - rr, cx + rr, fpCy + rr), startA, 240f, false, strokePaint)
+                    }
                 }
             } catch (_: Exception) {
             } finally {

@@ -57,9 +57,9 @@ export const CLOCK_STYLE_PRESETS: Array<{ id: ClockStyleId; name: string; sample
 ];
 
 export const DYNAMIC_BAR_PRESETS: Array<{ id: DynamicBarStyleId; name: string; desc: string }> = [
-  { id: "now_bar_pill", name: "One UI 9 Now Bar", desc: "Flagship pill with voice, time & battery" },
-  { id: "liquid_island", name: "Liquid Morph Island", desc: "Expands smoothly on voice & media" },
-  { id: "audio_spectrum", name: "Voice Equalizer Bar", desc: "Live reactivity spectrum in notch" },
+  { id: "now_bar_pill", name: "Camera Punch-Hole Island", desc: "OLED black capsule wrapped around top camera hole" },
+  { id: "liquid_island", name: "Liquid Morph Island", desc: "Expands smoothly on voice, unlock & media" },
+  { id: "audio_spectrum", name: "Voice Equalizer Bar", desc: "Live reactivity spectrum beside camera" },
   { id: "minimal_dot", name: "Minimal Stealth Capsule", desc: "Ultra-compact top edge chip" },
   { id: "cyber_strip", name: "Jarvis Telemetry Strip", desc: "Monospace CPU/Net + Jarvis trigger" },
   { id: "dual_capsule", name: "Dual Split Capsules", desc: "Left voice pill + right battery chip" },
