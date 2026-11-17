@@ -23,7 +23,14 @@ export const LIVE_WALLPAPER_PRESETS: Array<{
   primary: string;
   secondary: string;
   bg: string;
+  isDepth?: boolean;
 }> = [
+  { id: "depth_moon_eclipse", name: "3D Lunar Eclipse Depth", tagline: "Layered silver moon + 3D clock", primary: "#e2e8f0", secondary: "#38bdf8", bg: "#02040a", isDepth: true },
+  { id: "depth_supercar_neon", name: "CyberGT Horizon 3D", tagline: "Neon street depth scene", primary: "#f97316", secondary: "#38bdf8", bg: "#0d0816", isDepth: true },
+  { id: "depth_abyssal_ocean", name: "Abyssal Tide 3D Depth", tagline: "Dual-plane water surface", primary: "#22d3ee", secondary: "#0284c7", bg: "#021324", isDepth: true },
+  { id: "depth_emerald_ridge", name: "Emerald Alpine Meadows", tagline: "Sunlit green 3D ridge depth", primary: "#22c55e", secondary: "#a3e635", bg: "#041a0d", isDepth: true },
+  { id: "depth_obsidian_panther", name: "Obsidian Shadow Depth", tagline: "Pure OLED black depth portrait", primary: "#38bdf8", secondary: "#6366f1", bg: "#000000", isDepth: true },
+  { id: "depth_alpine_peak", name: "Snow Peak Horizon 3D", tagline: "Crisp glacier depth ridge", primary: "#93c5fd", secondary: "#fb923c", bg: "#0b1528", isDepth: true },
   { id: "oneui9_aurora", name: "One UI 9 Aurora", tagline: "Silk nebula waves", primary: "#00f0ff", secondary: "#a855f7", bg: "#04081a" },
   { id: "quantum_singularity", name: "Quantum Orbit", tagline: "Rotating gyro rings", primary: "#38bdf8", secondary: "#f59e0b", bg: "#050918" },
   { id: "cosmic_rain", name: "Cosmic Meteor Rain", tagline: "High-speed star streaks", primary: "#67e8f9", secondary: "#818cf8", bg: "#030714" },
@@ -46,6 +53,7 @@ export const LOCK_DESIGN_PRESETS: Array<{ id: LockScreenDesignId; name: string; 
 ];
 
 export const CLOCK_STYLE_PRESETS: Array<{ id: ClockStyleId; name: string; sampleFont: string }> = [
+  { id: "depth_editorial", name: "3D Depth Tall Clock", sampleFont: "Layered Behind Subject" },
   { id: "oneui9_bold", name: "One UI 9 Bold", sampleFont: "Bold Rounded" },
   { id: "slim_ultralight", name: "Samsung Ultralight", sampleFont: "Thin Hairline" },
   { id: "stacked_vertical", name: "Stacked Two-Tone", sampleFont: "HH / MM Vertical" },
@@ -190,5 +198,22 @@ export const DEFAULT_APP_ALERT_RULES: AppAlertRule[] = [
   { id: "messages_sms", packageName: "com.google.android.apps.messaging", appName: "Messages / SMS", enabled: true, speakAloud: true, repeatIfUnreadMinutes: 5, allowInSleepOrQuiet: false },
   { id: "gmail", packageName: "com.google.android.gm", appName: "Gmail", enabled: true, speakAloud: false, repeatIfUnreadMinutes: 10, allowInSleepOrQuiet: false },
   { id: "telegram", packageName: "org.telegram.messenger", appName: "Telegram", enabled: true, speakAloud: true, repeatIfUnreadMinutes: 5, allowInSleepOrQuiet: false },
+  { id: "instagram", packageName: "com.instagram.android", appName: "Instagram", enabled: true, speakAloud: false, repeatIfUnreadMinutes: 10, allowInSleepOrQuiet: false },
+  { id: "youtube", packageName: "com.google.android.youtube", appName: "YouTube", enabled: true, speakAloud: false, repeatIfUnreadMinutes: 15, allowInSleepOrQuiet: false },
 ];
+
+export const DYNAMIC_BAR_SELECTABLE_APPS: Array<{ packageName: string; appName: string; category: string }> = [
+  { packageName: "com.whatsapp", appName: "WhatsApp", category: "Chat" },
+  { packageName: "com.whatsapp.w4b", appName: "WhatsApp Business", category: "Chat" },
+  { packageName: "com.google.android.apps.messaging", appName: "Messages / SMS", category: "SMS" },
+  { packageName: "com.samsung.android.messaging", appName: "Samsung Messages", category: "SMS" },
+  { packageName: "com.android.incallui", appName: "Phone Calls", category: "Calls" },
+  { packageName: "com.samsung.android.incallui", appName: "Samsung Dialer", category: "Calls" },
+  { packageName: "com.instagram.android", appName: "Instagram", category: "Social" },
+  { packageName: "org.telegram.messenger", appName: "Telegram", category: "Chat" },
+  { packageName: "com.google.android.gm", appName: "Gmail", category: "Email" },
+  { packageName: "com.spotify.music", appName: "Spotify", category: "Music" },
+  { packageName: "com.google.android.youtube", appName: "YouTube", category: "Media" },
+];
+
 

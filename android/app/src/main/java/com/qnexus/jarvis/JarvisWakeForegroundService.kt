@@ -15,6 +15,10 @@ import android.content.pm.ServiceInfo
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -33,6 +37,14 @@ import android.telephony.TelephonyManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 
@@ -56,8 +68,14 @@ class JarvisWakeForegroundService : Service() {
     private var activityMonitor: UserActivityMonitor? = null
     private var bgTts: TextToSpeech? = null
     private var bgTtsReady = false
+    private var bgMediaPlayer: MediaPlayer? = null
+    private var bgAudioFocusReq: AudioFocusRequest? = null
+    @Volatile
+    private var bgTtsSeq = 0
 
     private var chargingReceiver: ChargingBroadcastReceiver? = null
+    private var batteryFullReceiver: BroadcastReceiver? = null
+    private var notifiedFullChargeThisCycle = false
     private var phoneStateReceiver: BroadcastReceiver? = null
     private var screenLockReceiver: BroadcastReceiver? = null
 
@@ -127,6 +145,32 @@ class JarvisWakeForegroundService : Service() {
             }
         } catch (_: Exception) {}
 
+        // Battery 100% Full Alert watcher
+        try {
+            batteryFullReceiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                    val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+                    val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+                    val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+                    val pct = if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+                    if (plugged == 0) {
+                        notifiedFullChargeThisCycle = false
+                        return
+                    }
+                    if (!notifiedFullChargeThisCycle && (pct >= 100 || status == BatteryManager.BATTERY_STATUS_FULL)) {
+                        notifiedFullChargeThisCycle = true
+                        DynamicIslandOverlayController.dispatchBatteryFull100()
+                        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                        if (prefs.getBoolean("charging_full_battery_alert", true) && prefs.getBoolean("bg_auto_announce", true)) {
+                            speakBgLine("Wasu, phone battery 100 percent full charge ho gayi hai. Charger hata sakte hain.")
+                        }
+                    }
+                }
+            }
+            registerReceiver(batteryFullReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        } catch (_: Exception) {}
+
         // Screen lock/unlock receiver so lock/unlock animations fire even if Accessibility is off
         try {
             screenLockReceiver = object : BroadcastReceiver() {
@@ -179,10 +223,12 @@ class JarvisWakeForegroundService : Service() {
                         }
                         override fun onDone(utteranceId: String?) {
                             WakeSpeechSuppressor.setTtsActive(false, 950L)
+                            abandonBgAudioFocus()
                         }
                         @Deprecated("Deprecated in Java")
                         override fun onError(utteranceId: String?) {
                             WakeSpeechSuppressor.setTtsActive(false, 500L)
+                            abandonBgAudioFocus()
                         }
                     })
                     bgTtsReady = true
@@ -193,32 +239,195 @@ class JarvisWakeForegroundService : Service() {
         }
     }
 
+    private fun requestBgAudioFocus() {
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .build()
+                bgAudioFocusReq = req
+                am.requestAudioFocus(req)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun abandonBgAudioFocus() {
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                bgAudioFocusReq?.let { am.abandonAudioFocusRequest(it) }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun stopBgMediaPlayer() {
+        bgTtsSeq++
+        try { bgMediaPlayer?.stop() } catch (_: Exception) {}
+        try { bgMediaPlayer?.release() } catch (_: Exception) {}
+        bgMediaPlayer = null
+    }
+
+    private fun playBgOnlineUrduTts(text: String, onComplete: () -> Unit, onFallbackLocal: () -> Unit) {
+        val mySeq = ++bgTtsSeq
+        wakeExecutor.execute {
+            try {
+                val clean = text.replace(Regex("\\s+"), " ").trim()
+                val chunks = mutableListOf<String>()
+                var remaining = clean
+                while (remaining.isNotEmpty() && chunks.size < 4) {
+                    if (remaining.length <= 165) {
+                        chunks.add(remaining)
+                        break
+                    }
+                    var splitAt = remaining.lastIndexOf(' ', 165)
+                    if (splitAt <= 20) splitAt = 165
+                    chunks.add(remaining.substring(0, splitAt).trim())
+                    remaining = remaining.substring(splitAt).trim()
+                }
+                if (chunks.isEmpty()) {
+                    mainHandler.post { onFallbackLocal() }
+                    return@execute
+                }
+                val audioOut = ByteArrayOutputStream()
+                for (chunk in chunks) {
+                    if (bgTtsSeq != mySeq) return@execute
+                    val encoded = URLEncoder.encode(chunk, "UTF-8")
+                    val url = URL("https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=ur&q=$encoded")
+                    val conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        connectTimeout = 3500
+                        readTimeout = 4500
+                        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) Chrome/126.0.0.0 Mobile Safari/537.36")
+                        setRequestProperty("Referer", "https://translate.google.com/")
+                    }
+                    try {
+                        if (conn.responseCode !in 200..299) {
+                            mainHandler.post { onFallbackLocal() }
+                            return@execute
+                        }
+                        conn.inputStream.use { ins ->
+                            val buf = ByteArray(4096)
+                            var r: Int
+                            while (ins.read(buf).also { r = it } != -1) {
+                                audioOut.write(buf, 0, r)
+                            }
+                        }
+                    } finally {
+                        conn.disconnect()
+                    }
+                }
+                val mp3Bytes = audioOut.toByteArray()
+                if (mp3Bytes.size < 400 || bgTtsSeq != mySeq) {
+                    mainHandler.post { onFallbackLocal() }
+                    return@execute
+                }
+                val cacheFile = File(cacheDir, "jarvis_bg_tts.mp3")
+                FileOutputStream(cacheFile).use { fos ->
+                    fos.write(mp3Bytes)
+                    fos.flush()
+                }
+                mainHandler.post {
+                    if (bgTtsSeq != mySeq) return@post
+                    try {
+                        bgMediaPlayer?.release()
+                    } catch (_: Exception) {}
+                    try {
+                        requestBgAudioFocus()
+                        val player = MediaPlayer().apply {
+                            setAudioAttributes(
+                                AudioAttributes.Builder()
+                                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                    .build()
+                            )
+                            setDataSource(cacheFile.absolutePath)
+                            setOnPreparedListener { mp ->
+                                if (bgTtsSeq != mySeq) {
+                                    try { mp.release() } catch (_: Exception) {}
+                                    return@setOnPreparedListener
+                                }
+                                WakeSpeechSuppressor.setTtsActive(true)
+                                mp.start()
+                            }
+                            setOnCompletionListener { mp ->
+                                WakeSpeechSuppressor.setTtsActive(false, 750L)
+                                abandonBgAudioFocus()
+                                try { mp.release() } catch (_: Exception) {}
+                                if (bgMediaPlayer === mp) bgMediaPlayer = null
+                                onComplete()
+                            }
+                            setOnErrorListener { mp, _, _ ->
+                                WakeSpeechSuppressor.setTtsActive(false, 400L)
+                                abandonBgAudioFocus()
+                                try { mp.release() } catch (_: Exception) {}
+                                if (bgMediaPlayer === mp) bgMediaPlayer = null
+                                onFallbackLocal()
+                                true
+                            }
+                            prepareAsync()
+                        }
+                        bgMediaPlayer = player
+                    } catch (_: Exception) {
+                        onFallbackLocal()
+                    }
+                }
+            } catch (_: Exception) {
+                mainHandler.post { onFallbackLocal() }
+            }
+        }
+    }
+
     private fun speakBgLine(text: String, onDone: (() -> Unit)? = null) {
         if (text.isBlank()) {
             onDone?.invoke()
             return
         }
         pushOverlayVoiceState("speaking", text, 0.7f)
-        if (!bgTtsReady || bgTts == null) {
-            mainHandler.postDelayed({
-                pushOverlayVoiceState("standby", "", 0f)
-                onDone?.invoke()
-            }, 900L)
-            return
-        }
-        val uttId = "bg_jarvis_${System.currentTimeMillis()}"
         WakeSpeechSuppressor.setTtsActive(true)
-        mainHandler.post {
-            try {
-                bgTts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, uttId)
-            } catch (_: Exception) {
-                WakeSpeechSuppressor.setTtsActive(false, 400L)
+        stopBgMediaPlayer()
+
+        val fallbackLocal: () -> Unit = {
+            if (!bgTtsReady || bgTts == null) {
+                initBackgroundTts()
+                val estMs = (1200L + text.length * 45L).coerceIn(1300L, 4500L)
+                mainHandler.postDelayed({
+                    WakeSpeechSuppressor.setTtsActive(false, 500L)
+                    pushOverlayVoiceState("standby", "", 0f)
+                    onDone?.invoke()
+                }, estMs)
+            } else {
+                val uttId = "bg_jarvis_${System.currentTimeMillis()}"
+                requestBgAudioFocus()
+                mainHandler.post {
+                    try {
+                        bgTts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, uttId)
+                    } catch (_: Exception) {
+                        WakeSpeechSuppressor.setTtsActive(false, 400L)
+                    }
+                    val estMs = (1100L + text.length * 52L).coerceIn(1300L, 6500L)
+                    mainHandler.postDelayed({
+                        WakeSpeechSuppressor.setTtsActive(false, 750L)
+                        abandonBgAudioFocus()
+                        onDone?.invoke()
+                    }, estMs)
+                }
             }
-            val estMs = (1100L + text.length * 52L).coerceIn(1300L, 6500L)
-            mainHandler.postDelayed({
-                WakeSpeechSuppressor.setTtsActive(false, 750L)
-                onDone?.invoke()
-            }, estMs)
+        }
+
+        if (WakeAudioUtils.hasDeviceInternet(applicationContext)) {
+            playBgOnlineUrduTts(
+                text = text,
+                onComplete = { onDone?.invoke() },
+                onFallbackLocal = fallbackLocal
+            )
+        } else {
+            fallbackLocal()
         }
     }
 
@@ -358,7 +567,11 @@ class JarvisWakeForegroundService : Service() {
                 return START_STICKY
             }
             ACTION_BG_LISTEN_AND_ACT -> {
-                if (QNexusPlugin.instance?.isForegroundActive == true) {
+                val replyKey = intent.getStringExtra("reply_key").orEmpty()
+                val replySender = intent.getStringExtra("reply_sender").orEmpty()
+                if (replyKey.isNotEmpty()) {
+                    triggerBgDynamicBarSession("", isFollowUp = false, directReplyKey = replyKey, directReplySender = replySender)
+                } else if (QNexusPlugin.instance?.isForegroundActive == true) {
                     QNexusPlugin.instance?.emitWakeEvent("hi jarvis", "")
                 } else {
                     triggerBgDynamicBarSession("")
@@ -631,7 +844,12 @@ class JarvisWakeForegroundService : Service() {
         QNexusPlugin.instance?.emitWakeEvent(matched, trailingCommand)
     }
 
-    private fun triggerBgDynamicBarSession(trailingCommand: String, isFollowUp: Boolean = false) {
+    private fun triggerBgDynamicBarSession(
+        trailingCommand: String,
+        isFollowUp: Boolean = false,
+        directReplyKey: String = "",
+        directReplySender: String = ""
+    ) {
         if (isBgCommandRunning) return
         isBgCommandRunning = true
         MicHardwareCoordinator.isCommandSessionActive = true
@@ -640,29 +858,39 @@ class JarvisWakeForegroundService : Service() {
 
         if (trailingCommand.isNotBlank() && !isFollowUp) {
             pushOverlayVoiceState("processing", trailingCommand, 0.5f)
-            executeBgTranscriptOrAudio(trailingCommand, null, allowFollowUp = true)
+            executeBgTranscriptOrAudio(trailingCommand, null, allowFollowUp = true, directReplyKey = directReplyKey, directReplySender = directReplySender)
             return
         }
 
-        val prompt = if (isFollowUp) "Kuch aur kehna hai?" else "Sun rahi hoon, bolein aap"
+        val prompt = when {
+            directReplyKey.isNotEmpty() -> "${directReplySender.ifBlank { "Contact" }} ke liye jawab bolein"
+            isFollowUp -> "Kuch aur kehna hai?"
+            else -> "Sun rahi hoon, bolein aap"
+        }
         speakBgLine(prompt) {
-            pushOverlayVoiceState("listening", "Sun rahi hoon, bolein aap", 0.2f)
+            pushOverlayVoiceState("listening", prompt, 0.2f)
             val recorder = SilentCommandRecorder(
                 context = this,
                 onReady = {
-                    pushOverlayVoiceState("listening", "Sun rahi hoon, bolein aap", 0.22f)
+                    pushOverlayVoiceState("listening", prompt, 0.22f)
                 },
                 onRmsLevel = { norm ->
-                    pushOverlayVoiceState("listening", "Sun rahi hoon, bolein aap", norm)
+                    pushOverlayVoiceState("listening", prompt, norm)
                 },
                 onFinished = { wav ->
                     bgCmdRecorder = null
                     if (wav == null) {
-                        finishBgSession(rearm = true)
+                        if (isFollowUp || directReplyKey.isNotEmpty()) {
+                            finishBgSession(rearm = true)
+                        } else {
+                            speakBgLine("Awaaz clear nahi aayi, dobara bolein.") {
+                                finishBgSession(rearm = true)
+                            }
+                        }
                         return@SilentCommandRecorder
                     }
                     pushOverlayVoiceState("processing", "Samajh rahi hoon...", 0.4f)
-                    executeBgTranscriptOrAudio("", wav, allowFollowUp = !isFollowUp)
+                    executeBgTranscriptOrAudio("", wav, allowFollowUp = !isFollowUp && directReplyKey.isEmpty(), directReplyKey = directReplyKey, directReplySender = directReplySender)
                 }
             )
             bgCmdRecorder = recorder
@@ -670,12 +898,19 @@ class JarvisWakeForegroundService : Service() {
         }
     }
 
-    private fun executeBgTranscriptOrAudio(directText: String, wavBytes: ByteArray?, allowFollowUp: Boolean) {
+    private fun executeBgTranscriptOrAudio(
+        directText: String,
+        wavBytes: ByteArray?,
+        allowFollowUp: Boolean,
+        directReplyKey: String = "",
+        directReplySender: String = ""
+    ) {
         wakeExecutor.execute {
             var cmdText = directText.trim()
             var cloudReply = ""
             var cloudAction = "NONE"
             var cloudPayload = "{}"
+            var silentDrop = false
 
             if (cmdText.isEmpty() && wavBytes != null) {
                 val res = WakeAudioUtils.executeBackgroundCommandOnline(
@@ -685,17 +920,49 @@ class JarvisWakeForegroundService : Service() {
                     characterGender = "female",
                     personalityName = "Wasi ki Jan"
                 )
+                silentDrop = res.silentAudio
                 if (!res.silentAudio) {
                     cmdText = res.transcript
                     cloudReply = res.reply
                     cloudAction = res.action
                     cloudPayload = res.actionPayloadJson
                 }
+            } else if (cmdText.isNotEmpty() && cloudReply.isEmpty() && directReplyKey.isEmpty()) {
+                val textRes = WakeAudioUtils.queryBackgroundTextChatOnline(
+                    applicationContext,
+                    cmdText,
+                    language = "ur",
+                    characterGender = "female",
+                    personalityName = "Wasi ki Jan"
+                )
+                if (textRes.reply.isNotBlank()) {
+                    cloudReply = textRes.reply
+                    cloudAction = textRes.action
+                    cloudPayload = textRes.actionPayloadJson
+                }
             }
 
             mainHandler.post {
+                if (directReplyKey.isNotEmpty()) {
+                    val replyBody = cmdText.trim()
+                    if (replyBody.isNotEmpty()) {
+                        val sent = QNexusNotificationService.sendDirectReply(this@JarvisWakeForegroundService, directReplyKey, replyBody)
+                        val confirmLine = if (sent) "${directReplySender.ifBlank { "Contact" }} ko reply bhej diya hai." else "Reply send nahi ho saka."
+                        speakBgLine(confirmLine) { finishBgSession(rearm = true) }
+                    } else {
+                        speakBgLine("Jawab clear sunayi nahi diya.") { finishBgSession(rearm = true) }
+                    }
+                    return@post
+                }
+
                 if (cmdText.isEmpty() && cloudReply.isEmpty()) {
-                    finishBgSession(rearm = true)
+                    if (silentDrop) {
+                        finishBgSession(rearm = true)
+                    } else {
+                        speakBgLine("Awaaz saaf nahi aayi ya internet slow hai, dobara bolein.") {
+                            finishBgSession(rearm = true)
+                        }
+                    }
                     return@post
                 }
 
@@ -707,7 +974,7 @@ class JarvisWakeForegroundService : Service() {
                     return@post
                 }
 
-                val finalReply = cloudReply.ifBlank { "Hukam mukammal hua." }
+                val finalReply = cloudReply.ifBlank { "Ji, main Wasu's Jarvis hazir hoon." }
                 speakBgLine(finalReply) {
                     maybeRunFollowUp(allowFollowUp)
                 }
@@ -740,6 +1007,31 @@ class JarvisWakeForegroundService : Service() {
         if (lower.contains("bas karo") || lower.contains("shukriya") || lower.contains("kuch nahi") || lower == "no" || lower == "nahi") {
             return "Theek hai, main standby par hoon."
         }
+        if (lower.contains("time") || lower.contains("waqt") || lower.contains("kitne baje") || lower.contains("kya baja")) {
+            val t = SimpleDateFormat("h:mm a", Locale.US).format(Date())
+            return "Is waqt $t baje hain."
+        }
+        if (lower.contains("date") || lower.contains("tareekh") || lower.contains("aaj kya din")) {
+            val d = SimpleDateFormat("EEEE, d MMMM", Locale.US).format(Date())
+            return "Aaj $d hai."
+        }
+        if (lower.contains("battery") || lower.contains("charge kitni") || lower.contains("kitni charging")) {
+            val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            val pct = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+            return if (pct in 0..100) "Phone ki battery is waqt $pct percent hai." else "Battery status read nahi ho saka."
+        }
+        if (lower.contains("notification") || lower.contains("whatsapp") || lower.contains("msg") || lower.contains("message")) {
+            QNexusNotificationService.loadPersistedIfEmpty(applicationContext)
+            val list = QNexusNotificationService.recentNotifications
+            if (list.isEmpty()) {
+                return "Abhi koi naya notification ya message nahi hai."
+            }
+            val latest = list[0]
+            val app = latest.optString("appName", "App")
+            val sender = latest.optString("title", "")
+            val body = latest.optString("text", "")
+            return "$app par $sender ka message hai: ${body.take(90)}"
+        }
         if (lower.contains("open jarvis") || lower.contains("jarvis kholo") || lower.contains("app kholo")) {
             val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
@@ -751,7 +1043,7 @@ class JarvisWakeForegroundService : Service() {
         }
         if (lower.contains("call uthao") || lower.contains("answer call") || lower.contains("receive call") || lower.contains("call receive")) {
             val ok = handleTelecomCallAction(accept = true)
-            return if (ok) "Call receive kar li hai." else "Call receive karne ke liye Phone Answer permission chahiye."
+            return if (ok) "Call receive kar li hai." else "Call receive karne ke liye Answer Phone permission on karein."
         }
         if (lower.contains("call kato") || lower.contains("reject call") || lower.contains("end call") || lower.contains("call band")) {
             val ok = handleTelecomCallAction(accept = false)
@@ -914,8 +1206,11 @@ class JarvisWakeForegroundService : Service() {
         stopBgRecognizerInternal()
         try { activityMonitor?.stop() } catch (_: Exception) {}
         try { chargingReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
+        try { batteryFullReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
         try { phoneStateReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
         try { screenLockReceiver?.let { unregisterReceiver(it) } } catch (_: Exception) {}
+        try { stopBgMediaPlayer() } catch (_: Exception) {}
+        try { abandonBgAudioFocus() } catch (_: Exception) {}
         try { bgTts?.stop(); bgTts?.shutdown() } catch (_: Exception) {}
         releasePartialWakeLock()
         try { wakeExecutor.shutdownNow() } catch (_: Exception) {}

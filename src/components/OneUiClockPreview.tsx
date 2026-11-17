@@ -85,6 +85,29 @@ export const OneUiClockPreview: React.FC<OneUiClockPreviewProps> = ({
     );
   }
 
+  if (styleId === "depth_editorial") {
+    return (
+      <div className="flex flex-col items-center select-none text-center" style={{ transform: `scale(${s})` }}>
+        <span
+          className="text-[11px] font-mono tracking-[0.22em] uppercase opacity-90 mb-0.5"
+          style={{ color: accentHex }}
+        >
+          {dateStr}
+        </span>
+        <div
+          className="font-black tracking-[-0.04em] leading-[0.84] text-[4.5rem] sm:text-[5.5rem] tabular drop-shadow-[0_6px_22px_rgba(0,0,0,0.6)]"
+          style={{
+            color: colorHex,
+            fontFamily: "Impact, Orbitron, sans-serif",
+          }}
+        >
+          {hours12}
+          {mins}
+        </div>
+      </div>
+    );
+  }
+
   if (styleId === "stacked_vertical") {
     return (
       <div className="flex flex-col items-center leading-none select-none" style={{ transform: `scale(${s})` }}>

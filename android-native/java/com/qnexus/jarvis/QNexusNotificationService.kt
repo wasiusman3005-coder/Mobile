@@ -136,20 +136,40 @@ class QNexusNotificationService : NotificationListenerService() {
         override fun run() {
             try {
                 val now = System.currentTimeMillis()
+                val doneKeys = mutableListOf<String>()
                 for ((key, entry) in pendingVipReminders.entries) {
-                    if (now - entry.lastRemindedAt >= entry.repeatMinutes * 60_000L) {
+                    if (entry.maxRepeatCount > 0 && entry.sentCount >= entry.maxRepeatCount) {
+                        doneKeys.add(key)
+                        continue
+                    }
+                    if (now - entry.lastRemindedAt >= entry.repeatIntervalSeconds * 1000L) {
                         entry.lastRemindedAt = now
+                        entry.sentCount += 1
                         val msg = "VIP reminder: ${entry.sender} ka message abhi tak unread hai — ${entry.text.take(60)}"
-                        pushDynamicBarNotification(entry.sender, entry.text, true)
+                        pushDynamicBarNotification(
+                            key = entry.key,
+                            pkg = entry.packageName,
+                            appName = entry.appName,
+                            title = entry.sender,
+                            text = entry.text,
+                            isVip = true,
+                            canReply = entry.canReply
+                        )
                         if (QNexusPlugin.instance?.isForegroundActive != true) {
                             speakRaw(msg, false)
                         } else {
                             QNexusPlugin.instance?.emitVipReminderEvent(entry.sender, entry.text)
                         }
+                        if (entry.maxRepeatCount > 0 && entry.sentCount >= entry.maxRepeatCount) {
+                            doneKeys.add(key)
+                        }
                     }
                 }
+                for (k in doneKeys) {
+                    pendingVipReminders.remove(k)
+                }
             } catch (_: Exception) {}
-            mainHandler.postDelayed(this, 60_000L)
+            mainHandler.postDelayed(this, 15_000L)
         }
     }
 
@@ -157,7 +177,7 @@ class QNexusNotificationService : NotificationListenerService() {
         super.onCreate()
         loadPersistedIfEmpty(applicationContext)
         initBackgroundTts()
-        mainHandler.postDelayed(vipRepeatRunnable, 60_000L)
+        mainHandler.postDelayed(vipRepeatRunnable, 15_000L)
     }
 
     override fun onListenerConnected() {
@@ -256,22 +276,83 @@ class QNexusNotificationService : NotificationListenerService() {
         }
     }
 
-    private fun pushDynamicBarNotification(title: String, text: String, isVip: Boolean) {
+    private fun pushDynamicBarNotification(
+        key: String,
+        pkg: String,
+        appName: String,
+        title: String,
+        text: String,
+        isVip: Boolean,
+        canReply: Boolean
+    ) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this)) return
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             if (!prefs.getBoolean("dynamic_bar_outside_app", true)) return
+            val edgeStyle = prefs.getString("edge_lighting_style", "aurora_sweep") ?: "aurora_sweep"
+            val hasOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || android.provider.Settings.canDrawOverlays(this)
+
+            if (DynamicIslandOverlayController.activeController != null) {
+                DynamicIslandOverlayController.dispatchNotification(key, pkg, appName, title, text, isVip, canReply)
+                if (edgeStyle != "off") {
+                    DynamicIslandOverlayController.dispatchEdgeLighting(if (appName == "Phone Call") "call" else "notification")
+                }
+                return
+            }
+
+            if (!hasOverlay) return
             val i = Intent(this, OneUiOverlayService::class.java).apply {
                 action = OneUiOverlayService.ACTION_SHOW_NOTIFICATION
+                putExtra("key", key)
+                putExtra("packageName", pkg)
+                putExtra("appName", appName)
                 putExtra("title", title)
                 putExtra("text", text)
                 putExtra("isVip", isVip)
+                putExtra("canReply", canReply)
             }
             startService(i)
+
+            if (edgeStyle != "off") {
+                val edgeIntent = Intent(this, OneUiOverlayService::class.java).apply {
+                    action = OneUiOverlayService.ACTION_EDGE_LIGHTING
+                    putExtra("reason", if (appName == "Phone Call") "call" else "notification")
+                }
+                startService(edgeIntent)
+            }
         } catch (_: Exception) {}
     }
 
-    private fun checkVipMatch(title: String, text: String): Pair<Boolean, Int> {
+    private fun checkVipChannelMatch(
+        channelsArr: JSONArray?,
+        pkg: String,
+        appName: String,
+        isCall: Boolean
+    ): Boolean {
+        if (channelsArr == null || channelsArr.length() == 0) return true
+        val pkgLow = pkg.lowercase(Locale.US)
+        val appLow = appName.lowercase(Locale.US)
+        for (i in 0 until channelsArr.length()) {
+            when (channelsArr.optString(i, "").trim().lowercase(Locale.US)) {
+                "all", "" -> return true
+                "calls" -> if (isCall || pkgLow.contains("dialer") || pkgLow.contains("incallui") || pkgLow.contains("telecom")) return true
+                "whatsapp" -> if (pkgLow.contains("whatsapp") || appLow.contains("whatsapp")) return true
+                "sms" -> if (pkgLow.contains("messaging") || pkgLow.contains("mms") || appLow == "sms") return true
+                "other" -> {
+                    val isKnown = isCall || pkgLow.contains("whatsapp") || pkgLow.contains("messaging") || pkgLow.contains("mms")
+                    if (!isKnown) return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun checkVipMatch(
+        title: String,
+        text: String,
+        pkg: String,
+        appName: String,
+        isCall: Boolean
+    ): Triple<Boolean, Int, Int> {
         return try {
             val raw = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .getString("vip_contacts_json", "[]") ?: "[]"
@@ -282,12 +363,17 @@ class QNexusNotificationService : NotificationListenerService() {
                 val name = o.optString("name", "").trim().lowercase(Locale.US)
                 val phone = o.optString("phoneOrHandle", "").trim().lowercase(Locale.US)
                 if ((name.isNotEmpty() && hay.contains(name)) || (phone.isNotEmpty() && hay.contains(phone))) {
-                    return Pair(true, o.optInt("repeatMinutes", 2).coerceIn(1, 30))
+                    val channels = o.optJSONArray("channels")
+                    if (!checkVipChannelMatch(channels, pkg, appName, isCall)) continue
+                    val fallbackSec = (o.optInt("repeatMinutes", 2).coerceIn(1, 30)) * 60
+                    val intervalSec = o.optInt("repeatIntervalSeconds", fallbackSec).coerceIn(15, 3600)
+                    val repeatCount = o.optInt("repeatCount", 0).coerceIn(0, 50)
+                    return Triple(true, intervalSec, repeatCount)
                 }
             }
-            Pair(false, 0)
+            Triple(false, 0, 0)
         } catch (_: Exception) {
-            Pair(false, 0)
+            Triple(false, 0, 0)
         }
     }
 
@@ -318,24 +404,45 @@ class QNexusNotificationService : NotificationListenerService() {
         }
     }
 
-    private fun speakNotificationInBackground(pkg: String, appName: String, title: String, text: String, key: String) {
+    private fun speakNotificationInBackground(
+        pkg: String,
+        appName: String,
+        title: String,
+        text: String,
+        key: String,
+        canReply: Boolean,
+        isCall: Boolean
+    ) {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val autoAnnounce = prefs.getBoolean("bg_auto_announce", true)
-        val vipMatch = checkVipMatch(title, text)
+        val vipMatch = checkVipMatch(title, text, pkg, appName, isCall)
         val isVip = vipMatch.first
         val activityState = UserActivityMonitor.getLastKnownState(applicationContext)
 
         if (isVip) {
             pendingVipReminders[key] = VipReminderEntry(
                 key = key,
+                packageName = pkg,
+                appName = appName,
                 sender = title.ifBlank { appName },
                 text = text,
-                repeatMinutes = vipMatch.second,
-                lastRemindedAt = System.currentTimeMillis()
+                canReply = canReply,
+                repeatIntervalSeconds = vipMatch.second,
+                maxRepeatCount = vipMatch.third,
+                lastRemindedAt = System.currentTimeMillis(),
+                sentCount = 0
             )
         }
 
-        pushDynamicBarNotification(if (isVip) "VIP • ${title.ifBlank { appName }}" else title.ifBlank { appName }, text, isVip)
+        pushDynamicBarNotification(
+            key = key,
+            pkg = pkg,
+            appName = appName,
+            title = title.ifBlank { appName },
+            text = text,
+            isVip = isVip,
+            canReply = canReply
+        )
 
         if (!autoAnnounce && !isVip) return
         if (!checkAppRuleAllowsSpeak(pkg, appName, isVip, activityState)) return
@@ -471,8 +578,28 @@ class QNexusNotificationService : NotificationListenerService() {
             persistNotifications(applicationContext)
 
             QNexusPlugin.instance?.emitNotificationEvent(obj)
+
+            val isMediaTransport =
+                sbn.notification.category == Notification.CATEGORY_TRANSPORT ||
+                pkg.contains("spotify") ||
+                pkg.contains("music")
+            if (isMediaTransport) {
+                DynamicIslandOverlayController.dispatchMediaStatus(
+                    title.ifBlank { appName },
+                    true
+                )
+            }
+
             if (speakAloud) {
-                speakNotificationInBackground(sbn.packageName, appName, title, text.ifEmpty { title }, sbn.key)
+                speakNotificationInBackground(
+                    pkg = sbn.packageName,
+                    appName = appName,
+                    title = title,
+                    text = text.ifEmpty { title },
+                    key = sbn.key,
+                    canReply = canReply,
+                    isCall = isCallPkg
+                )
             }
         } catch (_: Exception) {
         }
@@ -504,8 +631,13 @@ class QNexusNotificationService : NotificationListenerService() {
 
 data class VipReminderEntry(
     val key: String,
+    val packageName: String,
+    val appName: String,
     val sender: String,
     val text: String,
-    val repeatMinutes: Int,
-    var lastRemindedAt: Long
+    val canReply: Boolean,
+    val repeatIntervalSeconds: Int,
+    val maxRepeatCount: Int,
+    var lastRemindedAt: Long,
+    var sentCount: Int = 0
 )

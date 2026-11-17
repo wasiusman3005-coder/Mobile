@@ -117,17 +117,34 @@ interface QNexusPluginInterface {
   cancelNativeListening?(): Promise<{ ok: boolean }>;
   setNativeWakeWordEnabled?(opts: { enabled: boolean; phrases?: string[] }): Promise<{ ok: boolean; active: boolean }>;
   consumePendingStudioLaunch?(): Promise<{ hasPending: boolean; target: string }>;
-  applyLiveWallpaperOnPhone?(opts: { style: string; accentHex: string; clockHex: string; showClock: boolean }): Promise<{ ok: boolean; message: string }>;
+  applyLiveWallpaperOnPhone?(opts: {
+    style: string;
+    accentHex: string;
+    clockHex: string;
+    showClock: boolean;
+    clockStyleId?: string;
+    depthEnabled?: boolean;
+    dimPercent?: number;
+    clockPosY?: number;
+  }): Promise<{ ok: boolean; message: string }>;
   applyBitmapWallpaperOnPhone?(opts: { dataUrl: string; target: "home" | "lock" | "both" }): Promise<{ ok: boolean; message: string }>;
-  syncCustomMediaImage?(opts: { kind: "bio" | "wallpaper"; dataUrl: string }): Promise<{ ok: boolean }>;
+  syncCustomMediaImage?(opts: { kind: "bio" | "wallpaper" | "charging"; dataUrl: string }): Promise<{ ok: boolean }>;
   syncOneUiOverlayConfig?(opts: {
     dynamicBarStyle: string;
     dynamicBarAnchor?: string;
     dynamicBarOffsetX?: number;
     dynamicBarOffsetY?: number;
+    dynamicBarWidthDp?: number;
+    dynamicBarHeightDp?: number;
     dynamicBarCameraGapPx?: number;
     dynamicBarCustomLabel?: string;
     dynamicBarShowOutsideApp?: boolean;
+    dynamicBarNotifDisplayMode?: "icon_name" | "full_preview";
+    dynamicBarNotifExpandSeconds?: number;
+    dynamicBarEnabledAppsJson?: string;
+    dynamicBarShowFlashlight?: boolean;
+    dynamicBarShowMusic?: boolean;
+    edgeLightingStyle?: string;
     unlockBarAnimStyle?: string;
     fingerprintAnimId?: string;
     fingerprintOnAnyWallpaper?: boolean;
@@ -135,9 +152,18 @@ interface QNexusPluginInterface {
     faceAnimId?: string;
     chargingAnim: string;
     chargingOverlayEnabled: boolean;
+    chargingDurationSeconds?: number;
+    chargingDismissMethod?: "single_tap" | "double_tap";
+    chargingUnpluggedAlert?: boolean;
+    chargingFullBatteryAlert?: boolean;
+    chargingShowPhoto?: boolean;
     accentHex: string;
     liveWallpaperStyle: string;
     clockHex: string;
+    clockStyleId?: string;
+    wallpaperDepthEnabled?: boolean;
+    wallpaperDimPercent?: number;
+    wallpaperClockPosY?: number;
     waveVisualizerStyle?: string;
     waveColorTheme?: string;
     followUpListeningEnabled?: boolean;
@@ -767,6 +793,10 @@ export async function applyLiveWallpaperOnPhoneAndroid(opts: {
   accentHex: string;
   clockHex: string;
   showClock: boolean;
+  clockStyleId?: string;
+  depthEnabled?: boolean;
+  dimPercent?: number;
+  clockPosY?: number;
 }): Promise<{ ok: boolean; message: string }> {
   const plugin = getNativePlugin();
   if (!plugin?.applyLiveWallpaperOnPhone) {
@@ -801,7 +831,7 @@ export async function applyBitmapWallpaperOnPhoneAndroid(
 }
 
 export async function syncCustomMediaImageAndroid(
-  kind: "bio" | "wallpaper",
+  kind: "bio" | "wallpaper" | "charging",
   dataUrl: string
 ): Promise<boolean> {
   const plugin = getNativePlugin();
@@ -819,9 +849,17 @@ export async function syncOneUiOverlayConfigAndroid(opts: {
   dynamicBarAnchor?: string;
   dynamicBarOffsetX?: number;
   dynamicBarOffsetY?: number;
+  dynamicBarWidthDp?: number;
+  dynamicBarHeightDp?: number;
   dynamicBarCameraGapPx?: number;
   dynamicBarCustomLabel?: string;
   dynamicBarShowOutsideApp?: boolean;
+  dynamicBarNotifDisplayMode?: "icon_name" | "full_preview";
+  dynamicBarNotifExpandSeconds?: number;
+  dynamicBarEnabledAppsJson?: string;
+  dynamicBarShowFlashlight?: boolean;
+  dynamicBarShowMusic?: boolean;
+  edgeLightingStyle?: string;
   unlockBarAnimStyle?: string;
   fingerprintAnimId?: string;
   fingerprintOnAnyWallpaper?: boolean;
@@ -829,9 +867,18 @@ export async function syncOneUiOverlayConfigAndroid(opts: {
   faceAnimId?: string;
   chargingAnim: string;
   chargingOverlayEnabled: boolean;
+  chargingDurationSeconds?: number;
+  chargingDismissMethod?: "single_tap" | "double_tap";
+  chargingUnpluggedAlert?: boolean;
+  chargingFullBatteryAlert?: boolean;
+  chargingShowPhoto?: boolean;
   accentHex: string;
   liveWallpaperStyle: string;
   clockHex: string;
+  clockStyleId?: string;
+  wallpaperDepthEnabled?: boolean;
+  wallpaperDimPercent?: number;
+  wallpaperClockPosY?: number;
   waveVisualizerStyle?: string;
   waveColorTheme?: string;
   followUpListeningEnabled?: boolean;

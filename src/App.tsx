@@ -18,7 +18,6 @@ import { AwayAutoPilot } from "./components/AwayAutoPilot";
 import { MandatoryHealthLockdown } from "./components/MandatoryHealthLockdown";
 import { IdentityVideoOverlay } from "./components/IdentityVideoOverlay";
 import { LiveWallpaperCanvas } from "./components/LiveWallpaperCanvas";
-import { OneUiDynamicBar } from "./components/OneUiDynamicBar";
 import { OneUiQuickPanel } from "./components/OneUiQuickPanel";
 import { ChargingAnimationOverlay } from "./components/ChargingAnimationOverlay";
 import { OneUi9Studio } from "./components/OneUi9Studio";
@@ -43,7 +42,6 @@ import {
   getNativeBackgroundStatus,
   subscribeActivityAndVipEvents,
   getUserActivityStateAndroid,
-  answerOrRejectCallAndroid,
 } from "./services/nativeAndroidBridge";
 import {
   LanguageCode,
@@ -150,12 +148,8 @@ export default function App() {
   const [isPhoneCharging, setIsPhoneCharging] = useState(false);
   const [batteryUnrestricted, setBatteryUnrestricted] = useState(true);
   const [activityState, setActivityState] = useState<UserActivityState>("sitting_stationary");
-  const [unlockPulseNonce, setUnlockPulseNonce] = useState(0);
-  const [unlockMethodLabel, setUnlockMethodLabel] = useState("Biometric");
-  const [incomingCallLabel, setIncomingCallLabel] = useState<string | null>(null);
   const lastChargingRef = useRef<boolean | null>(null);
   const chargingAutoCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const incomingCallClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTaskUrgentRemindAtRef = useRef<number>(0);
 
   // Wasu's Jarvis 3D Core Animation & HUD State
@@ -992,9 +986,6 @@ export default function App() {
         projectHubAlert(notif.title, notif.text, notif.appName, notifUniqueKey);
 
         if (notif.isCallNotification) {
-          setIncomingCallLabel(`${notif.title}: ${notif.text}`);
-          if (incomingCallClearRef.current) clearTimeout(incomingCallClearRef.current);
-          incomingCallClearRef.current = setTimeout(() => setIncomingCallLabel(null), 26000);
           if ((alertsCfg?.autoCallVoiceControl ?? true) && !speechService.getListeningState()) {
             const callAlert = `${notif.title} ki call aa rahi hai. Uthaoon ya kaat doon?`;
             speechService.speak(callAlert, {
@@ -1107,7 +1098,6 @@ export default function App() {
       window.removeEventListener("q-nexus-hub-alert", onCustomHubAlert);
       if (heardClearTimerRef.current) clearTimeout(heardClearTimerRef.current);
       if (hubNotifTimerRef.current) clearTimeout(hubNotifTimerRef.current);
-      if (incomingCallClearRef.current) clearTimeout(incomingCallClearRef.current);
       speechService.enableWakeWord(false);
       unsubPermEvents();
       unsubStudioLaunch();
@@ -1247,7 +1237,10 @@ export default function App() {
         ) {
           setIsChargingAnimOpen(true);
           if (chargingAutoCloseRef.current) clearTimeout(chargingAutoCloseRef.current);
-          chargingAutoCloseRef.current = setTimeout(() => setIsChargingAnimOpen(false), 6500);
+          const durSec = oneUiConfigRef.current.chargingDurationSeconds ?? 10;
+          if (durSec > 0) {
+            chargingAutoCloseRef.current = setTimeout(() => setIsChargingAnimOpen(false), durSec * 1000);
+          }
         }
         lastChargingRef.current = Boolean(tel.isCharging);
 
@@ -1688,9 +1681,19 @@ export default function App() {
         dynamicBarAnchor: nextOneUi.dynamicBarAnchor,
         dynamicBarOffsetX: nextOneUi.dynamicBarOffsetX,
         dynamicBarOffsetY: nextOneUi.dynamicBarOffsetY,
+        dynamicBarWidthDp: nextOneUi.dynamicBarWidthDp ?? 224,
+        dynamicBarHeightDp: nextOneUi.dynamicBarHeightDp ?? 36,
         dynamicBarCameraGapPx: nextOneUi.dynamicBarCameraGapPx ?? 34,
         dynamicBarCustomLabel: nextOneUi.dynamicBarCustomLabel,
         dynamicBarShowOutsideApp: nextOneUi.dynamicBarShowOutsideApp,
+        dynamicBarNotifDisplayMode: nextOneUi.dynamicBarNotifDisplayMode || "icon_name",
+        dynamicBarNotifExpandSeconds: nextOneUi.dynamicBarNotifExpandSeconds ?? 6,
+        dynamicBarEnabledAppsJson: nextOneUi.dynamicBarEnabledApps
+          ? JSON.stringify(nextOneUi.dynamicBarEnabledApps)
+          : undefined,
+        dynamicBarShowFlashlight: nextOneUi.dynamicBarShowFlashlight !== false,
+        dynamicBarShowMusic: nextOneUi.dynamicBarShowMusic !== false,
+        edgeLightingStyle: nextOneUi.edgeLightingStyle || "aurora_sweep",
         unlockBarAnimStyle: nextOneUi.unlockBarAnimStyle,
         fingerprintAnimId: nextOneUi.fingerprintAnimId,
         faceAnimId: nextOneUi.faceAnimId,
@@ -1698,9 +1701,18 @@ export default function App() {
         biometricUnlockAnimDisplay: nextOneUi.biometricUnlockAnimDisplay || "auto",
         chargingAnim: nextOneUi.chargingAnimId,
         chargingOverlayEnabled: nextOneUi.chargingOverlayEnabled,
+        chargingDurationSeconds: nextOneUi.chargingDurationSeconds ?? 10,
+        chargingDismissMethod: nextOneUi.chargingDismissMethod || "single_tap",
+        chargingUnpluggedAlert: nextOneUi.chargingUnpluggedAlert !== false,
+        chargingFullBatteryAlert: nextOneUi.chargingFullBatteryAlert !== false,
+        chargingShowPhoto: Boolean(nextOneUi.chargingShowPhoto),
         accentHex: nextOneUi.accentColorHex,
         liveWallpaperStyle: nextOneUi.liveWallpaperId,
         clockHex: nextOneUi.clockColorHex,
+        clockStyleId: nextOneUi.clockStyleId,
+        wallpaperDepthEnabled: nextOneUi.wallpaperDepthEnabled !== false,
+        wallpaperDimPercent: nextOneUi.wallpaperDimPercent ?? 18,
+        wallpaperClockPosY: nextOneUi.wallpaperClockPosY ?? 22,
         waveVisualizerStyle: nextOneUi.waveVisualizerStyle,
         waveColorTheme: nextOneUi.waveColorTheme,
         followUpListeningEnabled: nextOneUi.followUpListeningEnabled,
@@ -1913,16 +1925,7 @@ export default function App() {
       {!isAuthenticated ? (
         <div className="relative z-10 flex-1 min-h-[100dvh] flex items-center justify-center overflow-hidden">
           <SecurityGate
-            onAuthenticated={(_name, method) => {
-              const displayPref = oneUiConfig.biometricUnlockAnimDisplay || "auto";
-              const chosenLabel =
-                displayPref === "face"
-                  ? "Face"
-                  : displayPref === "fingerprint"
-                  ? "Fingerprint"
-                  : method || "Fingerprint";
-              setUnlockMethodLabel(chosenLabel);
-              setUnlockPulseNonce((n) => n + 1);
+            onAuthenticated={() => {
               triggerWormhole("Entering Wasu's Jarvis Mobile Core", () => {
                 sessionStorage.setItem("q_nexus_session_auth", "active");
                 setIsAuthenticated(true);
@@ -2100,51 +2103,6 @@ export default function App() {
         />
       )}
 
-      {/* One UI 9 Top Dynamic Bar / Now Bar (Settings-locked position — zero touch drag) */}
-      {isAuthenticated && !showLoadingScreen && !isOneUiStudioOpen && !isAwayMode && !isHealthLockdownActive && (
-        <OneUiDynamicBar
-          styleId={oneUiConfig.dynamicBarStyleId}
-          anchor={oneUiConfig.dynamicBarAnchor}
-          offsetX={oneUiConfig.dynamicBarOffsetX}
-          offsetY={oneUiConfig.dynamicBarOffsetY}
-          cameraGapPx={oneUiConfig.dynamicBarCameraGapPx ?? 34}
-          customLabel={oneUiConfig.dynamicBarCustomLabel}
-          accentHex={oneUiConfig.accentColorHex}
-          isListening={isJarvisListening}
-          isSpeaking={isJarvisSpeaking}
-          audioLevel={cockpitAudioLevel}
-          waveVisualizerStyle={oneUiConfig.waveVisualizerStyle}
-          waveColorTheme={oneUiConfig.waveColorTheme}
-          unlockBarAnimStyle={oneUiConfig.unlockBarAnimStyle}
-          unlockPulseNonce={unlockPulseNonce}
-          unlockMethodLabel={unlockMethodLabel}
-          batteryPercent={phoneBatteryPercent}
-          isCharging={isPhoneCharging}
-          activityState={activityState}
-          incomingCallLabel={incomingCallLabel}
-          onAnswerCall={async () => {
-            const res = await answerOrRejectCallAndroid("answer");
-            setIncomingCallLabel(null);
-            showToast(res.message);
-          }}
-          onRejectCall={async () => {
-            const res = await answerOrRejectCallAndroid("reject");
-            setIncomingCallLabel(null);
-            showToast(res.message);
-          }}
-          onTapVoice={() => {
-            if (speechService.getListeningState()) {
-              speechService.stopListening();
-            } else {
-              manualCancelRef.current = false;
-              setCockpitLiveTranscript("");
-              speechService.startListening(language);
-            }
-          }}
-          onTapQuickPanel={() => setIsQuickPanelOpen((prev) => !prev)}
-        />
-      )}
-
       {/* One UI 9 Swipe-Down Shortcut Switches Drawer */}
       <OneUiQuickPanel
         isOpen={isQuickPanelOpen}
@@ -2167,12 +2125,14 @@ export default function App() {
         onToast={showToast}
       />
 
-      {/* One UI 9 Super Charging Animation Overlay */}
+      {/* One UI 9 Super Charging Animation Overlay (Triggers ONLY on Charger Connect or Studio Test) */}
       <ChargingAnimationOverlay
         isOpen={isChargingAnimOpen}
         animId={oneUiConfig.chargingAnimId}
         batteryPercent={phoneBatteryPercent}
-        customImageUrl={oneUiConfig.customBiometricImageDataUrl || undefined}
+        customImageUrl={oneUiConfig.customChargingImageDataUrl || undefined}
+        showPhoto={Boolean(oneUiConfig.chargingShowPhoto)}
+        dismissMethod={oneUiConfig.chargingDismissMethod || "single_tap"}
         onClose={() => setIsChargingAnimOpen(false)}
       />
 
@@ -2186,10 +2146,6 @@ export default function App() {
         onUpdateProactiveAlerts={handleUpdateProactiveAlerts}
         activityState={activityState}
         onTestChargingAnim={() => setIsChargingAnimOpen(true)}
-        onTestUnlockEffect={(method) => {
-          setUnlockMethodLabel(method || "Fingerprint");
-          setUnlockPulseNonce((n) => n + 1);
-        }}
         onOpenQuickPanel={() => setIsQuickPanelOpen(true)}
         onOpenHomeMode={() => setIsHomeGridMode(true)}
         onOpenLockPreview={() => {

@@ -11,35 +11,37 @@ class ChargingBroadcastReceiver : BroadcastReceiver() {
         val action = intent?.action ?: return
         val prefs = context.getSharedPreferences("WasuJarvisPrefs", Context.MODE_PRIVATE)
         val chargingEnabled = prefs.getBoolean("charging_overlay_enabled", true)
-        if (!chargingEnabled) return
 
-        // Prefer in-process dispatch to active controller (works cleanly in Android 12-15 background without IllegalStateException)
         if (DynamicIslandOverlayController.activeController != null) {
-            if (action == Intent.ACTION_POWER_CONNECTED) {
-                DynamicIslandOverlayController.dispatchCharging()
-            } else if (action == Intent.ACTION_POWER_DISCONNECTED) {
-                DynamicIslandOverlayController.dispatchRefreshConfig()
+            when (action) {
+                Intent.ACTION_POWER_CONNECTED -> if (chargingEnabled) DynamicIslandOverlayController.dispatchCharging()
+                Intent.ACTION_POWER_DISCONNECTED -> {
+                    if (chargingEnabled && prefs.getBoolean("charging_unplugged_alert", true)) {
+                        DynamicIslandOverlayController.dispatchChargingDisconnected()
+                    } else {
+                        DynamicIslandOverlayController.dispatchRefreshConfig()
+                    }
+                }
             }
             return
         }
 
         val canOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
-        if (!canOverlay) return
+        if (!canOverlay || !chargingEnabled) return
 
-        if (action == Intent.ACTION_POWER_CONNECTED) {
-            val svc = Intent(context, OneUiOverlayService::class.java).apply {
-                this.action = OneUiOverlayService.ACTION_SHOW_CHARGING
+        when (action) {
+            Intent.ACTION_POWER_CONNECTED -> {
+                val svc = Intent(context, OneUiOverlayService::class.java).apply {
+                    this.action = OneUiOverlayService.ACTION_SHOW_CHARGING
+                }
+                try { context.startService(svc) } catch (_: Exception) {}
             }
-            try {
-                context.startService(svc)
-            } catch (_: Exception) {}
-        } else if (action == Intent.ACTION_POWER_DISCONNECTED) {
-            val svc = Intent(context, OneUiOverlayService::class.java).apply {
-                this.action = OneUiOverlayService.ACTION_UPDATE
+            Intent.ACTION_POWER_DISCONNECTED -> {
+                val svc = Intent(context, OneUiOverlayService::class.java).apply {
+                    this.action = OneUiOverlayService.ACTION_SHOW_UNPLUGGED
+                }
+                try { context.startService(svc) } catch (_: Exception) {}
             }
-            try {
-                context.startService(svc)
-            } catch (_: Exception) {}
         }
     }
 }

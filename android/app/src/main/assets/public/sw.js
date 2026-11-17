@@ -93,7 +93,7 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "revision": "d4f2384b9c7fd9b7bdf8d333a42545cc"
   }, {
     "url": "index.html",
-    "revision": "de6e895212d7562010f4a07808f67a8f"
+    "revision": "78374063fa757048aa5a461da81f44bb"
   }, {
     "url": "icon.svg",
     "revision": "093b87d307d2a781c2be47deced68252"
@@ -113,13 +113,13 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "url": "assets/rolldown-runtime-WkwZ5CU-.js",
     "revision": null
   }, {
-    "url": "assets/react-vendor-B9PhsqW7.js",
+    "url": "assets/react-vendor-Dehvm69p.js",
     "revision": null
   }, {
-    "url": "assets/index-Bf3OTb3c.css",
+    "url": "assets/index-gKYbHkRG.js",
     "revision": null
   }, {
-    "url": "assets/index-7tZg8Yf6.js",
+    "url": "assets/index-CF0WX6JV.css",
     "revision": null
   }, {
     "url": "assets/aistudio/vector-hud-gui-interface-004_e93adaf2.jpg",
@@ -204,6 +204,12 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
     "revision": null
   }, {
     "url": "assets/aistudio/Gemini_Generated_Image_55uicz55uicz55ui_f744178a.jpg",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/2_bede782a.png",
+    "revision": null
+  }, {
+    "url": "assets/aistudio/1_e8d66d05.png",
     "revision": null
   }, {
     "url": "apple-touch-icon.png",

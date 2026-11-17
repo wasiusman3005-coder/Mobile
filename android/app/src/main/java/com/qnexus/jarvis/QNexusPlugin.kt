@@ -514,7 +514,11 @@ class QNexusPlugin : Plugin() {
     fun syncCustomMediaImage(call: PluginCall) {
         val kind = (call.getString("kind") ?: "bio").lowercase(Locale.US)
         val dataUrl = call.getString("dataUrl") ?: ""
-        val fileName = if (kind == "wallpaper") "custom_lock_wallpaper.png" else "custom_biometric.png"
+        val fileName = when (kind) {
+            "wallpaper" -> "custom_lock_wallpaper.png"
+            "charging" -> "custom_charging.png"
+            else -> "custom_biometric.png"
+        }
         wakeExecutor.execute {
             try {
                 val outFile = File(context.filesDir, fileName)
@@ -2514,10 +2518,14 @@ class QNexusPlugin : Plugin() {
 
     @PluginMethod
     fun applyLiveWallpaperOnPhone(call: PluginCall) {
-        val style = call.getString("style") ?: "oneui9_aurora"
+        val style = call.getString("style") ?: "depth_moon_eclipse"
         val accentHex = call.getString("accentHex") ?: "#00f0ff"
         val clockHex = call.getString("clockHex") ?: "#e0f2fe"
         val showClock = call.getBoolean("showClock") ?: true
+        val clockStyleId = call.getString("clockStyleId") ?: "depth_editorial"
+        val depthEnabled = call.getBoolean("depthEnabled") ?: true
+        val dimPercent = call.getInt("dimPercent") ?: 18
+        val clockPosY = call.getInt("clockPosY") ?: 22
         try {
             context.getSharedPreferences("WasuJarvisPrefs", Context.MODE_PRIVATE)
                 .edit()
@@ -2525,6 +2533,10 @@ class QNexusPlugin : Plugin() {
                 .putString("oneui_accent_hex", accentHex)
                 .putString("oneui_clock_hex", clockHex)
                 .putBoolean("wallpaper_show_clock", showClock)
+                .putString("oneui_clock_style_id", clockStyleId)
+                .putBoolean("wallpaper_depth_enabled", depthEnabled)
+                .putInt("wallpaper_dim_percent", dimPercent)
+                .putInt("wallpaper_clock_pos_y", clockPosY)
                 .apply()
 
             val wpIntent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
@@ -2643,9 +2655,17 @@ class QNexusPlugin : Plugin() {
             val dynamicBarAnchor = call.getString("dynamicBarAnchor") ?: "camera-island"
             val dynamicBarOffsetX = call.getInt("dynamicBarOffsetX") ?: 0
             val dynamicBarOffsetY = call.getInt("dynamicBarOffsetY") ?: 6
+            val dynamicBarWidthDp = call.getInt("dynamicBarWidthDp") ?: 224
+            val dynamicBarHeightDp = call.getInt("dynamicBarHeightDp") ?: 36
             val dynamicBarCameraGapPx = call.getInt("dynamicBarCameraGapPx") ?: 34
             val dynamicBarCustomLabel = call.getString("dynamicBarCustomLabel") ?: "Wasu's Jarvis"
             val dynamicBarOutside = call.getBoolean("dynamicBarShowOutsideApp") ?: true
+            val dynamicBarNotifDisplayMode = call.getString("dynamicBarNotifDisplayMode") ?: "icon_name"
+            val dynamicBarNotifExpandSeconds = call.getInt("dynamicBarNotifExpandSeconds") ?: 6
+            val dynamicBarEnabledAppsJson = call.getString("dynamicBarEnabledAppsJson")
+            val dynamicBarShowFlashlight = call.getBoolean("dynamicBarShowFlashlight") ?: true
+            val dynamicBarShowMusic = call.getBoolean("dynamicBarShowMusic") ?: true
+            val edgeLightingStyle = call.getString("edgeLightingStyle") ?: "aurora_sweep"
             val unlockBarAnim = call.getString("unlockBarAnimStyle") ?: "aurora_bloom"
             val fingerprintAnimId = call.getString("fingerprintAnimId") ?: "ripple_wave"
             val faceAnimId = call.getString("faceAnimId") ?: "hologram_mesh"
@@ -2653,9 +2673,18 @@ class QNexusPlugin : Plugin() {
             val biometricUnlockAnimDisplay = call.getString("biometricUnlockAnimDisplay") ?: "auto"
             val chargingAnim = call.getString("chargingAnim") ?: "oneui9_turbo"
             val chargingEnabled = call.getBoolean("chargingOverlayEnabled") ?: true
+            val chargingDurationSeconds = call.getInt("chargingDurationSeconds") ?: 10
+            val chargingDismissMethod = call.getString("chargingDismissMethod") ?: "single_tap"
+            val chargingUnpluggedAlert = call.getBoolean("chargingUnpluggedAlert") ?: true
+            val chargingFullBatteryAlert = call.getBoolean("chargingFullBatteryAlert") ?: true
+            val chargingShowPhoto = call.getBoolean("chargingShowPhoto") ?: false
             val accentHex = call.getString("accentHex") ?: "#00f0ff"
-            val liveWallpaperStyle = call.getString("liveWallpaperStyle") ?: "oneui9_aurora"
+            val liveWallpaperStyle = call.getString("liveWallpaperStyle") ?: "depth_moon_eclipse"
             val clockHex = call.getString("clockHex") ?: "#e0f2fe"
+            val clockStyleId = call.getString("clockStyleId") ?: "depth_editorial"
+            val wallpaperDepthEnabled = call.getBoolean("wallpaperDepthEnabled") ?: true
+            val wallpaperDimPercent = call.getInt("wallpaperDimPercent") ?: 18
+            val wallpaperClockPosY = call.getInt("wallpaperClockPosY") ?: 22
             val waveStyle = call.getString("waveVisualizerStyle") ?: "rainbow_prism"
             val waveTheme = call.getString("waveColorTheme") ?: "aurora_cyan"
             val followUpEnabled = call.getBoolean("followUpListeningEnabled") ?: true
@@ -2667,9 +2696,16 @@ class QNexusPlugin : Plugin() {
                 .putString("dynamic_bar_anchor", dynamicBarAnchor)
                 .putInt("dynamic_bar_offset_x", dynamicBarOffsetX)
                 .putInt("dynamic_bar_offset_y", dynamicBarOffsetY)
+                .putInt("dynamic_bar_width_dp", dynamicBarWidthDp)
+                .putInt("dynamic_bar_height_dp", dynamicBarHeightDp)
                 .putInt("dynamic_bar_camera_gap_px", dynamicBarCameraGapPx)
                 .putString("dynamic_bar_custom_label", dynamicBarCustomLabel)
                 .putBoolean("dynamic_bar_outside_app", dynamicBarOutside)
+                .putString("dynamic_bar_notif_display_mode", dynamicBarNotifDisplayMode)
+                .putInt("dynamic_bar_notif_expand_seconds", dynamicBarNotifExpandSeconds)
+                .putBoolean("dynamic_bar_show_flashlight", dynamicBarShowFlashlight)
+                .putBoolean("dynamic_bar_show_music", dynamicBarShowMusic)
+                .putString("edge_lighting_style", edgeLightingStyle)
                 .putString("unlock_bar_anim_style", unlockBarAnim)
                 .putString("fingerprint_anim_id", fingerprintAnimId)
                 .putString("face_anim_id", faceAnimId)
@@ -2677,13 +2713,23 @@ class QNexusPlugin : Plugin() {
                 .putString("biometric_unlock_anim_display", biometricUnlockAnimDisplay)
                 .putString("charging_anim_id", chargingAnim)
                 .putBoolean("charging_overlay_enabled", chargingEnabled)
+                .putInt("charging_duration_seconds", chargingDurationSeconds)
+                .putString("charging_dismiss_method", chargingDismissMethod)
+                .putBoolean("charging_unplugged_alert", chargingUnpluggedAlert)
+                .putBoolean("charging_full_battery_alert", chargingFullBatteryAlert)
+                .putBoolean("charging_show_photo", chargingShowPhoto)
                 .putString("oneui_accent_hex", accentHex)
                 .putString("live_wallpaper_style", liveWallpaperStyle)
                 .putString("oneui_clock_hex", clockHex)
+                .putString("oneui_clock_style_id", clockStyleId)
+                .putBoolean("wallpaper_depth_enabled", wallpaperDepthEnabled)
+                .putInt("wallpaper_dim_percent", wallpaperDimPercent)
+                .putInt("wallpaper_clock_pos_y", wallpaperClockPosY)
                 .putString("wave_visualizer_style", waveStyle)
                 .putString("wave_color_theme", waveTheme)
                 .putBoolean("follow_up_listening", followUpEnabled)
 
+            if (dynamicBarEnabledAppsJson != null) editor.putString("dynamic_bar_enabled_apps_json", dynamicBarEnabledAppsJson)
             if (vipContactsJson != null) editor.putString("vip_contacts_json", vipContactsJson)
             if (perAppRulesJson != null) editor.putString("per_app_rules_json", perAppRulesJson)
             editor.apply()

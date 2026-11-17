@@ -139,7 +139,7 @@ object WakeAudioUtils {
 
     fun isCloudRecentlyUnavailable(): Boolean {
         if (lastCloudAvailable) return false
-        return lastCloudFailedAtMs > 0L && (System.currentTimeMillis() - lastCloudFailedAtMs) < 60_000L
+        return lastCloudFailedAtMs > 0L && (System.currentTimeMillis() - lastCloudFailedAtMs) < 8_000L
     }
 
     fun markCloudVoiceAudioResult(ok: Boolean) {
@@ -207,8 +207,8 @@ object WakeAudioUtils {
             val url = URL("$base/api/jarvis/wake-check")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
-                connectTimeout = 3000
-                readTimeout = 4500
+                connectTimeout = 4500
+                readTimeout = 6500
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
             }
@@ -260,23 +260,84 @@ object WakeAudioUtils {
         characterGender: String = "female",
         personalityName: String = "Wasi ki Jan"
     ): BgVoiceCommandResult {
-        if (!hasDeviceInternet(context) || isCloudRecentlyUnavailable()) {
+        if (!hasDeviceInternet(context)) {
             return BgVoiceCommandResult(networkOk = false, silentAudio = true)
+        }
+        val base = getCloudApiBase(context)
+        for (attempt in 0 until 2) {
+            var conn: HttpURLConnection? = null
+            try {
+                val url = URL("$base/api/jarvis/voice-audio")
+                conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 7000
+                    readTimeout = 14000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                }
+                val payload = JSONObject().apply {
+                    put("audioBase64", Base64.encodeToString(wavBytes, Base64.NO_WRAP))
+                    put("mimeType", "audio/wav")
+                    put("language", language)
+                    put("characterGender", characterGender)
+                    put("personalityName", personalityName)
+                    put("fastMode", true)
+                }
+                conn.outputStream.use { os ->
+                    os.write(payload.toString().toByteArray(Charsets.UTF_8))
+                    os.flush()
+                }
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    if (attempt == 0) continue
+                    markCloudVoiceAudioResult(false)
+                    return BgVoiceCommandResult(networkOk = false, silentAudio = true)
+                }
+                val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                val json = JSONObject(body)
+                markCloudVoiceAudioResult(true)
+                return BgVoiceCommandResult(
+                    networkOk = true,
+                    silentAudio = json.optBoolean("silentAudio", false),
+                    transcript = json.optString("transcript", "").trim(),
+                    reply = json.optString("urduSpeechText", "").ifBlank { json.optString("reply", "") }.trim(),
+                    action = json.optString("action", "NONE").trim(),
+                    actionPayloadJson = json.optJSONObject("actionPayload")?.toString() ?: "{}"
+                )
+            } catch (_: Exception) {
+                if (attempt == 1) {
+                    markCloudVoiceAudioResult(false)
+                }
+            } finally {
+                try { conn?.disconnect() } catch (_: Exception) {}
+            }
+        }
+        return BgVoiceCommandResult(networkOk = false, silentAudio = true)
+    }
+
+    fun queryBackgroundTextChatOnline(
+        context: Context,
+        message: String,
+        language: String = "ur",
+        characterGender: String = "female",
+        personalityName: String = "Wasi ki Jan"
+    ): BgVoiceCommandResult {
+        if (!hasDeviceInternet(context) || message.isBlank()) {
+            return BgVoiceCommandResult(networkOk = false, silentAudio = false, transcript = message)
         }
         var conn: HttpURLConnection? = null
         return try {
             val base = getCloudApiBase(context)
-            val url = URL("$base/api/jarvis/voice-audio")
+            val url = URL("$base/api/jarvis/chat")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
-                connectTimeout = 5000
-                readTimeout = 10000
+                connectTimeout = 6500
+                readTimeout = 12000
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
             }
             val payload = JSONObject().apply {
-                put("audioBase64", Base64.encodeToString(wavBytes, Base64.NO_WRAP))
-                put("mimeType", "audio/wav")
+                put("message", message)
                 put("language", language)
                 put("characterGender", characterGender)
                 put("personalityName", personalityName)
@@ -288,23 +349,20 @@ object WakeAudioUtils {
             }
             val code = conn.responseCode
             if (code !in 200..299) {
-                markCloudVoiceAudioResult(false)
-                return BgVoiceCommandResult(networkOk = false, silentAudio = true)
+                return BgVoiceCommandResult(networkOk = false, silentAudio = false, transcript = message)
             }
             val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             val json = JSONObject(body)
-            markCloudVoiceAudioResult(true)
             BgVoiceCommandResult(
                 networkOk = true,
-                silentAudio = json.optBoolean("silentAudio", false),
-                transcript = json.optString("transcript", "").trim(),
+                silentAudio = false,
+                transcript = message,
                 reply = json.optString("urduSpeechText", "").ifBlank { json.optString("reply", "") }.trim(),
                 action = json.optString("action", "NONE").trim(),
                 actionPayloadJson = json.optJSONObject("actionPayload")?.toString() ?: "{}"
             )
         } catch (_: Exception) {
-            markCloudVoiceAudioResult(false)
-            BgVoiceCommandResult(networkOk = false, silentAudio = true)
+            BgVoiceCommandResult(networkOk = false, silentAudio = false, transcript = message)
         } finally {
             try { conn?.disconnect() } catch (_: Exception) {}
         }

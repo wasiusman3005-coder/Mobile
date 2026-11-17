@@ -7,7 +7,7 @@ import android.os.IBinder
 import android.provider.Settings
 
 /**
- * Standard TYPE_APPLICATION_OVERLAY fallback service for Dynamic Bar & Charging Modal
+ * Standard TYPE_APPLICATION_OVERLAY fallback service for Dynamic Bar, Charging Studio & Edge Lighting
  * when Accessibility Service overlay is not enabled.
  * Delegates all rendering and strict settings-locked positioning to DynamicIslandOverlayController.
  */
@@ -16,10 +16,14 @@ class OneUiOverlayService : Service() {
     companion object {
         const val ACTION_UPDATE = "com.qnexus.jarvis.ONEUI_OVERLAY_UPDATE"
         const val ACTION_SHOW_CHARGING = "com.qnexus.jarvis.ONEUI_OVERLAY_CHARGING"
+        const val ACTION_SHOW_UNPLUGGED = "com.qnexus.jarvis.ONEUI_OVERLAY_UNPLUGGED"
+        const val ACTION_SHOW_BATTERY_FULL = "com.qnexus.jarvis.ONEUI_OVERLAY_BATTERY_FULL"
         const val ACTION_VOICE_STATE = "com.qnexus.jarvis.ONEUI_OVERLAY_VOICE"
         const val ACTION_SHOW_NOTIFICATION = "com.qnexus.jarvis.ONEUI_OVERLAY_NOTIF"
         const val ACTION_SHOW_INCOMING_CALL = "com.qnexus.jarvis.ONEUI_OVERLAY_CALL"
         const val ACTION_SHOW_UNLOCK_EFFECT = "com.qnexus.jarvis.ONEUI_OVERLAY_UNLOCK"
+        const val ACTION_EDGE_LIGHTING = "com.qnexus.jarvis.ONEUI_OVERLAY_EDGE_LIGHTING"
+        const val ACTION_MEDIA_STATUS = "com.qnexus.jarvis.ONEUI_OVERLAY_MEDIA"
         const val ACTION_STOP = "com.qnexus.jarvis.ONEUI_OVERLAY_STOP"
     }
 
@@ -60,6 +64,17 @@ class OneUiOverlayService : Service() {
     private fun dispatchActionToActiveController(intent: Intent?, action: String) {
         when (action) {
             ACTION_SHOW_CHARGING -> DynamicIslandOverlayController.dispatchCharging()
+            ACTION_SHOW_UNPLUGGED -> DynamicIslandOverlayController.dispatchChargingDisconnected()
+            ACTION_SHOW_BATTERY_FULL -> DynamicIslandOverlayController.dispatchBatteryFull100()
+            ACTION_EDGE_LIGHTING -> {
+                val reason = intent?.getStringExtra("reason") ?: "notification"
+                DynamicIslandOverlayController.dispatchEdgeLighting(reason)
+            }
+            ACTION_MEDIA_STATUS -> {
+                val track = intent?.getStringExtra("track") ?: ""
+                val playing = intent?.getBooleanExtra("isPlaying", false) ?: false
+                DynamicIslandOverlayController.dispatchMediaStatus(track, playing)
+            }
             ACTION_VOICE_STATE -> {
                 val state = intent?.getStringExtra("state") ?: "standby"
                 val text = intent?.getStringExtra("text") ?: ""
@@ -67,10 +82,14 @@ class OneUiOverlayService : Service() {
                 DynamicIslandOverlayController.dispatchVoiceState(state, text, rms)
             }
             ACTION_SHOW_NOTIFICATION -> {
+                val key = intent?.getStringExtra("key") ?: ""
+                val pkg = intent?.getStringExtra("packageName") ?: ""
+                val appName = intent?.getStringExtra("appName") ?: ""
                 val title = intent?.getStringExtra("title") ?: "Notification"
                 val text = intent?.getStringExtra("text") ?: ""
                 val isVip = intent?.getBooleanExtra("isVip", false) ?: false
-                DynamicIslandOverlayController.dispatchNotification(title, text, isVip)
+                val canReply = intent?.getBooleanExtra("canReply", false) ?: false
+                DynamicIslandOverlayController.dispatchNotification(key, pkg, appName, title, text, isVip, canReply)
             }
             ACTION_SHOW_INCOMING_CALL -> {
                 val caller = intent?.getStringExtra("caller") ?: "Incoming Call"

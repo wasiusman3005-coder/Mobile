@@ -80,6 +80,9 @@ export interface VipContactRule {
   phoneOrHandle?: string;
   priority: 'critical' | 'high' | 'normal';
   repeatMinutes: number;
+  repeatIntervalSeconds?: number;
+  repeatCount?: number;
+  channels?: Array<'all' | 'calls' | 'whatsapp' | 'sms' | 'other'>;
   alwaysSpeakAloud: boolean;
 }
 
@@ -116,7 +119,13 @@ export type LiveWallpaperStyleId =
   | 'deep_ocean'
   | 'velvet_ripples'
   | 'nebula_particles'
-  | 'jarvis_reactor_clock';
+  | 'jarvis_reactor_clock'
+  | 'depth_moon_eclipse'
+  | 'depth_supercar_neon'
+  | 'depth_abyssal_ocean'
+  | 'depth_emerald_ridge'
+  | 'depth_obsidian_panther'
+  | 'depth_alpine_peak';
 
 export type LockScreenDesignId =
   | 'oneui9_nowbar'
@@ -134,7 +143,8 @@ export type ClockStyleId =
   | 'flip_retro'
   | 'neon_segment'
   | 'calligraphy_mono'
-  | 'floating_glass';
+  | 'floating_glass'
+  | 'depth_editorial';
 
 export type DynamicBarStyleId =
   | 'now_bar_pill'
@@ -243,6 +253,11 @@ export type DynamicBarAnchor =
 export interface OneUiStudioConfig {
   liveWallpaperId: LiveWallpaperStyleId;
   liveWallpaperEnabledInApp: boolean;
+  wallpaperDepthEnabled?: boolean;
+  wallpaperClockDepthBehindSubject?: boolean;
+  wallpaperDimPercent?: number;
+  wallpaperBlurPx?: number;
+  wallpaperClockPosY?: number;
   lockDesignId: LockScreenDesignId;
   clockStyleId: ClockStyleId;
   clockColorHex: string;
@@ -251,9 +266,16 @@ export interface OneUiStudioConfig {
   dynamicBarAnchor: DynamicBarAnchor;
   dynamicBarOffsetX: number;
   dynamicBarOffsetY: number;
+  dynamicBarWidthDp?: number;
+  dynamicBarHeightDp?: number;
   dynamicBarCameraGapPx: number;
   dynamicBarCustomLabel: string;
   dynamicBarShowOutsideApp: boolean;
+  dynamicBarNotifDisplayMode?: 'icon_name' | 'full_preview';
+  dynamicBarNotifExpandSeconds?: number;
+  dynamicBarEnabledApps?: string[];
+  dynamicBarShowFlashlight?: boolean;
+  dynamicBarShowMusic?: boolean;
   unlockBarAnimStyle: UnlockBarAnimStyleId;
   fingerprintAnimId: FingerprintAnimId;
   fingerprintOnAnyWallpaper: boolean;
@@ -261,6 +283,12 @@ export interface OneUiStudioConfig {
   faceAnimId: FaceAnimId;
   chargingAnimId: ChargingAnimId;
   chargingOverlayEnabled: boolean;
+  customChargingImageDataUrl?: string;
+  chargingDurationSeconds?: number;
+  chargingDismissMethod?: 'single_tap' | 'double_tap';
+  chargingUnpluggedAlert?: boolean;
+  chargingFullBatteryAlert?: boolean;
+  chargingShowPhoto?: boolean;
   waveVisualizerStyle: WaveVisualizerStyleId;
   waveColorTheme: string;
   galleryWallpaperDataUrl: string;
