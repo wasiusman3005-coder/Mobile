@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
+import { resolveApiUrl } from "../services/systemTelemetry";
 import { LanguageCode, VoiceGender } from "../types";
 
 export interface BusinessVenture {
@@ -118,7 +119,7 @@ export const BusinessAdvisorHub: React.FC<BusinessAdvisorHubProps> = ({
     soundEffects.playScan();
     setIsAnalyzing(true);
     try {
-      const res = await fetch("/api/jarvis/business-advise", {
+      const res = await fetch(resolveApiUrl("/api/jarvis/business-advise"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

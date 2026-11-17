@@ -2,7 +2,12 @@ import React, { useState, useRef, useEffect } from "react";
 import { Settings, X, Palette, AudioWaveform, Shield, Clock, Upload, Check, Sparkles, Sliders, Globe, Play, Fingerprint, ScanFace, Trash2, Maximize2, Eye, BellRing, Smartphone, Atom, BatteryWarning, Zap, Volume2 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
-import { storageService, defaultAvatarConfig, defaultSecurityConfig } from "../services/storage";
+import {
+  storageService,
+  defaultAvatarConfig,
+  defaultSecurityConfig,
+  defaultCustomization,
+} from "../services/storage";
 import {
   checkBiometricCapabilities,
   enrollDeviceBiometric,
@@ -13,6 +18,7 @@ import { setNativeBackgroundAutoAnnounce } from "../services/nativeAndroidBridge
 import { triggerHaptic } from "../services/mobileDeviceActions";
 import { DashboardCustomization, CustomVoiceProfile, AccentTheme, LanguageCode, MobileSecurityConfig, ProactiveAlertConfig } from "../types";
 import { ELEVENLABS_VOICE_PRESETS, getCharacterDisplayName } from "../data/jarvisCatalog";
+import { resolveApiUrl } from "../services/systemTelemetry";
 
 type SettingsTabId = "appearance" | "voice" | "security" | "alerts" | "screensaver" | "health" | "data";
 
@@ -83,13 +89,20 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
 
   const avatarCfg = customization.avatarConfig || defaultAvatarConfig;
   const securityCfg: MobileSecurityConfig = customization.securityConfig || defaultSecurityConfig;
-  const proactiveCfg: ProactiveAlertConfig = customization.proactiveAlerts || {
-    incomingNotifications: true,
-    speakNotificationsAloud: true,
-    lowBatteryThreshold: 20,
-    taskReminders: true,
-    networkAlerts: true,
-  };
+  const proactiveCfg: ProactiveAlertConfig =
+    customization.proactiveAlerts ||
+    defaultCustomization.proactiveAlerts || {
+      incomingNotifications: true,
+      speakNotificationsAloud: true,
+      lowBatteryThreshold: 20,
+      taskReminders: true,
+      networkAlerts: true,
+      vipContacts: [],
+      appRules: [],
+      taskUrgentRepeatMinutes: 5,
+      activityAwareMode: true,
+      autoCallVoiceControl: true,
+    };
   const femaleCharName = getCharacterDisplayName(avatarCfg, "female");
   const maleCharName = getCharacterDisplayName(avatarCfg, "male");
   const activeCharName = getCharacterDisplayName(avatarCfg);
@@ -112,7 +125,7 @@ export const QuantumSettingsModal: React.FC<QuantumSettingsModalProps> = ({
     }
     checkBiometricCapabilities().then(setBioCaps);
     setBrowserVoices(speechService.getAvailableBrowserVoices());
-    fetch("/api/tts/elevenlabs/status")
+    fetch(resolveApiUrl("/api/tts/elevenlabs/status"))
       .then((r) => r.json())
       .then((d) => setElevenServerConfigured(Boolean(d.configured)))
       .catch(() => {});

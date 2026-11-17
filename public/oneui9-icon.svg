@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#050b1d"/>
+      <stop offset="50%" stop-color="#111d4a"/>
+      <stop offset="100%" stop-color="#07122b"/>
+    </linearGradient>
+    <radialGradient id="cyanOrb" cx="30%" cy="28%" r="55%">
+      <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.65"/>
+      <stop offset="60%" stop-color="#0ea5e9" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="violetOrb" cx="74%" cy="72%" r="58%">
+      <stop offset="0%" stop-color="#a855f7" stop-opacity="0.72"/>
+      <stop offset="55%" stop-color="#ec4899" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="50%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <linearGradient id="barGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="55%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Samsung One UI Squircle Background -->
+  <rect x="44" y="44" width="936" height="936" rx="225" ry="225" fill="url(#bgGrad)" stroke="#38bdf8" stroke-opacity="0.45" stroke-width="10"/>
+  <rect x="44" y="44" width="936" height="936" rx="225" ry="225" fill="url(#cyanOrb)"/>
+  <rect x="44" y="44" width="936" height="936" rx="225" ry="225" fill="url(#violetOrb)"/>
+
+  <!-- Inner Glass Rim -->
+  <rect x="68" y="68" width="888" height="888" rx="205" ry="205" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="4"/>
+
+  <!-- Orbital Hologram Studio Rings -->
+  <circle cx="512" cy="442" r="248" fill="none" stroke="url(#ringGrad)" stroke-width="16" stroke-dasharray="190 42 75 42"/>
+  <circle cx="512" cy="442" r="196" fill="none" stroke="#67e8f9" stroke-opacity="0.65" stroke-width="6"/>
+  <circle cx="512" cy="442" r="144" fill="#071128" fill-opacity="0.92" stroke="#e2e8f0" stroke-opacity="0.45" stroke-width="6"/>
+
+  <!-- Stylized One UI 9 Numeral & Spark -->
+  <circle cx="512" cy="402" r="64" fill="none" stroke="#ffffff" stroke-width="24"/>
+  <path d="M 576 402 C 576 508, 520 546, 444 542" fill="none" stroke="url(#ringGrad)" stroke-width="24" stroke-linecap="round"/>
+  <polygon points="512,366 534,402 512,438 490,402" fill="#00f0ff"/>
+
+  <!-- Now Bar / Dynamic Pill Capsule -->
+  <rect x="272" y="748" width="480" height="106" rx="53" fill="#050b1c" fill-opacity="0.92" stroke="url(#barGrad)" stroke-width="8"/>
+  <rect x="310" y="777" width="96" height="48" rx="24" fill="#00f0ff"/>
+  <rect x="426" y="782" width="194" height="38" rx="19" fill="#c084fc" fill-opacity="0.92"/>
+  <circle cx="688" cy="801" r="26" fill="#10b981"/>
+</svg>

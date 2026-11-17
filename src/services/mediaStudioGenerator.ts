@@ -1,5 +1,6 @@
 // High-Definition Client + Server Media Studio Generator Helper
 // Guarantees crisp downloadable PNG images, YouTube Thumbnails, Screen Captures, and playable WebM Videos.
+import { resolveApiUrl } from './systemTelemetry';
 
 export async function generateAIOrCanvasImage(
   prompt: string,
@@ -7,7 +8,7 @@ export async function generateAIOrCanvasImage(
   styleName = 'Quantum Cyberpunk'
 ): Promise<{ imageUrl: string; source: 'gemini' | 'quantum-canvas' }> {
   try {
-    const res = await fetch('/api/media/generate-image', {
+    const res = await fetch(resolveApiUrl('/api/media/generate-image'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: `${styleName} style: ${prompt}`, aspectRatio }),
@@ -237,7 +238,7 @@ export async function generateAIOrCanvasVideo(
   duration: '5s' | '10s' = '5s'
 ): Promise<{ videoUrl: string; source: 'gemini-omni' | 'quantum-motion' }> {
   try {
-    const res = await fetch('/api/media/generate-video', {
+    const res = await fetch(resolveApiUrl('/api/media/generate-video'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, aspectRatio, duration }),

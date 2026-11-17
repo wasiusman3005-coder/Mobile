@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
+import { resolveApiUrl } from "../services/systemTelemetry";
 import { LanguageCode, VoiceGender } from "../types";
 
 export interface StudyTask {
@@ -297,7 +298,7 @@ export const StudentStudyHub: React.FC<StudentStudyHubProps> = ({
     setActiveTab("research");
 
     try {
-      const res = await fetch("/api/jarvis/study-solve", {
+      const res = await fetch(resolveApiUrl("/api/jarvis/study-solve"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -335,7 +336,7 @@ export const StudentStudyHub: React.FC<StudentStudyHubProps> = ({
     soundEffects.playScan();
     setSimLoading(true);
     try {
-      const res = await fetch("/api/jarvis/study-simulation", {
+      const res = await fetch(resolveApiUrl("/api/jarvis/study-simulation"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

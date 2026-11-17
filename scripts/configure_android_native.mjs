@@ -21,6 +21,14 @@ if (fs.existsSync(oldJavaMain)) {
   fs.unlinkSync(oldJavaMain);
 }
 
+// Copy custom Lock-Vault app icons & adaptive background color
+const srcNativeResDir = path.join(root, "android-native", "res");
+const androidResDir = path.join(root, "android", "app", "src", "main", "res");
+if (fs.existsSync(srcNativeResDir)) {
+  fs.cpSync(srcNativeResDir, androidResDir, { recursive: true, force: true });
+  console.log("Synced custom Lock-Vault launcher icons from android-native/res.");
+}
+
 // 1. Write hardened Android XML security & backup rules
 const resXmlDir = path.join(root, "android", "app", "src", "main", "res", "xml");
 fs.mkdirSync(resXmlDir, { recursive: true });
@@ -73,7 +81,16 @@ fs.writeFileSync(
 `,
   "utf8"
 );
-console.log("Wrote network_security_config.xml, data_extraction_rules.xml & backup_rules.xml.");
+
+fs.writeFileSync(
+  path.join(resXmlDir, "jarvis_wallpaper.xml"),
+  `<?xml version="1.0" encoding="utf-8"?>
+<wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
+    android:thumbnail="@mipmap/ic_oneui_studio" />
+`,
+  "utf8"
+);
+console.log("Wrote network_security_config.xml, data_extraction_rules.xml, backup_rules.xml & jarvis_wallpaper.xml.");
 
 const stringsPath = path.join(root, "android", "app", "src", "main", "res", "values", "strings.xml");
 if (fs.existsSync(stringsPath)) {
@@ -97,9 +114,15 @@ if (fs.existsSync(manifestPath)) {
     "android.permission.FLASHLIGHT",
     "android.permission.READ_CALL_LOG",
     "android.permission.READ_PHONE_STATE",
+    "android.permission.CALL_PHONE",
+    "android.permission.ANSWER_PHONE_CALLS",
+    "android.permission.READ_CONTACTS",
     "android.permission.READ_SMS",
     "android.permission.SEND_SMS",
     "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.ACCESS_COARSE_LOCATION",
+    "android.permission.ACTIVITY_RECOGNITION",
+    "android.permission.MODIFY_AUDIO_SETTINGS",
     "android.permission.VIBRATE",
     "android.permission.USE_BIOMETRIC",
     "android.permission.FOREGROUND_SERVICE",
@@ -108,6 +131,9 @@ if (fs.existsSync(manifestPath)) {
     "android.permission.WAKE_LOCK",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    "android.permission.SYSTEM_ALERT_WINDOW",
+    "android.permission.SET_WALLPAPER",
+    "android.permission.SET_WALLPAPER_HINTS",
   ];
   for (const p of perms) {
     if (!manifest.includes(p)) {
@@ -126,8 +152,29 @@ if (fs.existsSync(manifestPath)) {
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
     </queries>\n    <application`;
     manifest = manifest.replace("<application", queriesBlock);
+  } else {
+    if (!manifest.includes("com.whatsapp")) {
+      manifest = manifest.replace(
+        "</queries>",
+        `        <package android:name="com.whatsapp" />\n        <package android:name="com.whatsapp.w4b" />\n    </queries>`
+      );
+    }
+    const queriesMatch = manifest.match(/<queries>[\s\S]*?<\/queries>/);
+    const queriesSection = queriesMatch ? queriesMatch[0] : "";
+    if (!queriesSection.includes("android.intent.category.LAUNCHER")) {
+      manifest = manifest.replace(
+        "</queries>",
+        `        <intent>\n            <action android:name="android.intent.action.MAIN" />\n            <category android:name="android.intent.category.LAUNCHER" />\n        </intent>\n    </queries>`
+      );
+    }
   }
 
   // Harden application attributes (disable insecure cloud backup + enforce TLS network security config)
@@ -138,8 +185,55 @@ if (fs.existsSync(manifestPath)) {
       `<application\n        android:networkSecurityConfig="@xml/network_security_config"\n        android:dataExtractionRules="@xml/data_extraction_rules"\n        android:fullBackupContent="@xml/backup_rules"`
     );
   }
+  if (!manifest.includes('android:showWhenLocked="true"')) {
+    manifest = manifest.replace(
+      /<activity\s+([^>]*android:name="\.MainActivity"[^>]*)>/,
+      (_m, attrs) =>
+        `<activity ${attrs
+          .replace(/android:launchMode="[^"]*"/g, "")
+          .trim()} android:launchMode="singleTask" android:showWhenLocked="true" android:turnScreenOn="true">`
+    );
+  }
 
   const servicesBlock = `
+        <activity-alias
+            android:name=".OneUiStudioAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:label="One UI 9 Studio"
+            android:icon="@mipmap/ic_oneui_studio"
+            android:roundIcon="@mipmap/ic_oneui_studio">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <service
+            android:name=".JarvisLiveWallpaperService"
+            android:label="Wasu's Jarvis One UI 9 Live Wallpaper"
+            android:permission="android.permission.BIND_WALLPAPER"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/jarvis_wallpaper" />
+        </service>
+        <service
+            android:name=".OneUiOverlayService"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name=".ChargingBroadcastReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
         <service
             android:name=".QNexusNotificationService"
             android:label="Wasu's Jarvis Notifications &amp; Voice"
@@ -163,6 +257,7 @@ if (fs.existsSync(manifestPath)) {
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="com.qnexus.jarvis.ACTION_RESTART_WAKE_SERVICE" />
             </intent-filter>
         </receiver>
 `;
@@ -173,6 +268,54 @@ if (fs.existsSync(manifestPath)) {
     manifest = manifest
       .replace(/Q-NEXUS Notifications Control|Wasu&apos;s Jarvis Notifications &amp; Voice/g, "Wasu's Jarvis Notifications &amp; Voice")
       .replace(/android:stopWithTask="true"/g, 'android:stopWithTask="false"');
+    if (!manifest.includes("OneUiStudioAlias")) {
+      manifest = manifest.replace(
+        "</application>",
+        `        <activity-alias
+            android:name=".OneUiStudioAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:label="One UI 9 Studio"
+            android:icon="@mipmap/ic_oneui_studio"
+            android:roundIcon="@mipmap/ic_oneui_studio">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>\n    </application>`
+      );
+    }
+    if (!manifest.includes("JarvisLiveWallpaperService")) {
+      manifest = manifest.replace(
+        "</application>",
+        `        <service
+            android:name=".JarvisLiveWallpaperService"
+            android:label="Wasu's Jarvis One UI 9 Live Wallpaper"
+            android:permission="android.permission.BIND_WALLPAPER"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/jarvis_wallpaper" />
+        </service>
+        <service
+            android:name=".OneUiOverlayService"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name=".ChargingBroadcastReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
+            </intent-filter>
+        </receiver>\n    </application>`
+      );
+    }
     if (!manifest.includes("JarvisBootReceiver")) {
       manifest = manifest.replace(
         "</application>",
@@ -183,14 +326,20 @@ if (fs.existsSync(manifestPath)) {
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="com.qnexus.jarvis.ACTION_RESTART_WAKE_SERVICE" />
             </intent-filter>
         </receiver>\n    </application>`
+      );
+    } else if (!manifest.includes("ACTION_RESTART_WAKE_SERVICE")) {
+      manifest = manifest.replace(
+        `<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />`,
+        `<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />\n                <action android:name="com.qnexus.jarvis.ACTION_RESTART_WAKE_SERVICE" />`
       );
     }
   }
 
   fs.writeFileSync(manifestPath, manifest, "utf8");
-  console.log("Updated AndroidManifest.xml with security config, queries & services.");
+  console.log("Updated AndroidManifest.xml with security config, queries, OneUiStudioAlias, live wallpaper & services.");
 }
 
 const rootGradlePath = path.join(root, "android", "build.gradle");

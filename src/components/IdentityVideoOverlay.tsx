@@ -313,6 +313,7 @@ export const IdentityVideoOverlay: React.FC<IdentityVideoOverlayProps> = ({
       <video
         ref={videoRef}
         src={currentVideoSrc}
+        poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
         autoPlay
         playsInline
         preload="auto"

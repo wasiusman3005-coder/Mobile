@@ -27,6 +27,7 @@ import {
 } from "../services/mediaStudioGenerator";
 import { speechService } from "../services/speechService";
 import { soundEffects } from "../services/soundEffects";
+import { resolveApiUrl } from "../services/systemTelemetry";
 import { LanguageCode, VoiceGender } from "../types";
 
 export type MediaStudioTab = "video" | "thumbnail" | "image" | "screen_help" | "social_post";
@@ -216,7 +217,7 @@ export const CreativeMediaStudio: React.FC<CreativeMediaStudioProps> = ({
     setIsAnalyzingScreen(true);
     setScreenError("");
     try {
-      const res = await fetch("/api/jarvis/analyze-screen", {
+      const res = await fetch(resolveApiUrl("/api/jarvis/analyze-screen"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -238,7 +239,7 @@ export const CreativeMediaStudio: React.FC<CreativeMediaStudioProps> = ({
   const handleAICaptionDraft = async () => {
     soundEffects.playClick();
     try {
-      const res = await fetch("/api/jarvis/chat", {
+      const res = await fetch(resolveApiUrl("/api/jarvis/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

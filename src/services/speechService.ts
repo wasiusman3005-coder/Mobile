@@ -1,15 +1,18 @@
 import { DashboardCustomization, LanguageCode, VoiceGender } from "../types";
 import { WAKE_WORDS_100_PLUS } from "../data/jarvisCatalog";
-import { getRemotePcUrl } from "./systemTelemetry";
+import { getRemotePcUrl, resolveApiUrl } from "./systemTelemetry";
+import { toPakistaniUrduSpeechText } from "./urduPhonetics";
 import {
   isNativeAndroidApk,
   requestMicPermissionAndroid,
   speakNativeAndroid,
   stopNativeAndroidSpeech,
   startNativeAndroidListening,
+  startSystemVoiceDialogAndroid,
   stopNativeAndroidListening,
   cancelNativeAndroidListening,
   setNativeAndroidWakeWord,
+  setNativeCloudApiUrl,
   subscribeNativeSpeechEvents,
 } from "./nativeAndroidBridge";
 
@@ -156,29 +159,53 @@ class SpeechService {
   private initNativeSpeechBridge() {
     if (this.nativeSpeechUnsub) return;
     this.wakeSupported = true;
+    const baseUrl = resolveApiUrl("/").replace(/\/+$/, "");
+    if (baseUrl) {
+      setNativeCloudApiUrl(baseUrl).catch(() => {});
+    }
     this.nativeSpeechUnsub = subscribeNativeSpeechEvents({
-      onStart: () => {
+      onStart: (eventSid) => {
+        if (typeof eventSid === "number" && eventSid !== this.captureSessionId) return;
+        if (this.finalizedSessionId === this.captureSessionId) return;
         this.notifyListening(true);
       },
-      onPartial: (text) => {
-        if (!this.isListening) return;
+      onPartial: (text, eventSid) => {
+        if (typeof eventSid === "number" && eventSid !== this.captureSessionId) return;
+        if (!this.isListening || this.finalizedSessionId === this.captureSessionId) return;
         this.bestTranscript = text;
         this.speechEnergyDetected = true;
         this.commandCallbacks.onResult?.(text, false);
       },
-      onResult: (text) => {
+      onResult: (text, eventSid) => {
+        const sid = typeof eventSid === "number" ? eventSid : this.captureSessionId;
+        if (sid !== this.captureSessionId) return;
         if (text && text.trim()) {
-          this.finalizeSpeechTranscript(this.captureSessionId, text.trim());
+          this.finalizeSpeechTranscript(sid, text.trim());
         }
       },
-      onRms: (level) => {
+      onAudioCaptured: (audioBase64, mimeType, eventSid) => {
+        const sid = typeof eventSid === "number" ? eventSid : this.captureSessionId;
+        if (sid !== this.captureSessionId || this.finalizedSessionId === sid) return;
+        this.finalizedSessionId = sid;
+        this.notifyListening(false);
+        this.cleanupCaptureResources(true);
+        if (this.commandCallbacks.onAudioCaptured) {
+          this.commandCallbacks.onAudioCaptured(audioBase64, mimeType);
+        } else {
+          this.commandCallbacks.onError?.("Awaaz record hui lekin handler active nahi tha.");
+        }
+        this.commandCallbacks.onEnd?.();
+        this.resumeWakeDetectorSoon();
+      },
+      onRms: (level, eventSid) => {
+        if (typeof eventSid === "number" && eventSid !== this.captureSessionId) return;
         if (this.isListening) {
           this.notifyAudioLevel(level);
         }
       },
-      onError: (message) => {
-        const sid = this.captureSessionId;
-        if (this.finalizedSessionId === sid) return;
+      onError: (message, _code, eventSid) => {
+        const sid = typeof eventSid === "number" ? eventSid : this.captureSessionId;
+        if (sid !== this.captureSessionId || this.finalizedSessionId === sid) return;
         if (this.bestTranscript.trim()) {
           this.finalizeSpeechTranscript(sid, this.bestTranscript.trim());
           return;
@@ -188,10 +215,11 @@ class SpeechService {
         this.cleanupCaptureResources(true);
         this.commandCallbacks.onError?.(message || "Awaaz detect nahi hui. Dobara bolein.");
         this.commandCallbacks.onEnd?.();
+        this.resumeWakeDetectorSoon();
       },
-      onEnd: () => {
-        const sid = this.captureSessionId;
-        if (this.finalizedSessionId === sid) return;
+      onEnd: (eventSid) => {
+        const sid = typeof eventSid === "number" ? eventSid : this.captureSessionId;
+        if (sid !== this.captureSessionId || this.finalizedSessionId === sid) return;
         if (this.bestTranscript.trim()) {
           this.finalizeSpeechTranscript(sid, this.bestTranscript.trim());
           return;
@@ -200,6 +228,7 @@ class SpeechService {
         this.notifyListening(false);
         this.cleanupCaptureResources(true);
         this.commandCallbacks.onEnd?.();
+        this.resumeWakeDetectorSoon();
       },
       onTtsStart: () => {
         this.notifySpeaking(true);
@@ -211,7 +240,7 @@ class SpeechService {
       },
       onWakeStatus: (active, status) => {
         this.wakeEngineState = active ? "running" : "idle";
-        this.wakeCallbacks.onWakeStatusChange?.(active, status || "LISTENING — Say 'Hi Jarvis' anytime");
+        this.wakeCallbacks.onWakeStatusChange?.(active, status || "LISTENING — Say 'Jarvis' anytime");
       },
     });
   }
@@ -832,7 +861,7 @@ class SpeechService {
         const rms = Math.sqrt(sum / buf.length);
         const now = Date.now();
 
-        if (!speechActive && rms > 0.032) {
+        if (!speechActive && rms > 0.014) {
           speechActive = true;
           speechStartedAt = now;
           lastLoudAt = now;
@@ -859,7 +888,7 @@ class SpeechService {
                   };
                   reader.readAsDataURL(blob);
                 });
-                const res = await fetch("/api/jarvis/wake-check", {
+                const res = await fetch(resolveApiUrl("/api/jarvis/wake-check"), {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -1166,7 +1195,7 @@ class SpeechService {
           this.resumeWakeDetectorSoon();
           return;
         }
-        const nativeRes = await startNativeAndroidListening(lang);
+        const nativeRes = await startNativeAndroidListening(lang, sessionId);
         if (this.captureSessionId !== sessionId || this.finalizedSessionId === sessionId) return;
         if (!nativeRes.ok) {
           this.finalizedSessionId = sessionId;
@@ -1238,8 +1267,8 @@ class SpeechService {
                   sum += v * v;
                 }
                 const rms = Math.sqrt(sum / buf.length);
-                this.notifyAudioLevel(Math.min(1, rms * 11));
-                if (rms > 0.022) {
+                this.notifyAudioLevel(Math.min(1, rms * 15));
+                if (rms > 0.01) {
                   this.speechEnergyDetected = true;
                   lastLoudAt = Date.now();
                 } else if (
@@ -1341,6 +1370,7 @@ class SpeechService {
 
       // Engine 1: Fast Web Speech API
       const rec = this.createCommandRecognitionInstance(lang);
+      const recCreatedAt = Date.now();
       if (rec) {
         this.recognition = rec;
         let accumulatedFinal = "";
@@ -1389,6 +1419,7 @@ class SpeechService {
           if (this.captureSessionId !== sessionId || this.finalizedSessionId === sessionId) return;
 
           if (mediaReady && this.activeMediaRecorder && this.activeMediaRecorder.state === "recording") {
+            const quickDrop = Date.now() - recCreatedAt < 1200;
             if (this.speechEnergyDetected) {
               try {
                 this.activeMediaRecorder.stop();
@@ -1405,7 +1436,7 @@ class SpeechService {
                     this.activeMediaRecorder.stop();
                   } catch {}
                 }
-              }, 2800);
+              }, quickDrop ? 6500 : 3200);
             }
           } else if (this.finalizedSessionId !== sessionId) {
             this.finalizedSessionId = sessionId;
@@ -1444,6 +1475,32 @@ class SpeechService {
       }
     }, 260);
 
+    return true;
+  }
+
+  public triggerSystemVoiceDialog(lang: LanguageCode = "ur"): boolean {
+    if (!isNativeAndroidApk()) {
+      return this.startListening(lang);
+    }
+    const sessionId = ++this.captureSessionId;
+    this.bestTranscript = "";
+    this.speechEnergyDetected = false;
+    this.discardMediaFallback = false;
+    this.cleanupCaptureResources(true);
+    this.cancelSpeech();
+    this.wakePausedForCommand = true;
+    this.notifyListening(true);
+    this.commandCallbacks.onStart?.();
+    startSystemVoiceDialogAndroid(lang, sessionId).then((res) => {
+      if (this.captureSessionId !== sessionId || this.finalizedSessionId === sessionId) return;
+      if (!res.ok) {
+        this.finalizedSessionId = sessionId;
+        this.notifyListening(false);
+        this.commandCallbacks.onError?.(res.message || "System Voice Dialog start nahi ho saka.");
+        this.commandCallbacks.onEnd?.();
+        this.resumeWakeDetectorSoon();
+      }
+    });
     return true;
   }
 
@@ -1594,12 +1651,19 @@ class SpeechService {
     // Pause wake detector cleanly while TTS plays so Jarvis doesn't hear itself
     this.abortWakeRecognitionSafely();
 
-    // Native Android APK Direct Offline-Ready TextToSpeech (Guaranteed female/male greeting & replies without WebView autoplay block)
+    const isUrduOrPunjabi = lang === "ur" || lang === "pa";
+    const nastaliqUrduText = isUrduOrPunjabi
+      ? options.urduSpeechText?.trim()
+        ? toPakistaniUrduSpeechText(options.urduSpeechText)
+        : toPakistaniUrduSpeechText(cleanText)
+      : cleanText;
+
+    // Native Android APK Direct Offline-Ready TextToSpeech (Guaranteed female/male greeting & replies with pure Pakistani Urdu Nastaliq)
     const isApkWithoutRemoteServer = isNativeAndroidApk() && !getRemotePcUrl();
     if (isApkWithoutRemoteServer && !useElevenLabs) {
       this.nativeTtsResolve = finishSpeaking;
       const spokeOk = await speakNativeAndroid({
-        text: cleanText,
+        text: nastaliqUrduText,
         lang,
         gender: effectiveGender,
         pitch: effectivePitch,
@@ -1614,7 +1678,7 @@ class SpeechService {
     // 1. Real ElevenLabs TTS
     if (useElevenLabs) {
       try {
-        const elRes = await fetch("/api/tts/elevenlabs", {
+        const elRes = await fetch(resolveApiUrl("/api/tts/elevenlabs"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1666,8 +1730,8 @@ class SpeechService {
     try {
       const controller = new AbortController();
       this.activeTtsAbort = controller;
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
-      const res = await fetch("/api/jarvis/tts", {
+      const timeoutId = setTimeout(() => controller.abort(), isNativeAndroidApk() ? 3500 : 8000);
+      const res = await fetch(resolveApiUrl("/api/jarvis/tts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
@@ -1784,6 +1848,13 @@ class SpeechService {
     onComplete?: () => void
   ) {
     if (isNativeAndroidApk()) {
+      const targetLang = options.lang || "ur";
+      const nativeSpokenText =
+        targetLang === "ur" || targetLang === "pa"
+          ? options.urduScriptText?.trim()
+            ? toPakistaniUrduSpeechText(options.urduScriptText)
+            : toPakistaniUrduSpeechText(text)
+          : text;
       this.nativeTtsResolve = () => {
         if (onComplete) onComplete();
         else {
@@ -1792,8 +1863,8 @@ class SpeechService {
         }
       };
       speakNativeAndroid({
-        text,
-        lang: options.lang || "ur",
+        text: nativeSpokenText,
+        lang: targetLang,
         gender: options.gender === "male" ? "male" : "female",
         pitch: options.pitch,
         rate: options.rate,
@@ -1887,8 +1958,15 @@ class SpeechService {
         null;
     }
 
+    const resolvedUrdu =
+      lang === "ur" || lang === "pa"
+        ? urduScriptText && urduScriptText.trim().length > 0
+          ? toPakistaniUrduSpeechText(urduScriptText.trim())
+          : toPakistaniUrduSpeechText(text)
+        : urduScriptText;
+
     const spokenContent =
-      isSouthAsianVoice && urduScriptText && urduScriptText.trim().length > 0 ? urduScriptText.trim() : text;
+      isSouthAsianVoice && resolvedUrdu && resolvedUrdu.trim().length > 0 ? resolvedUrdu.trim() : text;
 
     const utterance = new SpeechSynthesisUtterance(spokenContent);
     if (lang === "ur" || lang === "pa") {

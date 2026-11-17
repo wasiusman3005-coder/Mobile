@@ -1,4 +1,5 @@
-import { UserProfile, TaskItem, ExpenseItem, HealthState, EditingMacro, FileItem, DashboardCustomization, AvatarStudioConfig, MobileSecurityConfig, SummaryLogEntry } from "../types";
+import { UserProfile, TaskItem, ExpenseItem, HealthState, EditingMacro, FileItem, DashboardCustomization, AvatarStudioConfig, MobileSecurityConfig, SummaryLogEntry, OneUiStudioConfig } from "../types";
+import { DEFAULT_APP_ALERT_RULES } from "../data/oneUi9Catalog";
 
 export const CLEAN_SLATE_VERSION = "v4-wasu-mobile-jarvis";
 
@@ -64,6 +65,40 @@ export const defaultSecurityConfig: MobileSecurityConfig = {
   autoLockMinutes: 5,
 };
 
+export const defaultOneUiConfig: OneUiStudioConfig = {
+  liveWallpaperId: "oneui9_aurora",
+  liveWallpaperEnabledInApp: true,
+  lockDesignId: "oneui9_nowbar",
+  clockStyleId: "oneui9_bold",
+  clockColorHex: "#e0f2fe",
+  clockScale: 1,
+  dynamicBarStyleId: "now_bar_pill",
+  dynamicBarAnchor: "top-center",
+  dynamicBarOffsetX: 0,
+  dynamicBarOffsetY: 10,
+  dynamicBarCustomLabel: "Wasu's Jarvis",
+  dynamicBarShowOutsideApp: true,
+  unlockBarAnimStyle: "aurora_bloom",
+  fingerprintAnimId: "ripple_wave",
+  faceAnimId: "hologram_mesh",
+  chargingAnimId: "oneui9_turbo",
+  chargingOverlayEnabled: true,
+  waveVisualizerStyle: "rainbow_prism",
+  waveColorTheme: "aurora_cyan",
+  galleryWallpaperDataUrl: "",
+  customBiometricImageDataUrl: "",
+  followUpListeningEnabled: true,
+  homeLayoutId: "oneui9_classic",
+  appIconStyleId: "oneui_squircle",
+  quickPanelStyleId: "glass_blur",
+  edgeLightingStyle: "aurora_sweep",
+  aodEnabled: false,
+  aodStyle: "minimal_clock",
+  blurIntensity: 75,
+  accentColorHex: "#00f0ff",
+  requireStartupLock: false,
+};
+
 export const defaultCustomization: DashboardCustomization = {
   accentTheme: "cyan",
   customAccentHex: "#06b6d4",
@@ -86,6 +121,11 @@ export const defaultCustomization: DashboardCustomization = {
     lowBatteryThreshold: 20,
     taskReminders: true,
     networkAlerts: true,
+    vipContacts: [],
+    appRules: DEFAULT_APP_ALERT_RULES,
+    taskUrgentRepeatMinutes: 5,
+    activityAwareMode: true,
+    autoCallVoiceControl: true,
   },
   screensaverType: "sentry",
   screensaverTimeoutMinutes: 5,
@@ -122,6 +162,7 @@ export const defaultCustomization: DashboardCustomization = {
   activeCustomVoiceId: "voice-wasi-ki-jan-ur",
   avatarConfig: defaultAvatarConfig,
   securityConfig: defaultSecurityConfig,
+  oneUiConfig: defaultOneUiConfig,
 };
 
 export const defaultUserProfile: UserProfile = {
@@ -359,9 +400,24 @@ export class StorageService {
             ...(rawAvatar.voiceSchedule || {}),
           },
         },
+        proactiveAlerts: {
+          ...defaultCustomization.proactiveAlerts!,
+          ...(parsed.proactiveAlerts || {}),
+          vipContacts: Array.isArray(parsed.proactiveAlerts?.vipContacts)
+            ? parsed.proactiveAlerts.vipContacts
+            : [],
+          appRules:
+            Array.isArray(parsed.proactiveAlerts?.appRules) && parsed.proactiveAlerts.appRules.length > 0
+              ? parsed.proactiveAlerts.appRules
+              : DEFAULT_APP_ALERT_RULES,
+        },
         securityConfig: {
           ...defaultSecurityConfig,
           ...(parsed.securityConfig || {}),
+        },
+        oneUiConfig: {
+          ...defaultOneUiConfig,
+          ...(parsed.oneUiConfig || {}),
         },
       };
     } catch {

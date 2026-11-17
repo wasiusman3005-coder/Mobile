@@ -25,10 +25,18 @@ import {
   DollarSign,
   Mic,
   Trash2,
+  Check,
+  History,
+  LockOpen,
+  Palette,
+  Home,
+  ShieldCheck,
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { triggerHaptic } from "../services/mobileDeviceActions";
 import { UserProfile, DashboardCustomization, LanguageCode, VoiceGender } from "../types";
+import { defaultOneUiConfig } from "../services/storage";
+import { OneUiHomeGrid } from "./OneUiHomeGrid";
 import { QuantumThemeColor } from "./AutoMorphingQuantumLogo";
 import {
   CockpitCorePhase,
@@ -59,6 +67,17 @@ export interface CockpitSummaryItem {
   speaker: string;
   text: string;
   timeStr: string;
+}
+
+export interface MainPanelFeedItem {
+  id: string;
+  kind: "notification" | "chat";
+  source: string;
+  title: string;
+  text: string;
+  timeStr: string;
+  speakerRole: "user" | "assistant" | "reminder";
+  nativeKey?: string;
 }
 
 const MODULE_PROJECTED_TITLES: Record<MatrixModuleId, string> = {
@@ -133,6 +152,18 @@ interface UltraCockpitDashboardProps {
   onOpenCharacterSettings?: () => void;
   detailViewNonce?: number;
   pausedByFullscreen?: boolean;
+  mainPanelItems?: MainPanelFeedItem[];
+  onDismissMainPanelItem?: (id: string) => void;
+  onArchiveAllMainPanel?: () => void;
+  needsWhatsAppAccess?: boolean;
+  onOpenWhatsAppUnlock?: () => void;
+  onOpenOneUiStudio?: () => void;
+  onOpenQuickPanel?: () => void;
+  isHomeGridMode?: boolean;
+  onToggleHomeGridMode?: () => void;
+  onToast?: (msg: string) => void;
+  batteryUnrestricted?: boolean;
+  onRequestBatteryUnrestricted?: () => void;
 }
 
 export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
@@ -174,12 +205,26 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
   onOpenCharacterSettings,
   detailViewNonce = 0,
   pausedByFullscreen = false,
+  mainPanelItems = [],
+  onDismissMainPanelItem,
+  onArchiveAllMainPanel,
+  needsWhatsAppAccess = false,
+  onOpenWhatsAppUnlock,
+  onOpenOneUiStudio,
+  onOpenQuickPanel,
+  isHomeGridMode = false,
+  onToggleHomeGridMode,
+  onToast,
+  batteryUnrestricted = true,
+  onRequestBatteryUnrestricted,
 }) => {
   const [soundOn, setSoundOn] = useState(soundEffects.soundEnabled);
   const [sidebarDrawer, setSidebarDrawer] = useState<"none" | "characters" | "summary">("none");
   const isMobileScreen = typeof window !== "undefined" && window.innerWidth < 768;
   const [isIconFlightActive, setIsIconFlightActive] = useState(!isMobileScreen);
   const summaryScrollRef = useRef<HTMLDivElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const oneUiCfg = customization.oneUiConfig || defaultOneUiConfig;
 
   useEffect(() => {
     if (!isIconFlightActive) return;
@@ -226,6 +271,37 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     glowHex: string;
   }[] = [
     {
+      id: "oneui9",
+      label: "One UI 9",
+      icon: Palette,
+      color: "#22d3ee",
+      bgFrom: "rgba(6, 182, 212, 0.42)",
+      bgTo: "rgba(139, 92, 246, 0.24)",
+      borderHex: "rgba(34, 211, 238, 0.65)",
+      glowHex: "rgba(0, 240, 255, 0.48)",
+      onClick: () => {
+        soundEffects.playBeepConfirm();
+        triggerHaptic(12);
+        onOpenOneUiStudio?.();
+      },
+    },
+    {
+      id: "home_grid",
+      label: isHomeGridMode ? "Core View" : "Phone Home",
+      icon: Home,
+      active: isHomeGridMode,
+      color: "#34d399",
+      bgFrom: "rgba(16, 185, 129, 0.36)",
+      bgTo: "rgba(6, 182, 212, 0.18)",
+      borderHex: "rgba(52, 211, 153, 0.58)",
+      glowHex: "rgba(16, 185, 129, 0.42)",
+      onClick: () => {
+        soundEffects.playClick();
+        triggerHaptic(12);
+        onToggleHomeGridMode?.();
+      },
+    },
+    {
       id: "characters",
       label: "Characters & Views",
       icon: Users,
@@ -257,7 +333,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     },
     {
       id: "summary",
-      label: "Summary Log",
+      label: "Back History",
       icon: ScrollText,
       active: sidebarDrawer === "summary",
       badgeCount: cockpitSummaries.length,
@@ -407,21 +483,16 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
     },
     {
       id: "voice",
-      label: wakeReady ? (isListening ? "Listening" : "Speak") : "Mic On",
+      label: isListening ? "Listening" : "Speak",
       icon: AudioWaveform,
-      active: isListening || !wakeReady,
+      active: isListening,
       color: "#4ade80",
       bgFrom: "rgba(34, 197, 94, 0.36)",
       bgTo: "rgba(22, 163, 74, 0.18)",
       borderHex: "rgba(74, 222, 128, 0.55)",
       glowHex: "rgba(34, 197, 94, 0.45)",
       onClick: () => {
-        soundEffects.playBeepConfirm();
-        if (!wakeReady && onPrimeWakeMic) {
-          onPrimeWakeMic();
-        } else {
-          onStartManualRecording?.();
-        }
+        onStartManualRecording?.();
       },
     },
     {
@@ -477,6 +548,21 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
   return (
     <div
       id="core"
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        if (t) touchStartRef.current = { x: t.clientX, y: t.clientY };
+      }}
+      onTouchEnd={(e) => {
+        const start = touchStartRef.current;
+        touchStartRef.current = null;
+        const t = e.changedTouches[0];
+        if (!start || !t) return;
+        const dy = t.clientY - start.y;
+        const dx = Math.abs(t.clientX - start.x);
+        if (start.y < 160 && dy > 52 && dx < 80) {
+          onOpenQuickPanel?.();
+        }
+      }}
       className="relative flex flex-col items-center justify-center min-h-[100dvh] h-[100dvh] w-full overflow-hidden select-none"
     >
       {/* Top-Left Moving 3D Wasu's Jarvis Brand Logo */}
@@ -490,37 +576,196 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
         />
       </div>
 
+      {/* Android Background Battery Shield Prompt (Only shown when restricted) */}
+      {!batteryUnrestricted && onRequestBatteryUnrestricted && (
+        <button
+          type="button"
+          onClick={() => {
+            soundEffects.playClick();
+            onRequestBatteryUnrestricted();
+          }}
+          className="q-hud-chrome fixed top-14 right-2.5 sm:top-4 sm:right-4 z-35 min-h-[38px] px-3 py-1.5 rounded-xl bg-amber-950/92 border border-amber-400/60 text-amber-200 text-[11px] font-mono flex items-center gap-1.5 cursor-pointer shadow-lg"
+        >
+          <ShieldCheck className="w-4 h-4 text-amber-300 shrink-0" />
+          <span className="whitespace-nowrap">Enable Always-On Wake</span>
+        </button>
+      )}
+
       {/* ================================================================= */}
       {/* FULL-SCREEN STAGE: LIVING WASU & WASI KI JAN IN TECHNOLOGY HUB    */}
       {/* ================================================================= */}
-      <DualCharacterHoloStage
-        coherence={coherence}
-        language={language}
-        voiceGender={activeGender}
-        cockpitPhase={cockpitPhase}
-        assistantName={activeCharName}
-        maleName={maleCharName}
-        femaleName={femaleCharName}
-        onRenameAssistant={onRenameAssistant}
-        onSwitchGender={onSwitchGender}
-        audioLevel={audioLevel}
-        liveTranscript={liveTranscript}
-        liveReplyText={liveReplyText}
-        recordingSeconds={recordingSeconds}
-        waWaveBars={waWaveBars}
-        onCancelRecording={onCancelRecording}
-        onSendRecording={onSendRecording}
-        onStartManualRecording={onStartManualRecording}
-        onSpeakBriefing={onSpeakBriefing}
-        onShowIdentityVideo={onShowIdentityVideo}
-        wakeReady={wakeReady}
-        onPrimeWakeMic={onPrimeWakeMic}
-        spectrumIndex={spectrumIndex}
-        energySurge={energySurge}
-        pausedByFullscreen={pausedByFullscreen || Boolean(activeProjectedModule)}
-        activeHubNotification={activeHubNotification}
-        activeProjectedTitle={projectedTitle}
-      />
+      {!isHomeGridMode && (
+        <DualCharacterHoloStage
+          coherence={coherence}
+          language={language}
+          voiceGender={activeGender}
+          cockpitPhase={cockpitPhase}
+          assistantName={activeCharName}
+          maleName={maleCharName}
+          femaleName={femaleCharName}
+          onRenameAssistant={onRenameAssistant}
+          onSwitchGender={onSwitchGender}
+          audioLevel={audioLevel}
+          liveTranscript={liveTranscript}
+          liveReplyText={liveReplyText}
+          waveVisualizerStyle={oneUiCfg.waveVisualizerStyle || "rainbow_prism"}
+          waveColorTheme={oneUiCfg.waveColorTheme || "aurora_cyan"}
+          onCancelRecording={onCancelRecording}
+          onStartManualRecording={onStartManualRecording}
+          onSpeakBriefing={onSpeakBriefing}
+          onShowIdentityVideo={onShowIdentityVideo}
+          wakeReady={wakeReady}
+          onPrimeWakeMic={onPrimeWakeMic}
+          spectrumIndex={spectrumIndex}
+          energySurge={energySurge}
+          pausedByFullscreen={pausedByFullscreen || Boolean(activeProjectedModule) || isHomeGridMode}
+          activeHubNotification={activeHubNotification}
+          activeProjectedTitle={projectedTitle}
+        />
+      )}
+
+      {/* ================================================================= */}
+      {/* ONE UI 9 UNLOCKED PHONE HOME GRID OVERLAY                         */}
+      {/* ================================================================= */}
+      {isHomeGridMode && !activeProjectedModule && (
+        <div className="relative z-20 w-full h-full flex items-center justify-center overflow-y-auto pt-14 pb-24 px-2">
+          <OneUiHomeGrid
+            layoutId={oneUiCfg.homeLayoutId}
+            iconStyleId={oneUiCfg.appIconStyleId}
+            clockStyleId={oneUiCfg.clockStyleId}
+            accentHex={oneUiCfg.accentColorHex}
+            clockColorHex={oneUiCfg.clockColorHex}
+            onOpenOneUiStudio={() => onOpenOneUiStudio?.()}
+            onToast={(m) => onToast?.(m)}
+          />
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* MAIN INTERFACE LIVE ALERTS & TALK SUMMARY PANEL                   */}
+      {/* Shows active notifications & talks; moves to Back History on Seen */}
+      {/* ================================================================= */}
+      {!activeProjectedModule && (mainPanelItems.length > 0 || needsWhatsAppAccess) && (
+        <aside
+          aria-label="Live Alerts and Conversation Summary"
+          className="q-hud-chrome fixed z-25 top-14 left-2.5 right-2.5 md:left-auto md:top-4 md:right-40 md:w-[350px] max-h-[34dvh] md:max-h-[42dvh] rounded-2xl bg-[#050b18]/92 border border-cyan-500/35 shadow-2xl flex flex-col overflow-hidden animate-fadeIn"
+        >
+          <div className="px-3 py-2 bg-[#071127]/95 border-b border-cyan-500/25 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Bell className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="font-orbitron font-bold text-[10px] sm:text-[11px] tracking-wider text-cyan-200 uppercase truncate">
+                Live Alerts &amp; Summary ({mainPanelItems.length})
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  soundEffects.playClick();
+                  setSidebarDrawer("summary");
+                }}
+                className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-mono text-slate-300 flex items-center gap-1 cursor-pointer"
+                title="Open Back History"
+              >
+                <History className="w-3 h-3" />
+                <span>History ({cockpitSummaries.length})</span>
+              </button>
+              {mainPanelItems.length > 0 && onArchiveAllMainPanel && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEffects.playClick();
+                    onArchiveAllMainPanel();
+                  }}
+                  className="px-2 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/45 text-[10px] font-mono font-bold text-emerald-300 flex items-center gap-1 cursor-pointer"
+                  title="Mark All Seen & Move to Back History"
+                >
+                  <Check className="w-3 h-3" />
+                  <span>All Seen</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="p-2.5 overflow-y-auto space-y-2 text-xs">
+            {needsWhatsAppAccess && (
+              <div className="p-2.5 rounded-xl bg-amber-950/75 border border-amber-400/50 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-orbitron font-bold text-[10px] text-amber-300 uppercase">
+                    WhatsApp Alerts Access OFF
+                  </div>
+                  <div className="text-[10px] font-mono text-amber-100/90 leading-snug">
+                    Android 15 par WhatsApp messages sunne ke liye 1-time unlock karein.
+                  </div>
+                </div>
+                {onOpenWhatsAppUnlock && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEffects.playClick();
+                      onOpenWhatsAppUnlock();
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-orbitron font-bold text-[10px] shrink-0 flex items-center gap-1 cursor-pointer"
+                  >
+                    <LockOpen className="w-3 h-3" />
+                    <span>Unlock</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {mainPanelItems.map((item) => (
+              <div
+                key={item.id}
+                className={`p-2.5 rounded-xl border flex items-start justify-between gap-2 ${
+                  item.kind === "notification"
+                    ? "bg-amber-950/35 border-amber-500/35"
+                    : item.speakerRole === "user"
+                    ? "bg-sky-950/35 border-sky-500/30"
+                    : "bg-emerald-950/35 border-emerald-500/35"
+                }`}
+              >
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                    <span
+                      className={`px-1.5 py-0.5 rounded font-bold uppercase ${
+                        item.kind === "notification"
+                          ? "bg-amber-500/20 text-amber-300"
+                          : item.speakerRole === "user"
+                          ? "bg-sky-500/20 text-sky-300"
+                          : "bg-emerald-500/20 text-emerald-300"
+                      }`}
+                    >
+                      {item.source}
+                    </span>
+                    {item.title && item.kind === "notification" && (
+                      <span className="font-semibold text-slate-100 truncate">{item.title}</span>
+                    )}
+                    <span className="text-slate-500 ml-auto shrink-0">{item.timeStr}</span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-100 leading-snug break-words">
+                    {item.text}
+                  </p>
+                </div>
+                {onDismissMainPanelItem && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEffects.playClick();
+                      onDismissMainPanelItem(item.id);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-slate-900/90 hover:bg-emerald-900/80 border border-slate-700 hover:border-emerald-400/50 text-[10px] font-mono text-emerald-300 shrink-0 flex items-center gap-0.5 cursor-pointer"
+                    title="Seen — Move to Back History"
+                  >
+                    <Check className="w-3 h-3" />
+                    <span>Seen</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
 
       {/* ================================================================= */}
       {/* PROJECTED BIG HUB SCREEN: CHARACTERS OPEN & CONTROL ALL PANELS    */}
@@ -554,9 +799,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    soundEffects.playBeepConfirm();
-                    if (!wakeReady && onPrimeWakeMic) onPrimeWakeMic();
-                    else onStartManualRecording?.();
+                    onStartManualRecording?.();
                   }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border flex items-center gap-1.5 cursor-pointer transition ${
                     cockpitPhase === "recording"
@@ -815,7 +1058,7 @@ export const UltraCockpitDashboard: React.FC<UltraCockpitDashboardProps> = ({
         <div className="q-hud-chrome fixed z-50 bottom-20 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:bottom-auto md:right-40 md:top-1/2 md:-translate-y-1/2 w-[min(360px,calc(100vw-24px))] rounded-2xl bg-[#070d1c]/95 border border-slate-400/25 p-4 shadow-2xl animate-fadeIn">
           <div className="flex items-center justify-between border-b border-slate-400/15 pb-2 mb-2.5">
             <span className="font-orbitron font-bold text-xs tracking-wider text-amber-300 uppercase">
-              Alerts &amp; Summary Log
+              Back History (Seen &amp; Done)
             </span>
             <div className="flex items-center gap-1.5">
               {onClearSummary && cockpitSummaries.length > 0 && (

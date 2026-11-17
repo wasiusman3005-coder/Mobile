@@ -18,11 +18,20 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 const app = express();
+app.disable("x-powered-by");
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-XSS-Protection", "0");
+  next();
+});
 
 app.use(express.json({ limit: "35mb" }));
 
-// Allow Wasu's Jarvis Mobile App & LAN endpoints clean CORS access
+// Sliding-window rate limiter on /api routes
+const apiRateHits = new Map<string, number[]>();
 app.use("/api", (req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -30,6 +39,20 @@ app.use("/api", (req, res, next) => {
   res.header("Access-Control-Allow-Private-Network", "true");
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
+  }
+  const ip = (req.ip || req.socket?.remoteAddress || "local").slice(0, 64);
+  const now = Date.now();
+  const windowStart = now - 60_000;
+  const arr = (apiRateHits.get(ip) || []).filter((ts) => ts > windowStart);
+  if (arr.length >= 160) {
+    return res.status(429).json({ error: "Too many requests. Please pause briefly." });
+  }
+  arr.push(now);
+  apiRateHits.set(ip, arr);
+  if (apiRateHits.size > 1000) {
+    for (const [k, v] of apiRateHits.entries()) {
+      if (v.length === 0 || v[v.length - 1] < windowStart) apiRateHits.delete(k);
+    }
   }
   next();
 });
@@ -710,7 +733,7 @@ app.post("/api/jarvis/wake-check", async (req, res) => {
   }
 });
 
-// Server-side Direct Microphone Audio Transcription + Command Execution (Two-Stage: gemini-3.5-transcribe -> gemini-4-hydrogen)
+// Server-side Direct Microphone Audio Single-Pass Understanding + Command Execution (Ultra-Low Latency)
 app.post("/api/jarvis/voice-audio", async (req, res) => {
   try {
     const {
@@ -739,21 +762,21 @@ app.post("/api/jarvis/voice-audio", async (req, res) => {
         reply:
           language === "en"
             ? "Voice audio captured, but Gemini API key is not configured on the server for raw audio transcription."
-            : "Voice capture hui lekin server par GEMINI_API_KEY set nahi hai. Aap Chrome ka Speech-to-Text allow karein ya type karein.",
+            : "Voice capture hui lekin server par GEMINI_API_KEY set nahi hai. Browser Speech-to-Text allow karein ya type karein.",
         languageDetected: language,
         action: "NONE",
         actionPayload: {},
       });
     }
 
-    if (!cleanBase64 || cleanBase64.length < 200) {
+    if (!cleanBase64 || cleanBase64.length < 180) {
       return res.json({
         transcript: "",
         silentAudio: true,
         reply:
           language === "en"
-            ? "Audio clip was too short. Please say 'Hi Jarvis' and speak your command clearly."
-            : "Awaaz bohat mukhtasar thi. 'Hi Jarvis' bol kar dobara apna command bolein.",
+            ? "Audio clip was too short. Say 'Jarvis' and speak your command clearly."
+            : "Awaaz bohat mukhtasar thi. 'Jarvis' bol kar apna hukam saaf bolein.",
         languageDetected: language,
         action: "NONE",
         actionPayload: {},
@@ -761,51 +784,139 @@ app.post("/api/jarvis/voice-audio", async (req, res) => {
     }
 
     const charName = extractCleanCharName(personalityName, gender);
+    const baseInstruction = buildJarvisSystemInstruction({
+      characterGender: gender,
+      personalityName: charName,
+      personalityPrompt,
+      fastMode,
+      userProfile,
+    });
 
-    // Stage 1: Dedicated fast audio transcription using gemini-3.5-transcribe (with automatic fallback)
-    let transcript = "";
+    const unifiedAudioPrompt = `Listen carefully to this voice recording from Commander Wasi (Pakistani Urdu, Punjabi, Roman Urdu, or English).
+Pay special attention to Pakistani Urdu words, contact names, WhatsApp/Call/App-open requests, One UI 9 theme/wallpaper requests, and mixed Urdu+English sentences.
+1. Extract the exact spoken words cleanly into "transcript" (if only silence/noise, set "silentAudio": true and "transcript": "").
+2. Understand intent accurately even if pronounciation has a local Pakistani accent, and respond concisely in natural Pakistani ${
+      language === "pa" ? "Punjabi" : language === "en" ? "English" : "Roman Urdu"
+    }.
+Return JSON with fields:
+{
+  "silentAudio": boolean,
+  "transcript": string,
+  "reply": string,
+  "urduSpeechText": string,
+  "languageDetected": "ur" | "pa" | "en",
+  "action": string,
+  "actionPayload": object
+}`;
+
+    let parsed: {
+      silentAudio?: boolean;
+      transcript?: string;
+      reply?: string;
+      urduSpeechText?: string;
+      languageDetected?: string;
+      action?: string;
+      actionPayload?: Record<string, unknown>;
+    } | null = null;
+
+    // Fast Single-Pass Multimodal Call (~1.2s)
     try {
-      transcript = await transcribeAudioWithGemini(
-        cleanBase64,
-        safeMime,
-        "Transcribe the spoken words accurately in the original language (Pakistani Urdu / Roman Urdu, Punjabi, or English). Output ONLY the clean spoken transcript with no commentary or timestamps. If there is only silence or unintelligible background noise, return [INAUDIBLE].",
-        22000
+      const fastResponse = await withTimeout(
+        ai.models.generateContent({
+          model: "gemini-4-hydrogen",
+          contents: {
+            parts: [
+              { inlineData: { data: cleanBase64, mimeType: safeMime } },
+              { text: unifiedAudioPrompt },
+            ],
+          },
+          config: {
+            systemInstruction: baseInstruction,
+            responseMimeType: "application/json",
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          },
+        }),
+        11000,
+        "Fast single-pass voice understanding"
       );
-    } catch (transcribeErr: unknown) {
-      const errMsg = transcribeErr instanceof Error ? transcribeErr.message : String(transcribeErr);
-      const isAuthOrKeyError = /API_KEY_INVALID|API key not valid|PERMISSION_DENIED|403|401/i.test(errMsg);
-      console.warn("Voice transcription notice:", errMsg);
-      return res.json({
-        transcript: "",
-        silentAudio: true,
-        reply: isAuthOrKeyError
-          ? language === "en"
-            ? "Voice audio captured, but server transcription key is unavailable. Please enable browser mic speech-to-text or type your command."
-            : "Voice capture hui lekin server Gemini key active nahi hai. Browser Speech-to-Text allow karein ya type karein."
-          : language === "en"
-          ? "Voice transcription took too long or encountered a network issue. Please try speaking again."
-          : "Voice decode karne mein network ya timeout masla aaya. Dobara try karein.",
-        languageDetected: language,
-        action: "NONE",
-        actionPayload: {},
-      });
+      parsed = JSON.parse(fastResponse.text || "{}");
+    } catch {
+      parsed = null;
     }
 
-    if (!transcript) {
+    // Fallback to dedicated 2-stage if multimodal call failed or didn't return JSON
+    let transcript = sanitizeTranscriptOutput(parsed?.transcript || "");
+    if (!parsed) {
+      try {
+        transcript = await transcribeAudioWithGemini(
+          cleanBase64,
+          safeMime,
+          "Transcribe the spoken words accurately in Pakistani Urdu / Roman Urdu, Punjabi, or English. Output ONLY the plain spoken transcript. If silence/noise, return [INAUDIBLE].",
+          14000
+        );
+      } catch (transcribeErr: unknown) {
+        const errMsg = transcribeErr instanceof Error ? transcribeErr.message : String(transcribeErr);
+        const isAuthOrKeyError = /API_KEY_INVALID|API key not valid|PERMISSION_DENIED|403|401/i.test(errMsg);
+        return res.json({
+          transcript: "",
+          silentAudio: true,
+          reply: isAuthOrKeyError
+            ? "Voice capture hui lekin server Gemini key active nahi hai. Offline voice commands (Call, Open App, Torch, Time) active hain."
+            : "Voice decode karne mein network masla aaya. Dobara bolein.",
+          languageDetected: language,
+          action: "NONE",
+          actionPayload: {},
+        });
+      }
+      if (!transcript) {
+        return res.json({
+          transcript: "",
+          silentAudio: true,
+          reply:
+            language === "en"
+              ? "I couldn't hear clear speech. Say 'Jarvis' and speak closer to the mic."
+              : "Awaaz saaf sunai nahi di Wasi Sahab. Kareeb se apna hukam bolein.",
+          languageDetected: language,
+          action: "NONE",
+          actionPayload: {},
+        });
+      }
+
+      const deterministic = getFallbackReasoning(transcript, language, personalityPrompt, gender, charName);
+      try {
+        const reasonResponse = await withTimeout(
+          ai.models.generateContent({
+            model: "gemini-4-hydrogen",
+            contents: transcript,
+            config: {
+              systemInstruction: baseInstruction,
+              responseMimeType: "application/json",
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            },
+          }),
+          8000,
+          "Voice intent reasoning"
+        );
+        parsed = JSON.parse(reasonResponse.text || "{}");
+      } catch {
+        parsed = deterministic;
+      }
+    }
+
+    if (parsed?.silentAudio || !transcript) {
       return res.json({
         transcript: "",
         silentAudio: true,
         reply:
           language === "en"
-            ? "I couldn't hear clear speech in that recording. Say 'Hi Jarvis' and speak closer to the mic."
-            : "Awaaz clear sunai nahi di Wasi Sahab. 'Hi Jarvis' bol kar dobara apna command bolein.",
+            ? "I couldn't hear clear speech in that clip. Say 'Jarvis' and speak clearly."
+            : "Awaaz clear sunai nahi di Wasi Sahab. Dobara saaf bolein.",
         languageDetected: language,
         action: "NONE",
         actionPayload: {},
       });
     }
 
-    // Stage 2: Reason over clean text transcript using gemini-4-hydrogen (with deterministic fallback)
     const deterministic = getFallbackReasoning(transcript, language, personalityPrompt, gender, charName);
     if (deterministic.action === "SHOW_IDENTITY_VIDEO") {
       return res.json({
@@ -820,49 +931,13 @@ app.post("/api/jarvis/voice-audio", async (req, res) => {
       });
     }
 
-    const baseInstruction = buildJarvisSystemInstruction({
-      characterGender: gender,
-      personalityName: charName,
-      personalityPrompt,
-      fastMode,
-      userProfile,
-    });
-
-    let parsed: {
-      reply?: string;
-      urduSpeechText?: string;
-      languageDetected?: string;
-      action?: string;
-      actionPayload?: Record<string, unknown>;
-    } = {};
-
-    try {
-      const reasonResponse = await withTimeout(
-        ai.models.generateContent({
-          model: "gemini-4-hydrogen",
-          contents: transcript,
-          config: {
-            systemInstruction: baseInstruction,
-            responseMimeType: "application/json",
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          },
-        }),
-        fastMode ? 8500 : 12000,
-        "Voice intent reasoning"
-      );
-
-      parsed = JSON.parse(reasonResponse.text || "{}");
-    } catch {
-      parsed = deterministic;
-    }
-
-    const resolvedLang = parsed.languageDetected || language;
-    const finalReply = (parsed.reply || deterministic.reply).trim();
-    const finalAction = parsed.action && parsed.action !== "NONE" ? parsed.action : deterministic.action;
+    const resolvedLang = parsed?.languageDetected || language;
+    const finalReply = (parsed?.reply || deterministic.reply).trim();
+    const finalAction = parsed?.action && parsed.action !== "NONE" ? parsed.action : deterministic.action;
     const finalPayload =
-      parsed.action && parsed.action !== "NONE" ? parsed.actionPayload || {} : deterministic.actionPayload;
+      parsed?.action && parsed.action !== "NONE" ? parsed.actionPayload || {} : deterministic.actionPayload;
     const urduSpeechText =
-      parsed.urduSpeechText ||
+      parsed?.urduSpeechText ||
       (resolvedLang === "ur" || resolvedLang === "pa" ? toPakistaniUrduSpeechText(finalReply) : undefined);
 
     return res.json({
@@ -873,7 +948,7 @@ app.post("/api/jarvis/voice-audio", async (req, res) => {
       languageDetected: resolvedLang,
       action: finalAction,
       actionPayload: finalPayload,
-      quantumStatus: "Voice Audio Decoded • 99.98%",
+      quantumStatus: "Voice Fast-Decoded • 99.98%",
     });
   } catch (error) {
     console.error("Voice Audio Endpoint Error:", error);
@@ -2875,6 +2950,13 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const status = typeof err?.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 500;
+    if (!res.headersSent) {
+      res.status(status).json({ error: status === 413 ? "Payload too large" : "Server request error" });
+    }
+  });
 
   httpServer.on("error", (err) => {
     console.error("Server listen error:", err);

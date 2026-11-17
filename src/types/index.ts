@@ -67,12 +67,210 @@ export interface MobileSecurityConfig {
   autoLockMinutes: number;
 }
 
+export type UserActivityState =
+  | 'lying_sleeping'
+  | 'sitting_stationary'
+  | 'walking'
+  | 'riding_bike'
+  | 'unknown';
+
+export interface VipContactRule {
+  id: string;
+  name: string;
+  phoneOrHandle?: string;
+  priority: 'critical' | 'high' | 'normal';
+  repeatMinutes: number;
+  alwaysSpeakAloud: boolean;
+}
+
+export interface AppAlertRule {
+  id: string;
+  packageName: string;
+  appName: string;
+  enabled: boolean;
+  speakAloud: boolean;
+  repeatIfUnreadMinutes: number;
+  allowInSleepOrQuiet: boolean;
+}
+
 export interface ProactiveAlertConfig {
   incomingNotifications: boolean;
   speakNotificationsAloud: boolean;
   lowBatteryThreshold: number;
   taskReminders: boolean;
   networkAlerts: boolean;
+  vipContacts: VipContactRule[];
+  appRules: AppAlertRule[];
+  taskUrgentRepeatMinutes: number;
+  activityAwareMode: boolean;
+  autoCallVoiceControl: boolean;
+}
+
+export type LiveWallpaperStyleId =
+  | 'oneui9_aurora'
+  | 'quantum_singularity'
+  | 'cosmic_rain'
+  | 'emerald_matrix'
+  | 'solar_plasma'
+  | 'cyber_grid_3d'
+  | 'deep_ocean'
+  | 'velvet_ripples'
+  | 'nebula_particles'
+  | 'jarvis_reactor_clock';
+
+export type LockScreenDesignId =
+  | 'oneui9_nowbar'
+  | 'orbital_vault'
+  | 'glass_split'
+  | 'minimal_editorial'
+  | 'cyber_hud'
+  | 'dual_widget_lock';
+
+export type ClockStyleId =
+  | 'oneui9_bold'
+  | 'slim_ultralight'
+  | 'stacked_vertical'
+  | 'analog_quantum'
+  | 'flip_retro'
+  | 'neon_segment'
+  | 'calligraphy_mono'
+  | 'floating_glass';
+
+export type DynamicBarStyleId =
+  | 'now_bar_pill'
+  | 'liquid_island'
+  | 'audio_spectrum'
+  | 'minimal_dot'
+  | 'cyber_strip'
+  | 'dual_capsule'
+  | 'music_ticker'
+  | 'hidden';
+
+export type FingerprintAnimId =
+  | 'ripple_wave'
+  | 'quantum_iris'
+  | 'neon_shockwave'
+  | 'honeycomb_scan'
+  | 'liquid_gold'
+  | 'particle_burst'
+  | 'emerald_pulse'
+  | 'starlight_ring';
+
+export type ChargingAnimId =
+  | 'oneui9_turbo'
+  | 'warp_core'
+  | 'liquid_fill'
+  | 'lightning_arc'
+  | 'magsafe_halo'
+  | 'dual_turbine'
+  | 'minimal_glow'
+  | 'matrix_stream';
+
+export type HomeLayoutId =
+  | 'oneui9_classic'
+  | 'bento_widgets'
+  | 'minimal_dock'
+  | 'circular_orbital'
+  | 'glass_stack'
+  | 'large_tiles';
+
+export type AppIconStyleId =
+  | 'oneui_squircle'
+  | 'pure_circle'
+  | 'teardrop'
+  | 'cyber_hex'
+  | 'glass_crystal'
+  | 'neon_outline'
+  | 'monochrome_pastel'
+  | 'embossed_3d';
+
+export type QuickPanelStyleId =
+  | 'glass_blur'
+  | 'neon_cyber'
+  | 'minimal_matte'
+  | 'liquid_aurora'
+  | 'amoled_dual'
+  | 'prism_cards'
+  | 'capsule_pills'
+  | 'retro_matrix';
+
+export type EdgeLightingStyleId =
+  | 'off'
+  | 'aurora_sweep'
+  | 'cyber_pulse'
+  | 'rainbow_prism'
+  | 'emerald_spark';
+
+export type AodStyleId =
+  | 'minimal_clock'
+  | 'horizon_glow'
+  | 'galaxy_stars'
+  | 'jarvis_hud';
+
+export type FaceAnimId =
+  | 'hologram_mesh'
+  | 'iris_cyber'
+  | 'prism_halo'
+  | 'neural_lock'
+  | 'quantum_grid'
+  | 'golden_aura';
+
+export type UnlockBarAnimStyleId =
+  | 'aurora_bloom'
+  | 'cyber_sweep'
+  | 'emerald_wave'
+  | 'gold_halo'
+  | 'quantum_burst';
+
+export type WaveVisualizerStyleId =
+  | 'aurora_ribbon'
+  | 'plasma_bars'
+  | 'quantum_rings'
+  | 'cyber_pulse'
+  | 'rainbow_prism'
+  | 'emerald_matrix'
+  | 'solar_flare'
+  | 'liquid_neon';
+
+export type DynamicBarAnchor =
+  | 'top-center'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-center'
+  | 'custom';
+
+export interface OneUiStudioConfig {
+  liveWallpaperId: LiveWallpaperStyleId;
+  liveWallpaperEnabledInApp: boolean;
+  lockDesignId: LockScreenDesignId;
+  clockStyleId: ClockStyleId;
+  clockColorHex: string;
+  clockScale: number;
+  dynamicBarStyleId: DynamicBarStyleId;
+  dynamicBarAnchor: DynamicBarAnchor;
+  dynamicBarOffsetX: number;
+  dynamicBarOffsetY: number;
+  dynamicBarCustomLabel: string;
+  dynamicBarShowOutsideApp: boolean;
+  unlockBarAnimStyle: UnlockBarAnimStyleId;
+  fingerprintAnimId: FingerprintAnimId;
+  faceAnimId: FaceAnimId;
+  chargingAnimId: ChargingAnimId;
+  chargingOverlayEnabled: boolean;
+  waveVisualizerStyle: WaveVisualizerStyleId;
+  waveColorTheme: string;
+  galleryWallpaperDataUrl: string;
+  customBiometricImageDataUrl: string;
+  followUpListeningEnabled: boolean;
+  homeLayoutId: HomeLayoutId;
+  appIconStyleId: AppIconStyleId;
+  quickPanelStyleId: QuickPanelStyleId;
+  edgeLightingStyle: EdgeLightingStyleId;
+  aodEnabled: boolean;
+  aodStyle: AodStyleId;
+  blurIntensity: number;
+  accentColorHex: string;
+  requireStartupLock: boolean;
 }
 
 export interface SummaryLogEntry {
@@ -112,6 +310,7 @@ export interface DashboardCustomization {
   activeCustomVoiceId?: string;
   avatarConfig?: AvatarStudioConfig;
   securityConfig?: MobileSecurityConfig;
+  oneUiConfig?: OneUiStudioConfig;
 }
 
 export interface UserProfile {

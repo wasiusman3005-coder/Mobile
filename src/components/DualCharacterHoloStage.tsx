@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Trash2, Send, Bell } from "lucide-react";
-import { soundEffects } from "../services/soundEffects";
-import { LanguageCode, VoiceGender } from "../types";
+import { Trash2, Bell } from "lucide-react";
+import { LanguageCode, VoiceGender, WaveVisualizerStyleId } from "../types";
 import { CockpitCorePhase } from "./CentralQuantumCoreHologram";
+import { ColorfulWaveVisualizer } from "./ColorfulWaveVisualizer";
 import {
   HUB_LIVE_VIDEOS,
   MOBILE_PORTRAIT_VIDEO,
@@ -13,6 +13,9 @@ import {
 } from "../services/videoCache";
 
 export { HUB_LIVE_VIDEOS };
+
+const TRANSPARENT_VIDEO_POSTER =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 export interface HubPanelNotification {
   id: string;
@@ -36,10 +39,9 @@ interface DualCharacterHoloStageProps {
   audioLevel?: number;
   liveTranscript?: string;
   liveReplyText?: string;
-  recordingSeconds?: number;
-  waWaveBars?: number[];
+  waveVisualizerStyle?: WaveVisualizerStyleId;
+  waveColorTheme?: string;
   onCancelRecording?: () => void;
-  onSendRecording?: () => void;
   onStartManualRecording?: () => void;
   onSpeakBriefing?: () => void;
   onShowIdentityVideo?: () => void;
@@ -58,13 +60,10 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
   audioLevel = 0,
   liveTranscript = "",
   liveReplyText = "",
-  recordingSeconds = 0,
-  waWaveBars = [],
+  waveVisualizerStyle = "rainbow_prism",
+  waveColorTheme = "aurora_cyan",
   onCancelRecording,
-  onSendRecording,
   onStartManualRecording,
-  wakeReady = true,
-  onPrimeWakeMic,
   pausedByFullscreen = false,
   activeHubNotification = null,
 }) => {
@@ -86,6 +85,13 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
   ]);
   const preloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [waveTick, setWaveTick] = useState(0);
+  const [slotFrameReady, setSlotFrameReady] = useState<[boolean, boolean]>([false, false]);
+  const [standbyAutoPreload, setStandbyAutoPreload] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setStandbyAutoPreload(true), 1200);
+    return () => clearTimeout(t);
+  }, []);
 
   // Track viewport orientation/resize so mobile portrait uses full-screen 9:16 playlist & framing
   useEffect(() => {
@@ -189,36 +195,54 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
     const afterNextIdx = (nextVideoIdx + 1) % currentList.length;
 
     const nextVid = slotRefs.current[nextSlot];
+    const switchToNext = () => {
+      activeSlotRef.current = nextSlot;
+      activeVideoIdxRef.current = nextVideoIdx;
+      setActiveSlot(nextSlot);
+      setActiveVideoIdx(nextVideoIdx);
+
+      if (preloadTimeoutRef.current) clearTimeout(preloadTimeoutRef.current);
+      preloadTimeoutRef.current = setTimeout(() => {
+        const nextPreloadRaw = currentList[afterNextIdx];
+        const nextPreloadUrl = getCachedVideoSrc(nextPreloadRaw);
+        setSlotFrameReady((prev) => {
+          const next: [boolean, boolean] = [prev[0], prev[1]];
+          next[slotIdx] = false;
+          return next;
+        });
+        setSlotRawUrls((prev) => {
+          if (prev[slotIdx] === nextPreloadRaw) return prev;
+          const next: [string, string] = [prev[0], prev[1]];
+          next[slotIdx] = nextPreloadRaw;
+          return next;
+        });
+        setSlotSrcs((prev) => {
+          if (prev[slotIdx] === nextPreloadUrl) return prev;
+          const next: [string, string] = [prev[0], prev[1]];
+          next[slotIdx] = nextPreloadUrl;
+          return next;
+        });
+      }, 320);
+    };
+
     if (nextVid) {
       try {
         nextVid.muted = true;
         if (nextVid.readyState >= 1) nextVid.currentTime = 0;
-        nextVid.play().catch(() => {});
+        const p = nextVid.play();
+        if (nextVid.readyState >= 2) {
+          switchToNext();
+        } else {
+          if (p && typeof p.then === "function") {
+            p.then(switchToNext).catch(switchToNext);
+          } else {
+            switchToNext();
+          }
+        }
+        return;
       } catch {}
     }
-
-    activeSlotRef.current = nextSlot;
-    activeVideoIdxRef.current = nextVideoIdx;
-    setActiveSlot(nextSlot);
-    setActiveVideoIdx(nextVideoIdx);
-
-    if (preloadTimeoutRef.current) clearTimeout(preloadTimeoutRef.current);
-    preloadTimeoutRef.current = setTimeout(() => {
-      const nextPreloadRaw = currentList[afterNextIdx];
-      const nextPreloadUrl = getCachedVideoSrc(nextPreloadRaw);
-      setSlotRawUrls((prev) => {
-        if (prev[slotIdx] === nextPreloadRaw) return prev;
-        const next: [string, string] = [prev[0], prev[1]];
-        next[slotIdx] = nextPreloadRaw;
-        return next;
-      });
-      setSlotSrcs((prev) => {
-        if (prev[slotIdx] === nextPreloadUrl) return prev;
-        const next: [string, string] = [prev[0], prev[1]];
-        next[slotIdx] = nextPreloadUrl;
-        return next;
-      });
-    }, 260);
+    switchToNext();
   };
 
   const isMaleActive =
@@ -226,47 +250,12 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
       ? activeHubNotification.presenterGender === "male"
       : voiceGender === "male";
 
-  const formatWaTimer = (sec: number) => {
-    const mins = Math.floor(sec / 60);
-    const rem = sec % 60;
-    return `${mins}:${rem < 10 ? "0" : ""}${rem}`;
-  };
-
-  const barCount = 34;
-  const signalBars: number[] = (() => {
-    if (cockpitPhase === "recording") {
-      return waWaveBars.length > 0 ? waWaveBars : Array(barCount).fill(22);
-    }
-    if (cockpitPhase === "processing") {
-      return Array.from({ length: barCount }, (_, i) => {
-        const s = Math.sin(waveTick * 0.42 + i * 0.45) * 0.5 + 0.5;
-        const s2 = Math.cos(waveTick * 0.25 - i * 0.3) * 0.5 + 0.5;
-        return Math.round(18 + (s * 0.65 + s2 * 0.35) * 80);
-      });
-    }
-    if (cockpitPhase === "speaking") {
-      return Array.from({ length: barCount }, (_, i) => {
-        const centerFactor = 1 - Math.abs(i - barCount / 2) / (barCount / 2);
-        const harmonic =
-          Math.abs(Math.sin(waveTick * 0.55 + i * 0.52)) * 0.65 +
-          Math.abs(Math.cos(waveTick * 0.31 - i * 0.28)) * 0.35;
-        return Math.round(16 + (harmonic * 0.72 + centerFactor * 0.28 + audioLevel * 0.25) * 82);
-      });
-    }
-    return [];
-  })();
-
   return (
     <div
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("button")) return;
         if (cockpitPhase === "galaxy") {
-          soundEffects.playBeepConfirm();
-          if (!wakeReady && onPrimeWakeMic) {
-            onPrimeWakeMic();
-          } else {
-            onStartManualRecording?.();
-          }
+          onStartManualRecording?.();
         }
       }}
       className="fixed inset-0 w-screen h-[100dvh] min-h-[100dvh] overflow-hidden select-none cursor-pointer bg-[#020612]"
@@ -288,12 +277,35 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
                 slotRefs.current[slotIdx] = el;
               }}
               src={src}
+              poster={TRANSPARENT_VIDEO_POSTER}
               autoPlay={isCurrent}
               muted
               playsInline
-              preload={isCurrent ? "auto" : "metadata"}
+              preload={isCurrent || standbyAutoPreload ? "auto" : "metadata"}
               disablePictureInPicture
+              onLoadedData={() => {
+                setSlotFrameReady((prev) => {
+                  if (prev[slotIdx]) return prev;
+                  const next: [boolean, boolean] = [prev[0], prev[1]];
+                  next[slotIdx] = true;
+                  return next;
+                });
+              }}
+              onPlaying={() => {
+                setSlotFrameReady((prev) => {
+                  if (prev[slotIdx]) return prev;
+                  const next: [boolean, boolean] = [prev[0], prev[1]];
+                  next[slotIdx] = true;
+                  return next;
+                });
+              }}
               onCanPlay={(e) => {
+                setSlotFrameReady((prev) => {
+                  if (prev[slotIdx]) return prev;
+                  const next: [boolean, boolean] = [prev[0], prev[1]];
+                  next[slotIdx] = true;
+                  return next;
+                });
                 if (!isCurrent && !e.currentTarget.paused) {
                   e.currentTarget.pause();
                 } else if (isCurrent && !pausedByFullscreen && e.currentTarget.paused) {
@@ -305,10 +317,14 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
                 transform: "translateZ(0)",
                 backfaceVisibility: "hidden",
               }}
-              className={`absolute inset-0 w-full h-full min-w-full min-h-full max-w-none object-cover ${
+              className={`absolute inset-0 w-full h-full min-w-full min-h-full max-w-none object-cover bg-[#020612] ${
                 shouldPanLandscapeOnMobile ? "q-mobile-video-pan" : "object-[50%_20%]"
               } transition-opacity duration-200 ease-out ${
-                isCurrent ? "opacity-100 z-[2]" : "opacity-0 z-[1] pointer-events-none"
+                isCurrent && slotFrameReady[slotIdx]
+                  ? "opacity-100 z-[2]"
+                  : isCurrent
+                  ? "opacity-0 z-[2]"
+                  : "opacity-0 z-[1] pointer-events-none"
               }`}
             />
           );
@@ -349,7 +365,7 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
           {cockpitPhase !== "galaxy" && (
             <div className="w-full flex flex-col items-center gap-2 animate-fadeIn">
               <div
-                className={`w-full flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-[#060f1f]/95 border shadow-2xl ${
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[#060f1f]/95 border shadow-2xl ${
                   cockpitPhase === "recording"
                     ? "border-emerald-500/55 shadow-[0_0_24px_rgba(16,185,129,0.25)]"
                     : cockpitPhase === "processing"
@@ -357,56 +373,42 @@ export const DualCharacterHoloStage: React.FC<DualCharacterHoloStageProps> = ({
                     : "border-cyan-400/55 shadow-[0_0_24px_rgba(0,240,255,0.25)]"
                 }`}
               >
-                <div className="flex-1 flex items-center justify-center gap-[3px] h-7 overflow-hidden">
-                  {signalBars.map((heightPct, idx) => (
-                    <div
-                      key={idx}
-                      className="w-[3px] rounded-full transition-all duration-75 shrink-0"
-                      style={{
-                        height: `${Math.max(4, Math.round((heightPct / 100) * 24))}px`,
-                        backgroundColor:
-                          cockpitPhase === "recording"
-                            ? heightPct > 36
-                              ? "#25d366"
-                              : "#64748b"
-                            : cockpitPhase === "processing"
-                            ? idx % 2 === 0
-                              ? "#c084fc"
-                              : "#f59e0b"
-                            : isMaleActive
-                            ? idx % 2 === 0
-                              ? "#f59e0b"
-                              : "#fbbf24"
-                            : idx % 2 === 0
-                            ? "#00f0ff"
-                            : "#10b981",
-                      }}
-                    />
-                  ))}
+                <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                  <div className="text-[11px] font-mono font-semibold text-cyan-200 truncate">
+                    {cockpitPhase === "recording"
+                      ? isMaleActive
+                        ? "Sun raha hoon, bolein aap"
+                        : "Sun rahi hoon, bolein aap"
+                      : cockpitPhase === "processing"
+                      ? "Samajh rahi hoon, foran execute ho raha hai..."
+                      : isMaleActive
+                      ? "Jawab de raha hoon..."
+                      : "Jawab de rahi hoon..."}
+                  </div>
+                  <ColorfulWaveVisualizer
+                    styleId={waveVisualizerStyle}
+                    colorThemeId={waveColorTheme}
+                    audioLevel={audioLevel}
+                    phase={
+                      cockpitPhase === "recording"
+                        ? "listening"
+                        : cockpitPhase === "processing"
+                        ? "processing"
+                        : "speaking"
+                    }
+                    height={32}
+                  />
                 </div>
 
                 {cockpitPhase === "recording" && (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="font-mono text-[11px] text-emerald-300 tabular-nums mr-1">
-                      {formatWaTimer(recordingSeconds)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={onCancelRecording}
-                      className="p-2 rounded-full bg-rose-950/90 hover:bg-rose-900 border border-rose-500/40 text-rose-300 transition cursor-pointer"
-                      title="Cancel"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onSendRecording}
-                      className="p-2 rounded-full bg-[#00a884] hover:bg-[#06cf9c] text-slate-950 transition cursor-pointer"
-                      title="Send"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={onCancelRecording}
+                    className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-rose-950/90 hover:bg-rose-900 border border-rose-500/40 text-rose-300 transition cursor-pointer shrink-0"
+                    title="Cancel Voice"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 )}
               </div>
 

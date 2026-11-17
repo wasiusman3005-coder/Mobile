@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
 import { soundEffects } from "./services/soundEffects";
 import { speechService } from "./services/speechService";
-import { storageService, defaultAvatarConfig } from "./services/storage";
+import { storageService, defaultAvatarConfig, defaultOneUiConfig } from "./services/storage";
 import { QuantumBackground3D } from "./components/QuantumBackground3D";
 import { SecurityGate } from "./components/SecurityGate";
 import { QuantumLoadingScreen } from "./components/QuantumLoadingScreen";
-import { UltraCockpitDashboard, CockpitSummaryItem } from "./components/UltraCockpitDashboard";
+import { UltraCockpitDashboard, CockpitSummaryItem, MainPanelFeedItem } from "./components/UltraCockpitDashboard";
 import { HubPanelNotification } from "./components/DualCharacterHoloStage";
 import { CockpitCorePhase, QUANTUM_SPECTRUMS } from "./components/CentralQuantumCoreHologram";
 import { WormholeTransition } from "./components/WormholeTransition";
@@ -17,8 +17,14 @@ import { HiJarvisWaveOverlay } from "./components/HiJarvisWaveOverlay";
 import { AwayAutoPilot } from "./components/AwayAutoPilot";
 import { MandatoryHealthLockdown } from "./components/MandatoryHealthLockdown";
 import { IdentityVideoOverlay } from "./components/IdentityVideoOverlay";
-import { readPhoneHardwareTelemetry } from "./services/systemTelemetry";
+import { LiveWallpaperCanvas } from "./components/LiveWallpaperCanvas";
+import { OneUiDynamicBar } from "./components/OneUiDynamicBar";
+import { OneUiQuickPanel } from "./components/OneUiQuickPanel";
+import { ChargingAnimationOverlay } from "./components/ChargingAnimationOverlay";
+import { OneUi9Studio } from "./components/OneUi9Studio";
+import { readPhoneHardwareTelemetry, resolveApiUrl } from "./services/systemTelemetry";
 import { togglePhoneFlashlight, triggerHaptic, playLocatorSiren } from "./services/mobileDeviceActions";
+import { tryExecuteLocalPhoneCommand } from "./services/localApkCommands";
 import {
   subscribeNativeEvents,
   isNativeAndroidApk,
@@ -28,12 +34,26 @@ import {
   getAndroidPermissionStatus,
   requestCorePermissionsAndroid,
   setNativeBackgroundWakeService,
+  consumePendingWakeEventAndroid,
+  subscribeNativeSpeechEvents,
+  consumePendingStudioLaunchAndroid,
+  subscribeStudioLaunchEvent,
+  syncOneUiOverlayConfigAndroid,
+  requestIgnoreBatteryOptimizationAndroid,
+  getNativeBackgroundStatus,
+  subscribeActivityAndVipEvents,
+  getUserActivityStateAndroid,
+  answerOrRejectCallAndroid,
 } from "./services/nativeAndroidBridge";
 import {
   LanguageCode,
   UserProfile,
   DashboardCustomization,
   AvatarStudioConfig,
+  OneUiStudioConfig,
+  ProactiveAlertConfig,
+  UserActivityState,
+  DynamicBarAnchor,
 } from "./types";
 import { QUANTUM_THEMES, QuantumThemeColor } from "./components/AutoMorphingQuantumLogo";
 import {
@@ -41,6 +61,7 @@ import {
   PERSONALITY_MODES,
   isIdentityVideoCommand,
 } from "./data/jarvisCatalog";
+import { DEFAULT_APP_ALERT_RULES } from "./data/oneUi9Catalog";
 
 const OfflineIndicator: React.FC = () => {
   const [online, setOnline] = useState(
@@ -65,15 +86,19 @@ const OfflineIndicator: React.FC = () => {
 };
 
 export default function App() {
-  // Authentication & Security State (Enforces hidden 6-digit passkey unlock)
+  // Authentication & Security State: opens directly unlocked by default so background wake never locks out commands
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     if (typeof window !== "undefined") {
+      const cust = storageService.getCustomization();
+      if (!cust.oneUiConfig?.requireStartupLock) {
+        return true;
+      }
       return (
         sessionStorage.getItem("q_nexus_session_auth") === "active" &&
         localStorage.getItem("q_nexus_lock_v2") === "verified"
       );
     }
-    return false;
+    return true;
   });
   const [isAwayMode, setIsAwayMode] = useState(false);
 
@@ -112,6 +137,28 @@ export default function App() {
   const [waveInitialCommand, setWaveInitialCommand] = useState<{ id: number; text: string } | null>(null);
   const [isIdentityVideoOpen, setIsIdentityVideoOpen] = useState(false);
 
+  // One UI 9 Studio, Quick Panel, Home Grid & Charging States
+  const [isOneUiStudioOpen, setIsOneUiStudioOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.location.search.includes("tab=oneui9");
+    }
+    return false;
+  });
+  const [isQuickPanelOpen, setIsQuickPanelOpen] = useState(false);
+  const [isHomeGridMode, setIsHomeGridMode] = useState(false);
+  const [isChargingAnimOpen, setIsChargingAnimOpen] = useState(false);
+  const [phoneBatteryPercent, setPhoneBatteryPercent] = useState<number | null>(null);
+  const [isPhoneCharging, setIsPhoneCharging] = useState(false);
+  const [batteryUnrestricted, setBatteryUnrestricted] = useState(true);
+  const [activityState, setActivityState] = useState<UserActivityState>("sitting_stationary");
+  const [unlockPulseNonce, setUnlockPulseNonce] = useState(0);
+  const [unlockMethodLabel, setUnlockMethodLabel] = useState("Biometric");
+  const [incomingCallLabel, setIncomingCallLabel] = useState<string | null>(null);
+  const lastChargingRef = useRef<boolean | null>(null);
+  const chargingAutoCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const incomingCallClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTaskUrgentRemindAtRef = useRef<number>(0);
+
   // Wasu's Jarvis 3D Core Animation & HUD State
   const [wormholeState, setWormholeState] = useState<{ active: boolean; label: string }>({
     active: false,
@@ -141,10 +188,25 @@ export default function App() {
   const [cockpitAudioLevel, setCockpitAudioLevel] = useState(0);
   const [cockpitLiveTranscript, setCockpitLiveTranscript] = useState("");
   const [cockpitLiveReply, setCockpitLiveReply] = useState("");
-  const [cockpitRecordingSeconds, setCockpitRecordingSeconds] = useState(0);
-  const [cockpitWaBars, setCockpitWaBars] = useState<number[]>(() => Array(34).fill(18));
   const [cockpitSummaries, setCockpitSummaries] = useState<CockpitSummaryItem[]>(() =>
     storageService.getSummaryLogs()
+  );
+  const [mainPanelItems, setMainPanelItems] = useState<MainPanelFeedItem[]>([]);
+  const [needsWhatsAppAccess, setNeedsWhatsAppAccess] = useState(false);
+  const followUpAwaitRef = useRef(false);
+  const manualCancelRef = useRef(false);
+  const activityStateRef = useRef<UserActivityState>("sitting_stationary");
+  activityStateRef.current = activityState;
+  const seenNotifKeysRef = useRef<Set<string>>(
+    (() => {
+      try {
+        const raw = localStorage.getItem("wasu_jarvis_seen_notifs");
+        const arr = raw ? JSON.parse(raw) : [];
+        return new Set<string>(Array.isArray(arr) ? arr : []);
+      } catch {
+        return new Set<string>();
+      }
+    })()
   );
   const [isWakeWordActive, setIsWakeWordActive] = useState(true);
   const [wakeReady, setWakeReady] = useState(false);
@@ -158,6 +220,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const avatarConfig: AvatarStudioConfig = customization.avatarConfig || defaultAvatarConfig;
+  const oneUiConfig: OneUiStudioConfig = customization.oneUiConfig || defaultOneUiConfig;
   const activeCharName = getCharacterDisplayName(avatarConfig);
   const languageRef = useRef(language);
   languageRef.current = language;
@@ -169,6 +232,8 @@ export default function App() {
   voiceCharRef.current = customization.avatarConfig?.characterGender === "male" ? "male" : "female";
   const avatarConfigRef = useRef(avatarConfig);
   avatarConfigRef.current = avatarConfig;
+  const oneUiConfigRef = useRef(oneUiConfig);
+  oneUiConfigRef.current = oneUiConfig;
   const userProfileRef = useRef(userProfile);
   userProfileRef.current = userProfile;
   const proactiveAlertsRef = useRef(customization.proactiveAlerts);
@@ -185,7 +250,7 @@ export default function App() {
     const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     setCockpitSummaries((prev) => {
       const next: CockpitSummaryItem[] = [
-        ...prev.slice(-39),
+        ...prev.slice(-79),
         { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, role, speaker, text: cleaned, timeStr },
       ];
       storageService.saveSummaryLogs(next);
@@ -193,10 +258,53 @@ export default function App() {
     });
   };
 
-  const projectHubAlert = (title: string, text: string, source = "SYSTEM HUB") => {
+  const markNativeNotifSeen = (nativeKey?: string) => {
+    if (!nativeKey) return;
+    seenNotifKeysRef.current.add(nativeKey);
+    try {
+      const recentKeys = Array.from(seenNotifKeysRef.current).slice(-120);
+      localStorage.setItem("wasu_jarvis_seen_notifs", JSON.stringify(recentKeys));
+    } catch {}
+  };
+
+  const pushMainPanelItem = (item: Omit<MainPanelFeedItem, "id" | "timeStr">): string => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const entry: MainPanelFeedItem = { ...item, id, timeStr };
+    setMainPanelItems((prev) => {
+      if (item.nativeKey && prev.some((p) => p.nativeKey === item.nativeKey && p.text === item.text)) {
+        return prev;
+      }
+      return [entry, ...prev].slice(0, 12);
+    });
+    return id;
+  };
+
+  const archiveMainPanelItems = (ids?: string[]) => {
+    setMainPanelItems((prev) => {
+      if (prev.length === 0) return prev;
+      const toArchive = ids ? prev.filter((p) => ids.includes(p.id)) : prev;
+      if (toArchive.length === 0) return prev;
+      toArchive.forEach((item) => {
+        markNativeNotifSeen(item.nativeKey);
+        appendCockpitSummary(item.speakerRole, item.source, item.title && item.kind === "notification" ? `${item.title}: ${item.text}` : item.text);
+      });
+      return ids ? prev.filter((p) => !ids.includes(p.id)) : [];
+    });
+  };
+
+  const projectHubAlert = (title: string, text: string, source = "SYSTEM HUB", nativeKey?: string) => {
     const nextPresenter = hubPresenterTurnRef.current;
     hubPresenterTurnRef.current = nextPresenter === "female" ? "male" : "female";
     const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    pushMainPanelItem({
+      kind: "notification",
+      source,
+      title,
+      text,
+      speakerRole: "reminder",
+      nativeKey,
+    });
     setActiveHubNotification({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       title,
@@ -267,36 +375,50 @@ export default function App() {
     );
   }, [customization, avatarConfig]);
 
-  // In-Cockpit WhatsApp-style ticking timer & scrolling waveform bars while listening
-  useEffect(() => {
-    if (!isJarvisListening) {
-      setCockpitRecordingSeconds(0);
+  // Process Spoken Cockpit Command (Updates Processing 3D Logo -> Speaking 3D Logo -> Live Summary)
+  const triggerFollowUpPrompt = (
+    langCode: LanguageCode,
+    spkGender: "male" | "female",
+    spkPitch: number,
+    spkRate: number,
+    fast: boolean
+  ) => {
+    if (
+      !oneUiConfigRef.current.followUpListeningEnabled ||
+      manualCancelRef.current ||
+      isIdentityVideoOpen ||
+      isVoiceModalOpen ||
+      isWakeWaveOpen ||
+      isOneUiStudioOpen
+    ) {
+      followUpAwaitRef.current = false;
       return;
     }
-    setCockpitRecordingSeconds(0);
-    setCockpitWaBars(Array(34).fill(18));
+    followUpAwaitRef.current = true;
+    const promptMsg = langCode === "en" ? "Anything else?" : "Kuch aur kehna hai?";
+    setTimeout(() => {
+      if (manualCancelRef.current || speechService.getListeningState()) return;
+      speechService.speak(promptMsg, {
+        lang: langCode,
+        gender: spkGender,
+        pitch: spkPitch,
+        rate: fast ? Math.max(spkRate, 1.06) : spkRate,
+        fast,
+        onEnd: () => {
+          if (!manualCancelRef.current && followUpAwaitRef.current) {
+            setCockpitLiveTranscript("");
+            speechService.startListening(langCode);
+          }
+        },
+      });
+    }, 320);
+  };
 
-    const secTimer = setInterval(() => {
-      setCockpitRecordingSeconds((s) => s + 1);
-    }, 1000);
-
-    const waveTimer = setInterval(() => {
-      const lvl = audioLevelRef.current;
-      const heightPct = Math.min(100, Math.max(16, Math.round(16 + lvl * 84 + Math.random() * 8)));
-      setCockpitWaBars((prev) => [...prev.slice(1), heightPct]);
-    }, 85);
-
-    return () => {
-      clearInterval(secTimer);
-      clearInterval(waveTimer);
-    };
-  }, [isJarvisListening]);
-
-  // Process Spoken Cockpit Command (Updates Processing 3D Logo -> Speaking 3D Logo -> Live Summary)
   const processCockpitCommandRef = useRef<(rawText: string) => Promise<void>>(async () => {});
   const processCockpitCommand = async (rawText: string) => {
     const text = rawText.trim();
     if (!text) return;
+    manualCancelRef.current = false;
 
     const charGender = voiceCharRef.current;
     const charName = activeCharNameRef.current;
@@ -307,7 +429,13 @@ export default function App() {
       PERSONALITY_MODES.find((p) => p.voiceGender === charGender) ||
       PERSONALITY_MODES[0];
 
-    appendCockpitSummary("user", "You", text);
+    const userPanelId = pushMainPanelItem({
+      kind: "chat",
+      source: "You",
+      title: "Voice Command",
+      text,
+      speakerRole: "user",
+    });
     setCockpitLiveTranscript("");
     setIsProcessingCockpit(true);
 
@@ -321,16 +449,25 @@ export default function App() {
         speakerName?: string;
         useElevenLabs?: boolean;
         urduSpeechText?: string;
+        skipFollowUp?: boolean;
       }
     ) => {
       const spkGender = voiceOverride?.gender || charGender;
       const spkPitch = voiceOverride?.pitch ?? activePersona.pitch;
       const spkRate = voiceOverride?.rate ?? activePersona.rate;
+      const spkName = voiceOverride?.speakerName || charName;
+      const effectiveLang = langOverride || lang;
       setCockpitLiveReply(reply);
-      appendCockpitSummary("assistant", voiceOverride?.speakerName || charName, reply);
+      const replyPanelId = pushMainPanelItem({
+        kind: "chat",
+        source: spkName,
+        title: "Reply",
+        text: reply,
+        speakerRole: "assistant",
+      });
       const fast = cfg?.fastTalkingMode ?? true;
       speechService.speak(reply, {
-        lang: langOverride || lang,
+        lang: effectiveLang,
         gender: spkGender,
         pitch: spkPitch,
         rate: fast ? Math.max(spkRate, 1.04) : spkRate,
@@ -338,12 +475,39 @@ export default function App() {
         useElevenLabs: voiceOverride?.useElevenLabs ?? cfg?.useElevenLabs,
         elevenLabsVoiceId: cfg?.elevenLabsVoiceId,
         urduSpeechText: voiceOverride?.urduSpeechText,
-        onEnd: () => setCockpitLiveReply(""),
+        onEnd: () => {
+          setCockpitLiveReply("");
+          setTimeout(() => {
+            archiveMainPanelItems([userPanelId, replyPanelId]);
+          }, 4500);
+          if (!voiceOverride?.skipFollowUp) {
+            triggerFollowUpPrompt(effectiveLang, spkGender, spkPitch, spkRate, fast);
+          }
+        },
       });
     };
 
     try {
       const lower = text.toLowerCase();
+      if (
+        followUpAwaitRef.current &&
+        /^(nahi|nah|no|nothing|kuch nahi|bas|shukriya|thanks|thank you|theek hai|thik hai|ok thanks|choro)$/i.test(
+          lower.replace(/[.!?]+$/g, "").trim()
+        )
+      ) {
+        followUpAwaitRef.current = false;
+        soundEffects.playBeepConfirm();
+        speakCockpitReply(
+          lang === "en"
+            ? "Alright, say Jarvis whenever you need me."
+            : "Theek hai, jab chahein Jarvis bolein, main hazir hoon.",
+          lang,
+          { skipFollowUp: true }
+        );
+        return;
+      }
+      followUpAwaitRef.current = false;
+
       if (isIdentityVideoCommand(text)) {
         const reply =
           lang === "pa"
@@ -415,6 +579,17 @@ export default function App() {
           : `Aapka logged health record: ${health.waterDrankGlasses} glass pani, ${health.mealsLogged.length} meals aur ${health.sleepHoursLastNight} ghante neend.`;
         soundEffects.playBeepConfirm();
         speakCockpitReply(msg);
+        return;
+      }
+
+      // 0A. Direct Phone Commands: Open Any Installed App, Call Contact/Number, WhatsApp Message/Reply, SMS
+      const localCmd = await tryExecuteLocalPhoneCommand(text);
+      if (localCmd.handled) {
+        soundEffects.playBeepConfirm();
+        speakCockpitReply(localCmd.reply || "Hukum poora kar diya gaya hai.");
+        if (localCmd.triggerAction) {
+          handleExecuteVoiceAction(localCmd.triggerAction, localCmd.triggerPayload);
+        }
         return;
       }
 
@@ -533,7 +708,7 @@ export default function App() {
       const userLifeRecords = readLifeRecords();
       const phoneTelemetry = await readPhoneHardwareTelemetry().catch(() => null);
 
-      const res = await fetch("/api/jarvis/chat", {
+      const res = await fetch(resolveApiUrl("/api/jarvis/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -571,7 +746,9 @@ export default function App() {
         }
       }
     } catch {
-      const errReply = "Command process nahi ho saki — dobara bolein.";
+      const errReply = isNativeAndroidApk()
+        ? "Offline mode mein hoon — aap 'Call Ali', 'Open WhatsApp', 'Time kya hai' ya 'Phone status' bol sakte hain."
+        : "Command process nahi ho saki — dobara bolein.";
       speakCockpitReply(errReply);
     } finally {
       setIsProcessingCockpit(false);
@@ -609,7 +786,7 @@ export default function App() {
             PERSONALITY_MODES.find((p) => p.voiceGender === charGender) ||
             PERSONALITY_MODES[0];
 
-          const res = await fetch("/api/jarvis/voice-audio", {
+          const res = await fetch(resolveApiUrl("/api/jarvis/voice-audio"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -633,22 +810,90 @@ export default function App() {
             return;
           }
           const heard = (data.transcript || "").trim();
+          const fastAudioMode = cfg?.fastTalkingMode ?? true;
+          const heardId = heard
+            ? pushMainPanelItem({ kind: "chat", source: "You", title: "Voice Command", text: heard, speakerRole: "user" })
+            : "";
+          if (heard) {
+            if (
+              followUpAwaitRef.current &&
+              /^(nahi|nah|no|nothing|kuch nahi|bas|shukriya|thanks|thank you|theek hai|thik hai|ok thanks|choro)$/i.test(
+                heard.toLowerCase().replace(/[.!?]+$/g, "").trim()
+              )
+            ) {
+              followUpAwaitRef.current = false;
+              const byeMsg =
+                lang === "en"
+                  ? "Alright, say Jarvis whenever you need me."
+                  : "Theek hai, jab chahein Jarvis bolein, main hazir hoon.";
+              speechService.speak(byeMsg, {
+                lang,
+                gender: charGender,
+                pitch: activePersona.pitch,
+                rate: activePersona.rate,
+              });
+              return;
+            }
+            followUpAwaitRef.current = false;
+            const localFromAudio = await tryExecuteLocalPhoneCommand(heard);
+            if (localFromAudio.handled) {
+              const localMsg = localFromAudio.reply || "Hukum poora kar diya gaya hai.";
+              const replyId = pushMainPanelItem({
+                kind: "chat",
+                source: charName,
+                title: "Reply",
+                text: localMsg,
+                speakerRole: "assistant",
+              });
+              soundEffects.playBeepConfirm();
+              setCockpitLiveReply(localMsg);
+              speechService.speak(localMsg, {
+                lang,
+                gender: charGender,
+                pitch: activePersona.pitch,
+                rate: activePersona.rate,
+                onEnd: () => {
+                  setCockpitLiveReply("");
+                  setTimeout(() => archiveMainPanelItems([heardId, replyId].filter(Boolean)), 4500);
+                  triggerFollowUpPrompt(lang, charGender, activePersona.pitch, activePersona.rate, fastAudioMode);
+                },
+              });
+              if (localFromAudio.triggerAction) {
+                handleExecuteVoiceAction(localFromAudio.triggerAction, localFromAudio.triggerPayload);
+              }
+              return;
+            }
+          }
           const msg = (data.reply || `Ji, main ${charName} hazir hoon.`).trim();
-          if (heard) appendCockpitSummary("user", "You", heard);
-          appendCockpitSummary("assistant", charName, msg);
           soundEffects.playBeepConfirm();
           if (data.action === "SHOW_IDENTITY_VIDEO") {
             speechService.cancelSpeech();
+            if (heardId) archiveMainPanelItems([heardId]);
+            appendCockpitSummary("assistant", charName, msg);
             handleExecuteVoiceAction("SHOW_IDENTITY_VIDEO", data.actionPayload);
           } else {
+            const replyId = pushMainPanelItem({
+              kind: "chat",
+              source: charName,
+              title: "Reply",
+              text: msg,
+              speakerRole: "assistant",
+            });
+            const detectedLang = (data.languageDetected || lang) as LanguageCode;
             setCockpitLiveReply(msg);
             speechService.speak(msg, {
-              lang: data.languageDetected || lang,
+              lang: detectedLang,
               gender: charGender,
               pitch: activePersona.pitch,
               rate: activePersona.rate,
               urduSpeechText: data.urduSpeechText,
-              onEnd: () => setCockpitLiveReply(""),
+              onEnd: () => {
+                setCockpitLiveReply("");
+                setTimeout(() => {
+                  archiveMainPanelItems([heardId, replyId].filter(Boolean));
+                }, 4500);
+                triggerFollowUpPrompt(detectedLang, charGender, activePersona.pitch, activePersona.rate, fastAudioMode);
+              },
             });
             if (data.action && data.action !== "NONE") {
               handleExecuteVoiceAction(data.action, data.actionPayload);
@@ -663,7 +908,10 @@ export default function App() {
       onError: (err) => {
         setIsJarvisListening(false);
         setIsProcessingCockpit(false);
-        if (err) appendCockpitSummary("reminder", activeCharNameRef.current, err);
+        if (err) {
+          appendCockpitSummary("reminder", activeCharNameRef.current, err);
+          showToast(err);
+        }
       },
       onEnd: () => {
         setIsJarvisListening(false);
@@ -708,8 +956,8 @@ export default function App() {
         heardClearTimerRef.current = setTimeout(() => setLastHeardWakeText(""), 2500);
       },
       onWakeWordDetected: (_matchedPhrase, trailingCommand) => {
-        // Transition RIGHT INSIDE Main Cockpit to WhatsApp Voice Recording Phase (or process trailing command)
         soundEffects.playBeepConfirm();
+        setIsAuthenticated(true);
         setIsVoiceModalOpen(false);
         setIsWakeWaveOpen(false);
 
@@ -723,15 +971,6 @@ export default function App() {
     });
 
     speechService.enableWakeWord(isWakeWordActive);
-
-    // Silent one-time pointer primer so "Hi Jarvis" always works without clicking a Mic logo
-    let primed = false;
-    const armOnceOnTouch = () => {
-      if (primed) return;
-      primed = true;
-      speechService.primeMicrophoneAccess().catch(() => {});
-    };
-    window.addEventListener("pointerdown", armOnceOnTouch, { once: true, passive: true });
 
     const unsubNative = subscribeNativeEvents(
       (nativePhrase, trailingCommand) => {
@@ -750,10 +989,44 @@ export default function App() {
       (notif) => {
         const alertsCfg = proactiveAlertsRef.current;
         if (alertsCfg && !alertsCfg.incomingNotifications) return;
-        const alertLine = `${notif.appName} par ${notif.title} ka message aaya hai: ${notif.text}`;
-        appendCockpitSummary("reminder", `${notif.appName} Alert`, `${notif.title}: ${notif.text}`);
-        projectHubAlert(notif.title, notif.text, notif.appName);
-        if ((alertsCfg?.speakNotificationsAloud ?? true) && !speechService.getListeningState()) {
+        const notifUniqueKey = `${notif.key}:${notif.text}`;
+        projectHubAlert(notif.title, notif.text, notif.appName, notifUniqueKey);
+
+        if (notif.isCallNotification) {
+          setIncomingCallLabel(`${notif.title}: ${notif.text}`);
+          if (incomingCallClearRef.current) clearTimeout(incomingCallClearRef.current);
+          incomingCallClearRef.current = setTimeout(() => setIncomingCallLabel(null), 26000);
+          if ((alertsCfg?.autoCallVoiceControl ?? true) && !speechService.getListeningState()) {
+            const callAlert = `${notif.title} ki call aa rahi hai. Uthaoon ya kaat doon?`;
+            speechService.speak(callAlert, {
+              lang: languageRef.current,
+              gender: hubPresenterTurnRef.current === "female" ? "male" : "female",
+            });
+          }
+          return;
+        }
+
+        const isSleeping =
+          activityStateRef.current === "lying_sleeping" && (alertsCfg?.activityAwareMode ?? true);
+        const vipMatch = (alertsCfg?.vipContacts || []).some(
+          (v) =>
+            notif.title.toLowerCase().includes(v.name.toLowerCase()) ||
+            notif.text.toLowerCase().includes(v.name.toLowerCase())
+        );
+        const appRule = (alertsCfg?.appRules || DEFAULT_APP_ALERT_RULES).find(
+          (r) =>
+            notif.packageName === r.packageName ||
+            notif.appName.toLowerCase().includes(r.appName.toLowerCase())
+        );
+        if (appRule && !appRule.enabled) return;
+        if (isSleeping && !vipMatch && !(appRule?.allowInSleepOrQuiet)) return;
+
+        const alertLine = `${vipMatch ? "VIP Alert! " : ""}${notif.appName} par ${notif.title} ka message aaya hai: ${notif.text}`;
+        if (
+          (alertsCfg?.speakNotificationsAloud ?? true) &&
+          (vipMatch || !appRule || appRule.speakAloud) &&
+          !speechService.getListeningState()
+        ) {
           speechService.speak(alertLine, {
             lang: languageRef.current,
             gender: hubPresenterTurnRef.current === "female" ? "male" : "female",
@@ -761,6 +1034,68 @@ export default function App() {
         }
       }
     );
+
+    const unsubActivityVip = subscribeActivityAndVipEvents(
+      (stateStr) => {
+        setActivityState((stateStr as UserActivityState) || "sitting_stationary");
+      },
+      (sender, text) => {
+        const line = `VIP Yaad-dehani: ${sender} — ${text}`;
+        projectHubAlert(`VIP: ${sender}`, text, "VIP PRIORITY");
+        showToast(line);
+        if (!speechService.getListeningState() && !speechService.getSpeakingState()) {
+          speechService.speak(line, { lang: languageRef.current, gender: voiceCharRef.current });
+        }
+      }
+    );
+
+    const unsubStudioLaunch = subscribeStudioLaunchEvent(() => {
+      setIsAuthenticated(true);
+      setIsOneUiStudioOpen(true);
+    });
+
+    if (isNativeAndroidApk()) {
+      getUserActivityStateAndroid().then((st) => {
+        if (st) setActivityState(st as UserActivityState);
+      });
+
+      consumePendingStudioLaunchAndroid().then((target) => {
+        if (target) {
+          setIsAuthenticated(true);
+          setIsOneUiStudioOpen(true);
+        }
+      });
+
+      consumePendingWakeEventAndroid().then((pending) => {
+        if (pending?.hasPending) {
+          setIsAuthenticated(true);
+          setIsVoiceModalOpen(false);
+          setIsWakeWaveOpen(false);
+          soundEffects.playBeepConfirm();
+          if (pending.trailingCommand && pending.trailingCommand.trim().length >= 3) {
+            processCockpitCommandRef.current(pending.trailingCommand.trim());
+          } else {
+            manualCancelRef.current = false;
+            setCockpitLiveTranscript("");
+            speechService.startListening(languageRef.current);
+          }
+        }
+      });
+
+      getNativeBackgroundStatus().then((bg) => {
+        if (bg) {
+          setBatteryUnrestricted(Boolean(bg.batteryUnrestricted));
+        }
+      });
+    }
+
+    const unsubPermEvents = subscribeNativeSpeechEvents({
+      onPermissionsChanged: (st) => {
+        if (isNativeAndroidApk()) {
+          setNeedsWhatsAppAccess(!st.notifListener);
+        }
+      },
+    });
 
     const onCustomHubAlert = (ev: Event) => {
       const detail = (ev as CustomEvent<{ title?: string; text?: string; source?: string }>).detail;
@@ -770,16 +1105,101 @@ export default function App() {
     window.addEventListener("q-nexus-hub-alert", onCustomHubAlert);
 
     return () => {
-      window.removeEventListener("pointerdown", armOnceOnTouch);
       window.removeEventListener("q-nexus-hub-alert", onCustomHubAlert);
       if (heardClearTimerRef.current) clearTimeout(heardClearTimerRef.current);
       if (hubNotifTimerRef.current) clearTimeout(hubNotifTimerRef.current);
+      if (incomingCallClearRef.current) clearTimeout(incomingCallClearRef.current);
       speechService.enableWakeWord(false);
+      unsubPermEvents();
+      unsubStudioLaunch();
+      unsubActivityVip();
       unsubNative();
       unsubSpeaking();
       unsubListening();
     };
   }, [isAuthenticated, isWakeWordActive]);
+
+  // Browser Web Fallback Activity & Speed Monitor + Repeating Urgent Task Reminder Loop
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let watchId: number | null = null;
+    let lastWalkTick = 0;
+
+    if (!isNativeAndroidApk() && typeof window !== "undefined") {
+      const onMotion = (e: DeviceMotionEvent) => {
+        const acc = e.accelerationIncludingGravity;
+        if (!acc) return;
+        const mag = Math.sqrt((acc.x || 0) ** 2 + (acc.y || 0) ** 2 + (acc.z || 0) ** 2);
+        const delta = Math.abs(mag - 9.8);
+        if (delta > 1.8) {
+          lastWalkTick = Date.now();
+          setActivityState((prev) => (prev === "riding_bike" ? prev : "walking"));
+        } else if (Date.now() - lastWalkTick > 10000) {
+          setActivityState((prev) => (prev === "riding_bike" ? prev : "sitting_stationary"));
+        }
+      };
+      window.addEventListener("devicemotion", onMotion);
+      if ("geolocation" in navigator) {
+        try {
+          watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+              const spd = pos.coords.speed ?? 0;
+              if (spd >= 4.5) setActivityState("riding_bike");
+              else if (spd >= 0.8) setActivityState("walking");
+            },
+            () => {},
+            { enableHighAccuracy: false, maximumAge: 15000 }
+          );
+        } catch {}
+      }
+      const taskInterval = setInterval(() => {
+        const alertsCfg = proactiveAlertsRef.current;
+        if (!alertsCfg?.taskReminders || speechService.getListeningState() || speechService.getSpeakingState()) return;
+        const repeatMs = (alertsCfg.taskUrgentRepeatMinutes ?? 5) * 60 * 1000;
+        if (Date.now() - lastTaskUrgentRemindAtRef.current < repeatMs) return;
+        const pending = storageService.getTasks().filter((t) => !t.completed);
+        if (pending.length === 0) return;
+        const high = pending.find((t) => t.priority === "high");
+        const isSleeping = activityStateRef.current === "lying_sleeping" && alertsCfg.activityAwareMode;
+        if (isSleeping && !high) return;
+        const chosen = high || pending[0];
+        lastTaskUrgentRemindAtRef.current = Date.now();
+        const line =
+          languageRef.current === "en"
+            ? `Task reminder: ${chosen.title} is still pending.`
+            : `Task Yaad-dehani: Aapka kaam "${chosen.title}" abhi baqi hai.`;
+        projectHubAlert("Urgent Task Reminder", chosen.title, "TASK GUARD");
+        speechService.speak(line, { lang: languageRef.current, gender: voiceCharRef.current });
+      }, 60000);
+
+      return () => {
+        window.removeEventListener("devicemotion", onMotion);
+        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        clearInterval(taskInterval);
+      };
+    }
+
+    const nativeTaskInterval = setInterval(() => {
+      const alertsCfg = proactiveAlertsRef.current;
+      if (!alertsCfg?.taskReminders || speechService.getListeningState() || speechService.getSpeakingState()) return;
+      const repeatMs = (alertsCfg.taskUrgentRepeatMinutes ?? 5) * 60 * 1000;
+      if (Date.now() - lastTaskUrgentRemindAtRef.current < repeatMs) return;
+      const pending = storageService.getTasks().filter((t) => !t.completed);
+      if (pending.length === 0) return;
+      const high = pending.find((t) => t.priority === "high");
+      const isSleeping = activityStateRef.current === "lying_sleeping" && alertsCfg.activityAwareMode;
+      if (isSleeping && !high) return;
+      const chosen = high || pending[0];
+      lastTaskUrgentRemindAtRef.current = Date.now();
+      const line =
+        languageRef.current === "en"
+          ? `Task reminder: ${chosen.title} is still pending.`
+          : `Task Yaad-dehani: Aapka kaam "${chosen.title}" abhi baqi hai.`;
+      projectHubAlert("Urgent Task Reminder", chosen.title, "TASK GUARD");
+      speechService.speak(line, { lang: languageRef.current, gender: voiceCharRef.current });
+    }, 60000);
+    return () => clearInterval(nativeTaskInterval);
+  }, [isAuthenticated]);
 
   // Proactive Mobile Hardware Telemetry & Network Alert Watcher
   const lowBatteryAlertedRef = useRef(false);
@@ -818,6 +1238,20 @@ export default function App() {
     const checkBattery = async () => {
       try {
         const tel = await readPhoneHardwareTelemetry();
+        if (tel.batteryPercent !== null) setPhoneBatteryPercent(tel.batteryPercent);
+        setIsPhoneCharging(Boolean(tel.isCharging));
+
+        if (
+          lastChargingRef.current === false &&
+          tel.isCharging &&
+          oneUiConfigRef.current.chargingOverlayEnabled
+        ) {
+          setIsChargingAnimOpen(true);
+          if (chargingAutoCloseRef.current) clearTimeout(chargingAutoCloseRef.current);
+          chargingAutoCloseRef.current = setTimeout(() => setIsChargingAnimOpen(false), 6500);
+        }
+        lastChargingRef.current = Boolean(tel.isCharging);
+
         const threshold = proactiveAlertsRef.current?.lowBatteryThreshold ?? 20;
         if (tel.batteryPercent !== null && tel.batteryPercent <= threshold && !tel.isCharging) {
           if (!lowBatteryAlertedRef.current) {
@@ -838,11 +1272,13 @@ export default function App() {
       } catch {}
     };
 
-    const batInterval = setInterval(checkBattery, 60000);
+    checkBattery();
+    const batInterval = setInterval(checkBattery, 12000);
     return () => {
       window.removeEventListener("online", handleNetOnline);
       window.removeEventListener("offline", handleNetOffline);
       clearInterval(batInterval);
+      if (chargingAutoCloseRef.current) clearTimeout(chargingAutoCloseRef.current);
     };
   }, [isAuthenticated]);
 
@@ -949,7 +1385,13 @@ export default function App() {
       const pitch = customSlot?.pitch ?? activePersona.pitch;
       const rate = customSlot?.rate ?? activePersona.rate;
       setCockpitLiveReply(message);
-      appendCockpitSummary("reminder", `${activeCharName} Briefing`, message);
+      const briefId = pushMainPanelItem({
+        kind: "chat",
+        source: activeCharName,
+        title: "Briefing",
+        text: message,
+        speakerRole: "reminder",
+      });
       speechService.speak(message, {
         lang: language,
         gender: charGender,
@@ -958,7 +1400,10 @@ export default function App() {
         fast,
         useElevenLabs: cfg?.useElevenLabs,
         elevenLabsVoiceId: cfg?.elevenLabsVoiceId,
-        onEnd: () => setCockpitLiveReply(""),
+        onEnd: () => {
+          setCockpitLiveReply("");
+          setTimeout(() => archiveMainPanelItems([briefId]), 4500);
+        },
       });
     }
   };
@@ -984,12 +1429,29 @@ export default function App() {
               const reqRes = await requestCorePermissionsAndroid();
               if (reqRes) st = reqRes;
             }
+            setNeedsWhatsAppAccess(!st?.notifListener);
             await speechService.primeMicrophoneAccess();
             const optedOut =
               typeof localStorage !== "undefined" &&
               localStorage.getItem("wasu_jarvis_bg_opt_out") === "1";
             if (!optedOut && st?.mic) {
               setNativeBackgroundWakeService(true).catch(() => {});
+            }
+            if (st?.notifListener) {
+              const notifRes = await getNativePhoneNotifications();
+              const unseen = notifRes.notifications
+                .filter((n) => !seenNotifKeysRef.current.has(`${n.key}:${n.text}`))
+                .slice(0, 5);
+              unseen.reverse().forEach((n) => {
+                pushMainPanelItem({
+                  kind: "notification",
+                  source: n.appName,
+                  title: n.title,
+                  text: n.text,
+                  speakerRole: "reminder",
+                  nativeKey: `${n.key}:${n.text}`,
+                });
+              });
             }
           } catch {}
         }
@@ -1003,7 +1465,13 @@ export default function App() {
               : `Assalam-o-Alaikum Wasi Sahab! Khush amdeed. Main ${femaleName} hoon, aapki Wasu's Jarvis. Tamaam systems online hain, farmaiye main aapki kya madad karoon?`;
           const femaleSlot = cfg?.femaleVoiceSettings;
           setCockpitLiveReply(salamMsg);
-          appendCockpitSummary("reminder", `${femaleName} Welcome`, salamMsg);
+          const welcomeId = pushMainPanelItem({
+            kind: "chat",
+            source: femaleName,
+            title: "Welcome",
+            text: salamMsg,
+            speakerRole: "assistant",
+          });
           speechService.speak(salamMsg, {
             lang: language,
             gender: "female",
@@ -1015,6 +1483,7 @@ export default function App() {
             elevenLabsVoiceId: cfg?.elevenLabsVoiceId,
             onEnd: () => {
               setCockpitLiveReply("");
+              setTimeout(() => archiveMainPanelItems([welcomeId]), 4500);
             },
           });
         }
@@ -1102,7 +1571,7 @@ export default function App() {
         }, customization.screensaverTimeoutMinutes * 60 * 1000);
       }
 
-      if (autoLockMins > 0) {
+      if (autoLockMins > 0 && customization.oneUiConfig?.requireStartupLock) {
         lockTimeoutId = setTimeout(() => {
           sessionStorage.removeItem("q_nexus_session_auth");
           localStorage.removeItem("q_nexus_wasi_auth");
@@ -1131,14 +1600,19 @@ export default function App() {
     isHealthLockdownActive,
     customization.screensaverTimeoutMinutes,
     customization.securityConfig?.autoLockMinutes,
+    customization.oneUiConfig?.requireStartupLock,
   ]);
 
-  // Handle Mobile Home Screen Shortcut Actions (?action=voice or ?action=phone-hub)
+  // Handle Mobile Home Screen Shortcut Actions (?action=voice, ?action=phone-hub, or ?tab=oneui9)
   useEffect(() => {
     if (!isAuthenticated || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const action = params.get("action");
-    if (action === "voice") {
+    const tab = params.get("tab");
+    if (tab === "oneui9") {
+      setIsOneUiStudioOpen(true);
+      window.history.replaceState({}, "", "/");
+    } else if (action === "voice") {
       setIsVoiceModalOpen(true);
       window.history.replaceState({}, "", "/");
     } else if (action === "phone-hub") {
@@ -1199,10 +1673,63 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isAuthenticated, showLoadingScreen, isSettingsOpen, isAppsMatrixOpen, isVoiceModalOpen]);
 
+  const syncAllOverlayToNative = (
+    nextOneUi: OneUiStudioConfig,
+    nextAlerts?: ProactiveAlertConfig
+  ) => {
+    const alerts = nextAlerts || customization.proactiveAlerts;
+    syncOneUiOverlayConfigAndroid({
+      dynamicBarStyle: nextOneUi.dynamicBarStyleId,
+      dynamicBarAnchor: nextOneUi.dynamicBarAnchor,
+      dynamicBarOffsetX: nextOneUi.dynamicBarOffsetX,
+      dynamicBarOffsetY: nextOneUi.dynamicBarOffsetY,
+      dynamicBarCustomLabel: nextOneUi.dynamicBarCustomLabel,
+      dynamicBarShowOutsideApp: nextOneUi.dynamicBarShowOutsideApp,
+      unlockBarAnimStyle: nextOneUi.unlockBarAnimStyle,
+      chargingAnim: nextOneUi.chargingAnimId,
+      chargingOverlayEnabled: nextOneUi.chargingOverlayEnabled,
+      accentHex: nextOneUi.accentColorHex,
+      liveWallpaperStyle: nextOneUi.liveWallpaperId,
+      clockHex: nextOneUi.clockColorHex,
+      waveVisualizerStyle: nextOneUi.waveVisualizerStyle,
+      waveColorTheme: nextOneUi.waveColorTheme,
+      followUpListeningEnabled: nextOneUi.followUpListeningEnabled,
+      vipContactsJson: JSON.stringify(alerts?.vipContacts || []),
+      perAppRulesJson: JSON.stringify(alerts?.appRules || DEFAULT_APP_ALERT_RULES),
+      customBiometricImageDataUrl: nextOneUi.customBiometricImageDataUrl || "",
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    syncAllOverlayToNative(oneUiConfig, customization.proactiveAlerts);
+  }, [isAuthenticated]);
+
   const handleUpdateCustomization = (updated: DashboardCustomization) => {
     setCustomization(updated);
     storageService.saveCustomization(updated);
+    syncAllOverlayToNative(updated.oneUiConfig || oneUiConfig, updated.proactiveAlerts);
     showToast("Quantum Settings Applied");
+  };
+
+  const handleUpdateOneUiConfig = (nextOneUi: OneUiStudioConfig) => {
+    const updated: DashboardCustomization = {
+      ...customization,
+      oneUiConfig: nextOneUi,
+    };
+    setCustomization(updated);
+    storageService.saveCustomization(updated);
+    syncAllOverlayToNative(nextOneUi, updated.proactiveAlerts);
+  };
+
+  const handleUpdateProactiveAlerts = (nextAlerts: ProactiveAlertConfig) => {
+    const updated: DashboardCustomization = {
+      ...customization,
+      proactiveAlerts: nextAlerts,
+    };
+    setCustomization(updated);
+    storageService.saveCustomization(updated);
+    syncAllOverlayToNative(oneUiConfig, nextAlerts);
   };
 
   const handleLanguageChange = (newLang: LanguageCode) => {
@@ -1336,6 +1863,12 @@ export default function App() {
     } else if (action === "LOG_EXPENSE") {
       setProjectedHubModule("finance");
       showToast("Financial Defense Hub Projected");
+    } else if (action === "OPEN_ONEUI_STUDIO") {
+      setIsOneUiStudioOpen(true);
+      showToast("One UI 9 Personalization Studio Opened");
+    } else if (action === "OPEN_QUICK_PANEL") {
+      setIsQuickPanelOpen(true);
+      showToast("Quick Switches Panel Opened");
     } else if (action === "LOCK_SYSTEM") {
       speechService.cancelSpeech();
       setProjectedHubModule(null);
@@ -1371,6 +1904,8 @@ export default function App() {
         <div className="relative z-10 flex-1 min-h-[100dvh] flex items-center justify-center overflow-hidden">
           <SecurityGate
             onAuthenticated={() => {
+              setUnlockMethodLabel("Biometric");
+              setUnlockPulseNonce((n) => n + 1);
               triggerWormhole("Entering Wasu's Jarvis Mobile Core", () => {
                 sessionStorage.setItem("q_nexus_session_auth", "active");
                 setIsAuthenticated(true);
@@ -1515,6 +2050,141 @@ export default function App() {
         </div>
       )}
 
+      {/* Live Animated + Gallery Wallpaper Layer behind Home Mode & In-App Customizations */}
+      {isAuthenticated && !showLoadingScreen && (isHomeGridMode || oneUiConfig.liveWallpaperEnabledInApp) && (
+        <div className="fixed inset-0 z-[5] pointer-events-none">
+          <LiveWallpaperCanvas
+            styleId={oneUiConfig.liveWallpaperId}
+            accentHex={oneUiConfig.accentColorHex}
+            galleryImageUrl={oneUiConfig.galleryWallpaperDataUrl || undefined}
+            interactive={isHomeGridMode}
+          />
+        </div>
+      )}
+
+      {/* One UI 9 Edge Lighting Border Aura */}
+      {isAuthenticated && !showLoadingScreen && oneUiConfig.edgeLightingStyle !== "off" && (
+        <div
+          className="pointer-events-none fixed inset-0 z-[55] rounded-[24px] sm:rounded-[30px]"
+          style={{
+            boxShadow:
+              oneUiConfig.edgeLightingStyle === "rainbow_prism"
+                ? "inset 0 0 26px rgba(0,240,255,0.45), inset 0 0 42px rgba(168,85,247,0.35)"
+                : oneUiConfig.edgeLightingStyle === "emerald_spark"
+                ? "inset 0 0 28px rgba(16,185,129,0.5)"
+                : `inset 0 0 26px ${oneUiConfig.accentColorHex}66`,
+            border: `1.5px solid ${oneUiConfig.accentColorHex}66`,
+          }}
+        />
+      )}
+
+      {/* One UI 9 Top Dynamic Bar / Now Bar */}
+      {isAuthenticated && !showLoadingScreen && !isOneUiStudioOpen && !isAwayMode && !isHealthLockdownActive && (
+        <OneUiDynamicBar
+          styleId={oneUiConfig.dynamicBarStyleId}
+          anchor={oneUiConfig.dynamicBarAnchor}
+          offsetX={oneUiConfig.dynamicBarOffsetX}
+          offsetY={oneUiConfig.dynamicBarOffsetY}
+          customLabel={oneUiConfig.dynamicBarCustomLabel}
+          accentHex={oneUiConfig.accentColorHex}
+          isListening={isJarvisListening}
+          isSpeaking={isJarvisSpeaking}
+          audioLevel={cockpitAudioLevel}
+          waveVisualizerStyle={oneUiConfig.waveVisualizerStyle}
+          waveColorTheme={oneUiConfig.waveColorTheme}
+          unlockBarAnimStyle={oneUiConfig.unlockBarAnimStyle}
+          unlockPulseNonce={unlockPulseNonce}
+          unlockMethodLabel={unlockMethodLabel}
+          batteryPercent={phoneBatteryPercent}
+          isCharging={isPhoneCharging}
+          activityState={activityState}
+          incomingCallLabel={incomingCallLabel}
+          onAnswerCall={async () => {
+            const res = await answerOrRejectCallAndroid("answer");
+            setIncomingCallLabel(null);
+            showToast(res.message);
+          }}
+          onRejectCall={async () => {
+            const res = await answerOrRejectCallAndroid("reject");
+            setIncomingCallLabel(null);
+            showToast(res.message);
+          }}
+          onUpdatePosition={(anchor: DynamicBarAnchor, x: number, y: number) => {
+            handleUpdateOneUiConfig({
+              ...oneUiConfig,
+              dynamicBarAnchor: anchor,
+              dynamicBarOffsetX: x,
+              dynamicBarOffsetY: y,
+            });
+          }}
+          onTapVoice={() => {
+            if (speechService.getListeningState()) {
+              speechService.stopListening();
+            } else {
+              manualCancelRef.current = false;
+              setCockpitLiveTranscript("");
+              speechService.startListening(language);
+            }
+          }}
+          onTapQuickPanel={() => setIsQuickPanelOpen((prev) => !prev)}
+        />
+      )}
+
+      {/* One UI 9 Swipe-Down Shortcut Switches Drawer */}
+      <OneUiQuickPanel
+        isOpen={isQuickPanelOpen}
+        onClose={() => setIsQuickPanelOpen(false)}
+        styleId={oneUiConfig.quickPanelStyleId}
+        accentHex={oneUiConfig.accentColorHex}
+        isWakeActive={isWakeWordActive}
+        onToggleWake={toggleWakeWord}
+        onOpenOneUiStudio={() => setIsOneUiStudioOpen(true)}
+        onTriggerVoice={() => {
+          manualCancelRef.current = false;
+          setCockpitLiveTranscript("");
+          speechService.startListening(language);
+        }}
+        onLockNow={() => {
+          speechService.cancelSpeech();
+          sessionStorage.removeItem("q_nexus_session_auth");
+          setIsAuthenticated(false);
+        }}
+        onToast={showToast}
+      />
+
+      {/* One UI 9 Super Charging Animation Overlay */}
+      <ChargingAnimationOverlay
+        isOpen={isChargingAnimOpen}
+        animId={oneUiConfig.chargingAnimId}
+        batteryPercent={phoneBatteryPercent}
+        customImageUrl={oneUiConfig.customBiometricImageDataUrl || undefined}
+        onClose={() => setIsChargingAnimOpen(false)}
+      />
+
+      {/* Separate One UI 9 Personalization Studio */}
+      <OneUi9Studio
+        isOpen={isOneUiStudioOpen}
+        onClose={() => setIsOneUiStudioOpen(false)}
+        config={oneUiConfig}
+        onUpdateConfig={handleUpdateOneUiConfig}
+        proactiveAlerts={customization.proactiveAlerts}
+        onUpdateProactiveAlerts={handleUpdateProactiveAlerts}
+        activityState={activityState}
+        onTestChargingAnim={() => setIsChargingAnimOpen(true)}
+        onTestUnlockEffect={() => {
+          setUnlockMethodLabel("Studio Preview");
+          setUnlockPulseNonce((n) => n + 1);
+        }}
+        onOpenQuickPanel={() => setIsQuickPanelOpen(true)}
+        onOpenHomeMode={() => setIsHomeGridMode(true)}
+        onOpenLockPreview={() => {
+          setIsOneUiStudioOpen(false);
+          sessionStorage.removeItem("q_nexus_session_auth");
+          setIsAuthenticated(false);
+        }}
+        onToast={showToast}
+      />
+
       {/* Single Active Interface: Minimalist Deep-Space Cockpit (mounts cleanly as loading completes) */}
       {!showLoadingScreen && (
       <main className="relative z-10 flex-1 min-h-[100dvh] flex flex-col justify-center overflow-hidden">
@@ -1592,16 +2262,22 @@ export default function App() {
           }
           audioLevel={cockpitAudioLevel}
           liveTranscript={cockpitLiveTranscript}
-          recordingSeconds={cockpitRecordingSeconds}
-          waWaveBars={cockpitWaBars}
           onCancelRecording={() => {
+            manualCancelRef.current = true;
+            followUpAwaitRef.current = false;
             speechService.cancelListening();
+            speechService.cancelSpeech();
             setCockpitLiveTranscript("");
           }}
           onSendRecording={() => {
             speechService.stopListening();
           }}
           onStartManualRecording={() => {
+            if (speechService.getListeningState()) {
+              speechService.stopListening();
+              return;
+            }
+            manualCancelRef.current = false;
             setCockpitLiveTranscript("");
             speechService.startListening(language);
           }}
@@ -1648,7 +2324,27 @@ export default function App() {
           }}
           onShowIdentityVideo={() => setIsIdentityVideoOpen(true)}
           liveReplyText={cockpitLiveReply}
-          pausedByFullscreen={isIdentityVideoOpen}
+          pausedByFullscreen={isIdentityVideoOpen || isOneUiStudioOpen}
+          mainPanelItems={mainPanelItems}
+          onDismissMainPanelItem={(id) => archiveMainPanelItems([id])}
+          onArchiveAllMainPanel={() => archiveMainPanelItems()}
+          needsWhatsAppAccess={needsWhatsAppAccess}
+          onOpenWhatsAppUnlock={() => setProjectedHubModule("comms")}
+          onOpenOneUiStudio={() => setIsOneUiStudioOpen(true)}
+          onOpenQuickPanel={() => setIsQuickPanelOpen(true)}
+          isHomeGridMode={isHomeGridMode}
+          onToggleHomeGridMode={() => setIsHomeGridMode((prev) => !prev)}
+          onToast={showToast}
+          batteryUnrestricted={batteryUnrestricted}
+          onRequestBatteryUnrestricted={async () => {
+            const res = await requestIgnoreBatteryOptimizationAndroid();
+            if (res.unrestricted) {
+              setBatteryUnrestricted(true);
+              showToast("Always-On Battery Shield Unlocked!");
+            } else {
+              showToast("Battery setting mein Wasu's Jarvis ko 'Unrestricted' select karein.");
+            }
+          }}
           onSwitchGender={(nextGender) => {
             const nextAvatar = {
               ...avatarConfig,

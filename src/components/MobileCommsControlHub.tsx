@@ -15,6 +15,7 @@ import {
   Reply,
   BatteryCharging,
   LockOpen,
+  Mic,
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
@@ -30,11 +31,13 @@ import {
   openAndroidBatteryOptimizationSettings,
   requestIgnoreBatteryOptimizationAndroid,
   getNativeBackgroundStatus,
+  openOverlayPermissionSettingsAndroid,
   openAndroidAppInfoSettings,
   openAndroidNotificationAccessSettings,
   getAndroidPermissionStatus,
   requestCorePermissionsAndroid,
   requestCommsPermissionsAndroid,
+  testMicrophoneHardwareAndroid,
   subscribeNativeEvents,
   subscribeNativeSpeechEvents,
   AndroidPermissionStatus,
@@ -75,6 +78,13 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [permStatus, setPermStatus] = useState<AndroidPermissionStatus | null>(null);
   const [batteryUnrestricted, setBatteryUnrestricted] = useState(false);
+  const [overlayGranted, setOverlayGranted] = useState(false);
+  const [micDiagnostic, setMicDiagnostic] = useState<{
+    testing: boolean;
+    ok?: boolean;
+    peakLevel?: number;
+    message?: string;
+  }>({ testing: false });
 
   const refreshAll = async () => {
     setIsRefreshing(true);
@@ -94,6 +104,9 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
       if (bgStat) {
         setBgWakeActive(Boolean(bgStat.running || bgStat.wakeEnabled));
         setBatteryUnrestricted(Boolean(bgStat.batteryUnrestricted));
+        setOverlayGranted(Boolean(bgStat.overlayGranted || pStat?.overlay));
+      } else if (pStat) {
+        setOverlayGranted(Boolean(pStat.overlay));
       }
     } finally {
       setIsRefreshing(false);
@@ -298,6 +311,24 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
     refreshAll();
   };
 
+  const handleTestAndRepairMic = async () => {
+    soundEffects.playClick();
+    triggerHaptic(20);
+    setMicDiagnostic({ testing: true, message: "Mic hardware check ho raha hai..." });
+    const res = await testMicrophoneHardwareAndroid();
+    setMicDiagnostic({
+      testing: false,
+      ok: res.ok,
+      peakLevel: res.peakLevel,
+      message: res.message,
+    });
+    setStatusNotice(res.message);
+    if (res.ok) {
+      speechService.primeMicrophoneAccess().catch(() => {});
+    }
+    refreshAll();
+  };
+
   return (
     <div className="w-full h-full flex flex-col font-rajdhani text-slate-100 space-y-3 overflow-y-auto">
       {/* Top Runtime Mode & Android 15 4-Step Permissions Banner */}
@@ -341,7 +372,7 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
           </div>
           <p className="text-[11px] font-mono text-slate-300 leading-relaxed">
             {isNative
-              ? "Android 15 Security Rule: WhatsApp Notification Access, Calls aur SMS kholne ke liye pehle Step 2 ('Unlock Android 15 Lock' -> App Info -> top-right 3 dots ⋮ -> Allow restricted settings) on karein, phir Step 3 mein Notification Access allow karein."
+              ? "Android 15 WhatsApp Access Ka Paka Tareeqa: (1) Pehle 'Notification Access' khol kar Wasu's Jarvis par 1 baar tap karein (agar 'Restricted setting' ka popup aaye to OK kar dein — is se 3 dots unlock hote hain). (2) Ab 'App Info (3 Dots)' dabayein → upar right ⋮ → 'Allow restricted settings' ON karein. (3) Wapas 'Notification Access' mein ja kar Wasu's Jarvis ON kar dein."
               : "Live Android WhatsApp/Messenger notifications, Call Logs, SMS, aur app band hone ke baad background service sirf compiled Wasu's Jarvis Android APK mein kaam karti hai."}
           </p>
         </div>
@@ -360,21 +391,29 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
               type="button"
               onClick={() => {
                 soundEffects.playClick();
-                setStatusNotice("App Info khul raha hai: Upar right corner 3 dots (⋮) -> 'Allow restricted settings' -> Fingerprint lagayein.");
+                setStatusNotice(
+                  "Notification Access mein Wasu's Jarvis par tap karein. Agar 'Restricted setting' aaye to OK dabaa kar Step 3 (App Info 3 Dots) kholein."
+                );
+                openAndroidNotificationAccessSettings();
+              }}
+              className="px-3 py-2 rounded-xl bg-cyan-950 hover:bg-cyan-900 border border-cyan-400 text-cyan-200 font-mono font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Settings className="w-3.5 h-3.5 shrink-0" />
+              <span>2. NOTIFICATION ACCESS</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                soundEffects.playClick();
+                setStatusNotice(
+                  "App Info mein upar right 3 dots (⋮) → 'Allow restricted settings' ON karein, phir dobara Step 2 (Notification Access) ON karein."
+                );
                 openAndroidAppInfoSettings();
               }}
               className="px-3 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-orbitron font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5"
             >
               <LockOpen className="w-3.5 h-3.5 shrink-0" />
-              <span>2. UNLOCK ANDROID 15 LOCK</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => openAndroidNotificationAccessSettings()}
-              className="px-3 py-2 rounded-xl bg-cyan-950 hover:bg-cyan-900 border border-cyan-400 text-cyan-200 font-mono font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5"
-            >
-              <Settings className="w-3.5 h-3.5 shrink-0" />
-              <span>3. WHATSAPP ALERTS ACCESS</span>
+              <span>3. APP INFO (⋮ UNLOCK)</span>
             </button>
             <button
               type="button"
@@ -383,6 +422,33 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
             >
               <Phone className="w-3.5 h-3.5 shrink-0" />
               <span>4. ALLOW CALLS &amp; SMS</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleTestAndRepairMic}
+              disabled={micDiagnostic.testing}
+              className="px-3 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400 text-sky-200 font-orbitron font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5 sm:col-span-2"
+            >
+              <Mic className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                {micDiagnostic.testing
+                  ? "TESTING MIC..."
+                  : micDiagnostic.ok
+                  ? `5. MIC HARDWARE OK (Signal ${micDiagnostic.peakLevel ?? 0})`
+                  : "5. TEST & REPAIR MIC"}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                soundEffects.playClick();
+                setStatusNotice("System Voice Mic khul raha hai — apna hukum bolein...");
+                speechService.triggerSystemVoiceDialog(language);
+              }}
+              className="px-3 py-2 rounded-xl bg-emerald-950 hover:bg-emerald-900 border border-emerald-400 text-emerald-200 font-orbitron font-bold text-[11px] cursor-pointer flex items-center justify-center gap-1.5 sm:col-span-2"
+            >
+              <Mic className="w-3.5 h-3.5 shrink-0" />
+              <span>SYSTEM VOICE MIC (GUARANTEED BACKUP)</span>
             </button>
           </div>
         )}
@@ -681,9 +747,18 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
                 >
                   BATTERY: {batteryUnrestricted ? "UNRESTRICTED" : "RESTRICTED"}
                 </span>
+                <span
+                  className={`px-2 py-0.5 rounded border ${
+                    overlayGranted
+                      ? "bg-emerald-950/80 border-emerald-400 text-emerald-300"
+                      : "bg-amber-950/70 border-amber-400/60 text-amber-200"
+                  }`}
+                >
+                  OPEN FROM CLOSED: {overlayGranted ? "ALLOWED" : "TAP TO ALLOW"}
+                </span>
               </div>
               <p className="text-xs font-mono text-slate-300 mt-1 leading-relaxed">
-                Android Foreground Service app close ya swipe karne ke baad bhi background mein chalegi, incoming alerts voice se batayegi aur wake word sun kar Wasu&apos;s Jarvis open karegi.
+                Android Foreground Service app close ya recent apps se clear karne ke baad bhi background mein chalegi, bina kisi buzzer ke sirf &quot;Jarvis&quot; sun kar khud open ho kar aapki awaaz sunegi.
               </p>
             </div>
             <button
@@ -699,7 +774,7 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
             <button
               type="button"
               onClick={handleToggleAutoAnnounce}
@@ -710,7 +785,7 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
               }`}
             >
               <Volume2 className="w-4 h-4" />
-              <span>{bgAutoAnnounce ? "Background Voice Alerts: ON" : "Background Voice Alerts: OFF"}</span>
+              <span>{bgAutoAnnounce ? "Voice Alerts: ON" : "Voice Alerts: OFF"}</span>
             </button>
 
             <button
@@ -725,18 +800,41 @@ export const MobileCommsControlHub: React.FC<MobileCommsControlHubProps> = ({
               <BatteryCharging className="w-4 h-4" />
               <span>
                 {batteryUnrestricted
-                  ? "Always-On Battery: UNRESTRICTED ✓"
-                  : "Allow Always-On (No Sleep)"}
+                  ? "Battery: UNRESTRICTED ✓"
+                  : "Allow No Sleep (Battery)"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                soundEffects.playClick();
+                await openOverlayPermissionSettingsAndroid();
+                setStatusNotice(
+                  "Display over other apps mein Wasu's Jarvis ko ON karein — is se app close hone par bhi 'Jarvis' bolte hi khud open ho jayegi!"
+                );
+              }}
+              className={`px-3 py-2.5 rounded-xl border text-xs font-mono font-bold flex items-center justify-center gap-2 cursor-pointer ${
+                overlayGranted
+                  ? "bg-emerald-950/70 border-emerald-400 text-emerald-200"
+                  : "bg-amber-950/70 border-amber-400 text-amber-200 hover:bg-amber-900/80"
+              }`}
+            >
+              <LockOpen className="w-4 h-4" />
+              <span>
+                {overlayGranted
+                  ? "Auto-Open Screen: ON ✓"
+                  : "Allow Open When Closed"}
               </span>
             </button>
           </div>
 
           <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 space-y-1">
             <div>
-              Active Phrases: <span className="text-cyan-300">&quot;Wake up Jarvis&quot;, &quot;Hi Jarvis&quot;, &quot;Hey Jarvis&quot;, &quot;Wasu&quot;, &quot;Wasi ki Jan&quot;</span>
+              Active Phrases: <span className="text-cyan-300">&quot;Jarvis&quot;, &quot;Hi Jarvis&quot;, &quot;Hey Jarvis&quot;, &quot;Wake up Jarvis&quot;, &quot;Wasu&quot;, &quot;Wasi ki Jan&quot;</span>
             </div>
             <div className="text-slate-400">
-              Android 15 / Xiaomi / Vivo / Samsung Tip: Agar phone app swipe karne par service band kare to Recents screen mein Wasu&apos;s Jarvis card ko lock (Lock icon) karein aur App Info &gt; Battery mein &quot;Unrestricted&quot; rakhein.
+              Android 15 Closed-App Wake: &quot;Allow No Sleep (Battery)&quot; aur &quot;Allow Open When Closed&quot; dono ON rakhein taake Recent Apps se clear karne ke baad bhi &quot;Jarvis&quot; bolte hi app khud khul kar sunne lage.
             </div>
           </div>
         </div>

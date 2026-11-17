@@ -49,18 +49,22 @@ export interface AndroidPermissionStatus {
   notifications: boolean;
   location: boolean;
   phone: boolean;
+  callPhone?: boolean;
+  contacts?: boolean;
   sms: boolean;
   notifListener: boolean;
+  overlay?: boolean;
   sdkInt: number;
 }
 
 export interface NativeSpeechEventHandlers {
-  onStart?: () => void;
-  onPartial?: (text: string) => void;
-  onResult?: (text: string) => void;
-  onRms?: (level: number) => void;
-  onError?: (message: string, code?: number) => void;
-  onEnd?: () => void;
+  onStart?: (sessionId?: number) => void;
+  onPartial?: (text: string, sessionId?: number) => void;
+  onResult?: (text: string, sessionId?: number) => void;
+  onAudioCaptured?: (audioBase64: string, mimeType: string, sessionId?: number) => void;
+  onRms?: (level: number, sessionId?: number) => void;
+  onError?: (message: string, code?: number, sessionId?: number) => void;
+  onEnd?: (sessionId?: number) => void;
   onTtsStart?: () => void;
   onTtsDone?: () => void;
   onWakeStatus?: (active: boolean, status: string) => void;
@@ -75,11 +79,18 @@ interface QNexusPluginInterface {
   getCallLogs(): Promise<{ calls: NativeCallLogItem[] }>;
   getSmsMessages(): Promise<{ messages: NativeSmsItem[] }>;
   sendSms(opts: { phone: string; message: string }): Promise<{ ok: boolean; message: string }>;
+  openInstalledApp?(opts: { appName: string }): Promise<{ ok: boolean; appName?: string; message: string }>;
+  callPhoneContact?(opts: { target: string }): Promise<{ ok: boolean; contactName?: string; phone?: string; needsPermission?: boolean; message: string }>;
+  sendWhatsAppMessage?(opts: { target: string; message: string }): Promise<{ ok: boolean; mode?: string; contactName?: string; message: string }>;
   toggleFlashlight?(opts: { enable: boolean }): Promise<{ ok: boolean; active: boolean; message: string }>;
   setAutoAnnounce?(opts: { enabled: boolean }): Promise<{ ok: boolean; enabled: boolean }>;
   openBatteryOptimizationSettings?(): Promise<{ ok: boolean }>;
   requestIgnoreBatteryOptimization?(): Promise<{ ok: boolean; unrestricted?: boolean }>;
-  getBackgroundStatus?(): Promise<{ ok: boolean; running: boolean; wakeEnabled: boolean; batteryUnrestricted: boolean }>;
+  getOverlayPermissionStatus?(): Promise<{ ok: boolean; granted: boolean }>;
+  openOverlayPermissionSettings?(): Promise<{ ok: boolean }>;
+  consumePendingWakeEvent?(): Promise<{ hasPending: boolean; phrase: string; trailingCommand: string }>;
+  setCloudApiBaseUrl?(opts: { url: string }): Promise<{ ok: boolean; url: string }>;
+  getBackgroundStatus?(): Promise<{ ok: boolean; running: boolean; wakeEnabled: boolean; batteryUnrestricted: boolean; overlayGranted?: boolean }>;
   openAppInfoSettings?(): Promise<{ ok: boolean }>;
   setBackgroundWakeService(opts: { enabled: boolean; phrases?: string[] }): Promise<{ ok: boolean; active: boolean; message: string }>;
   openNotificationAccessSettings(): Promise<{ ok: boolean }>;
@@ -90,10 +101,49 @@ interface QNexusPluginInterface {
   requestAllPermissions(): Promise<AndroidPermissionStatus & { mic: boolean; phone: boolean; sms: boolean }>;
   speakNative?(opts: { text: string; lang: string; gender: "male" | "female"; pitch?: number; rate?: number }): Promise<{ ok: boolean }>;
   stopNativeSpeech?(): Promise<{ ok: boolean }>;
-  startNativeListening?(opts: { lang: string }): Promise<{ ok: boolean; needsMicPermission?: boolean; message?: string }>;
+  startNativeListening?(opts: { lang: string; sessionId?: number; preferDialog?: boolean }): Promise<{ ok: boolean; needsMicPermission?: boolean; message?: string }>;
+  startSystemVoiceDialog?(opts: { lang: string; sessionId?: number }): Promise<{ ok: boolean; needsMicPermission?: boolean; message?: string }>;
+  testMicrophoneHardware?(): Promise<{
+    ok: boolean;
+    granted: boolean;
+    hardwareReady: boolean;
+    peakLevel: number;
+    speechEngineAvailable?: boolean;
+    message: string;
+  }>;
   stopNativeListening?(): Promise<{ ok: boolean }>;
   cancelNativeListening?(): Promise<{ ok: boolean }>;
   setNativeWakeWordEnabled?(opts: { enabled: boolean; phrases?: string[] }): Promise<{ ok: boolean; active: boolean }>;
+  consumePendingStudioLaunch?(): Promise<{ hasPending: boolean; target: string }>;
+  applyLiveWallpaperOnPhone?(opts: { style: string; accentHex: string; clockHex: string; showClock: boolean }): Promise<{ ok: boolean; message: string }>;
+  applyBitmapWallpaperOnPhone?(opts: { dataUrl: string; target: "home" | "lock" | "both" }): Promise<{ ok: boolean; message: string }>;
+  syncOneUiOverlayConfig?(opts: {
+    dynamicBarStyle: string;
+    dynamicBarAnchor?: string;
+    dynamicBarOffsetX?: number;
+    dynamicBarOffsetY?: number;
+    dynamicBarCustomLabel?: string;
+    dynamicBarShowOutsideApp?: boolean;
+    unlockBarAnimStyle?: string;
+    chargingAnim: string;
+    chargingOverlayEnabled: boolean;
+    accentHex: string;
+    liveWallpaperStyle: string;
+    clockHex: string;
+    waveVisualizerStyle?: string;
+    waveColorTheme?: string;
+    followUpListeningEnabled?: boolean;
+    vipContactsJson?: string;
+    perAppRulesJson?: string;
+    customBiometricImageDataUrl?: string;
+  }): Promise<{ ok: boolean; overlayGranted?: boolean; message?: string }>;
+  answerOrRejectCall?(opts: { action: "answer" | "reject" }): Promise<{ ok: boolean; message: string }>;
+  getUserActivityState?(): Promise<{ ok: boolean; state: string }>;
+  acknowledgeVipReminders?(): Promise<{ ok: boolean }>;
+  triggerDynamicBarUnlockEffect?(opts: { method: string }): Promise<{ ok: boolean; overlayGranted?: boolean }>;
+  triggerChargingOverlayTest?(): Promise<{ ok: boolean; overlayGranted?: boolean }>;
+  openAndroidQuickPanel?(opts: { panel: string }): Promise<{ ok: boolean; message?: string }>;
+  getInstalledLauncherApps?(): Promise<{ ok: boolean; apps: Array<{ name: string; packageName: string }> }>;
   addListener?(eventName: string, cb: (data: any) => void): { remove: () => void };
 }
 
@@ -203,6 +253,7 @@ export async function getNativeBackgroundStatus(): Promise<{
   running: boolean;
   wakeEnabled: boolean;
   batteryUnrestricted: boolean;
+  overlayGranted?: boolean;
 } | null> {
   const plugin = getNativePlugin();
   if (!plugin?.getBackgroundStatus) return null;
@@ -210,6 +261,105 @@ export async function getNativeBackgroundStatus(): Promise<{
     return await plugin.getBackgroundStatus();
   } catch {
     return null;
+  }
+}
+
+export async function openInstalledAppAndroid(
+  appName: string
+): Promise<{ ok: boolean; appName?: string; message: string }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.openInstalledApp) {
+    return {
+      ok: false,
+      message: "Phone apps open karne ke liye Wasu's Jarvis Android APK install hona zaroori hai.",
+    };
+  }
+  try {
+    return await plugin.openInstalledApp({ appName });
+  } catch (e: any) {
+    return { ok: false, message: e?.message || "App open nahi ho saka." };
+  }
+}
+
+export async function callPhoneContactAndroid(
+  target: string
+): Promise<{ ok: boolean; contactName?: string; phone?: string; needsPermission?: boolean; message: string }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.callPhoneContact) {
+    return {
+      ok: false,
+      message: "Direct voice call lagane ke liye Wasu's Jarvis Android APK mein Phone aur Contacts permission chahiye.",
+    };
+  }
+  try {
+    return await plugin.callPhoneContact({ target });
+  } catch (e: any) {
+    return { ok: false, message: e?.message || "Call start nahi ho saki." };
+  }
+}
+
+export async function sendWhatsAppMessageAndroid(
+  target: string,
+  message: string
+): Promise<{ ok: boolean; mode?: string; contactName?: string; message: string }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.sendWhatsAppMessage) {
+    return {
+      ok: false,
+      message: "WhatsApp message ya reply bhejne ke liye Android APK bridge zaroori hai.",
+    };
+  }
+  try {
+    return await plugin.sendWhatsAppMessage({ target, message });
+  } catch (e: any) {
+    return { ok: false, message: e?.message || "WhatsApp message send nahi ho saka." };
+  }
+}
+
+export async function getOverlayPermissionStatusAndroid(): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin?.getOverlayPermissionStatus) return false;
+  try {
+    const res = await plugin.getOverlayPermissionStatus();
+    return Boolean(res.granted);
+  } catch {
+    return false;
+  }
+}
+
+export async function openOverlayPermissionSettingsAndroid(): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin?.openOverlayPermissionSettings) return false;
+  try {
+    const res = await plugin.openOverlayPermissionSettings();
+    return Boolean(res.ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function consumePendingWakeEventAndroid(): Promise<{
+  hasPending: boolean;
+  phrase: string;
+  trailingCommand: string;
+} | null> {
+  const plugin = getNativePlugin();
+  if (!plugin?.consumePendingWakeEvent) return null;
+  try {
+    return await plugin.consumePendingWakeEvent();
+  } catch {
+    return null;
+  }
+}
+
+export async function setNativeCloudApiUrl(url: string): Promise<boolean> {
+  const plugin = getNativePlugin();
+  if (!plugin?.setCloudApiBaseUrl) return false;
+  try {
+    const res = await plugin.setCloudApiBaseUrl({ url });
+    return Boolean(res.ok);
+  } catch {
+    return false;
   }
 }
 
@@ -393,16 +543,64 @@ export async function stopNativeAndroidSpeech(): Promise<void> {
 }
 
 export async function startNativeAndroidListening(
-  lang: LanguageCode
+  lang: LanguageCode,
+  sessionId?: number,
+  preferDialog = false
 ): Promise<{ ok: boolean; needsMicPermission?: boolean; message?: string }> {
   const plugin = getNativePlugin();
   if (!plugin?.startNativeListening) {
     return { ok: false, message: "Native speech engine unavailable." };
   }
   try {
-    return await plugin.startNativeListening({ lang });
+    return await plugin.startNativeListening({ lang, sessionId, preferDialog });
   } catch (e: any) {
     return { ok: false, message: e?.message || "Failed to start native mic" };
+  }
+}
+
+export async function startSystemVoiceDialogAndroid(
+  lang: LanguageCode,
+  sessionId?: number
+): Promise<{ ok: boolean; needsMicPermission?: boolean; message?: string }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.startSystemVoiceDialog) {
+    return { ok: false, message: "System voice dialog unavailable." };
+  }
+  try {
+    return await plugin.startSystemVoiceDialog({ lang, sessionId });
+  } catch (e: any) {
+    return { ok: false, message: e?.message || "Failed to launch voice dialog" };
+  }
+}
+
+export async function testMicrophoneHardwareAndroid(): Promise<{
+  ok: boolean;
+  granted: boolean;
+  hardwareReady: boolean;
+  peakLevel: number;
+  speechEngineAvailable?: boolean;
+  message: string;
+}> {
+  const plugin = getNativePlugin();
+  if (!plugin?.testMicrophoneHardware) {
+    return {
+      ok: false,
+      granted: false,
+      hardwareReady: false,
+      peakLevel: 0,
+      message: "Hardware mic diagnostic sirf compiled Android APK mein chalta hai.",
+    };
+  }
+  try {
+    return await plugin.testMicrophoneHardware();
+  } catch (e: any) {
+    return {
+      ok: false,
+      granted: false,
+      hardwareReady: false,
+      peakLevel: 0,
+      message: e?.message || "Mic test failed",
+    };
   }
 }
 
@@ -440,20 +638,33 @@ export function subscribeNativeSpeechEvents(handlers: NativeSpeechEventHandlers)
   if (!plugin?.addListener) return () => {};
 
   const handles = [
-    plugin.addListener("nativeSpeechStart", () => handlers.onStart?.()),
+    plugin.addListener("nativeSpeechStart", (d) => handlers.onStart?.(typeof d?.sessionId === "number" ? d.sessionId : undefined)),
     plugin.addListener("nativeSpeechPartial", (d) => {
-      if (d?.text) handlers.onPartial?.(String(d.text));
+      if (d?.text) handlers.onPartial?.(String(d.text), typeof d?.sessionId === "number" ? d.sessionId : undefined);
     }),
     plugin.addListener("nativeSpeechResult", (d) => {
-      if (d?.text) handlers.onResult?.(String(d.text));
+      if (d?.text) handlers.onResult?.(String(d.text), typeof d?.sessionId === "number" ? d.sessionId : undefined);
+    }),
+    plugin.addListener("nativeSpeechAudio", (d) => {
+      if (d?.audioBase64) {
+        handlers.onAudioCaptured?.(
+          String(d.audioBase64),
+          String(d.mimeType || "audio/wav"),
+          typeof d?.sessionId === "number" ? d.sessionId : undefined
+        );
+      }
     }),
     plugin.addListener("nativeSpeechRms", (d) => {
-      if (typeof d?.level === "number") handlers.onRms?.(d.level);
+      if (typeof d?.level === "number") handlers.onRms?.(d.level, typeof d?.sessionId === "number" ? d.sessionId : undefined);
     }),
     plugin.addListener("nativeSpeechError", (d) => {
-      handlers.onError?.(d?.message || "Voice detect nahi hui, dobara bolein.", d?.code);
+      handlers.onError?.(
+        d?.message || "Voice detect nahi hui, dobara bolein.",
+        d?.code,
+        typeof d?.sessionId === "number" ? d.sessionId : undefined
+      );
     }),
-    plugin.addListener("nativeSpeechEnd", () => handlers.onEnd?.()),
+    plugin.addListener("nativeSpeechEnd", (d) => handlers.onEnd?.(typeof d?.sessionId === "number" ? d.sessionId : undefined)),
     plugin.addListener("nativeTtsStart", () => handlers.onTtsStart?.()),
     plugin.addListener("nativeTtsDone", () => handlers.onTtsDone?.()),
     plugin.addListener("nativeWakeStatus", (d) => {
@@ -496,3 +707,196 @@ export function subscribeNativeEvents(
     } catch {}
   };
 }
+
+export async function consumePendingStudioLaunchAndroid(): Promise<string | null> {
+  const plugin = getNativePlugin();
+  if (!plugin?.consumePendingStudioLaunch) return null;
+  try {
+    const res = await plugin.consumePendingStudioLaunch();
+    return res?.hasPending ? res.target || "oneui9" : null;
+  } catch {
+    return null;
+  }
+}
+
+export function subscribeStudioLaunchEvent(onOpenStudio: (target: string) => void): () => void {
+  const plugin = getNativePlugin();
+  if (!plugin?.addListener) return () => {};
+  const h = plugin.addListener("openStudioRequested", (data) => {
+    onOpenStudio(data?.target || "oneui9");
+  });
+  return () => {
+    try {
+      h?.remove();
+    } catch {}
+  };
+}
+
+export async function applyLiveWallpaperOnPhoneAndroid(opts: {
+  style: string;
+  accentHex: string;
+  clockHex: string;
+  showClock: boolean;
+}): Promise<{ ok: boolean; message: string }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.applyLiveWallpaperOnPhone) {
+    return {
+      ok: false,
+      message: "Live Wallpaper phone par apply karne ke liye Android APK install hona zaroori hai. Studio preview yahan live chal raha hai.",
+    };
+  }
+  try {
+    return await plugin.applyLiveWallpaperOnPhone(opts);
+  } catch (e: any) {
+    return { ok: false, message: e?.message || "Live wallpaper set nahi ho saka." };
+  }
+}
+
+export async function applyBitmapWallpaperOnPhoneAndroid(
+  dataUrl: string,
+  target: "home" | "lock" | "both"
+): Promise<{ ok: boolean; message: string }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.applyBitmapWallpaperOnPhone) {
+    return {
+      ok: false,
+      message: "Direct Home/Lock wallpaper phone par set karne ke liye Android APK install hona zaroori hai.",
+    };
+  }
+  try {
+    return await plugin.applyBitmapWallpaperOnPhone({ dataUrl, target });
+  } catch (e: any) {
+    return { ok: false, message: e?.message || "Wallpaper apply fail hua." };
+  }
+}
+
+export async function syncOneUiOverlayConfigAndroid(opts: {
+  dynamicBarStyle: string;
+  dynamicBarAnchor?: string;
+  dynamicBarOffsetX?: number;
+  dynamicBarOffsetY?: number;
+  dynamicBarCustomLabel?: string;
+  dynamicBarShowOutsideApp?: boolean;
+  unlockBarAnimStyle?: string;
+  chargingAnim: string;
+  chargingOverlayEnabled: boolean;
+  accentHex: string;
+  liveWallpaperStyle: string;
+  clockHex: string;
+  waveVisualizerStyle?: string;
+  waveColorTheme?: string;
+  followUpListeningEnabled?: boolean;
+  vipContactsJson?: string;
+  perAppRulesJson?: string;
+  customBiometricImageDataUrl?: string;
+}): Promise<{ ok: boolean; overlayGranted?: boolean }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.syncOneUiOverlayConfig) return { ok: false };
+  try {
+    return await plugin.syncOneUiOverlayConfig(opts);
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function answerOrRejectCallAndroid(
+  action: "answer" | "reject"
+): Promise<{ ok: boolean; message: string }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.answerOrRejectCall) {
+    return {
+      ok: false,
+      message: "Direct Call Answer/Reject Android APK mein chalta hai.",
+    };
+  }
+  try {
+    return await plugin.answerOrRejectCall({ action });
+  } catch (e: any) {
+    return { ok: false, message: e?.message || "Call action failed." };
+  }
+}
+
+export async function getUserActivityStateAndroid(): Promise<string> {
+  const plugin = getNativePlugin();
+  if (!plugin?.getUserActivityState) return "sitting_stationary";
+  try {
+    const res = await plugin.getUserActivityState();
+    return res?.state || "sitting_stationary";
+  } catch {
+    return "sitting_stationary";
+  }
+}
+
+export async function acknowledgeVipRemindersAndroid(): Promise<void> {
+  const plugin = getNativePlugin();
+  if (!plugin?.acknowledgeVipReminders) return;
+  try {
+    await plugin.acknowledgeVipReminders();
+  } catch {}
+}
+
+export async function triggerDynamicBarUnlockEffectAndroid(method: string): Promise<void> {
+  const plugin = getNativePlugin();
+  if (!plugin?.triggerDynamicBarUnlockEffect) return;
+  try {
+    await plugin.triggerDynamicBarUnlockEffect({ method });
+  } catch {}
+}
+
+export async function triggerChargingOverlayTestAndroid(): Promise<{ ok: boolean; overlayGranted?: boolean }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.triggerChargingOverlayTest) return { ok: false };
+  try {
+    return await plugin.triggerChargingOverlayTest();
+  } catch {
+    return { ok: false };
+  }
+}
+
+export function subscribeActivityAndVipEvents(
+  onActivityChanged: (state: string, speedMps: number) => void,
+  onVipReminder: (sender: string, text: string) => void
+): () => void {
+  const plugin = getNativePlugin();
+  if (!plugin?.addListener) return () => {};
+  const h1 = plugin.addListener("userActivityChanged", (d) => {
+    if (d?.state) onActivityChanged(String(d.state), Number(d.speedMps ?? -1));
+  });
+  const h2 = plugin.addListener("vipReminderTriggered", (d) => {
+    if (d?.sender || d?.text) onVipReminder(String(d.sender || "VIP"), String(d.text || ""));
+  });
+  return () => {
+    try { h1?.remove(); } catch {}
+    try { h2?.remove(); } catch {}
+  };
+}
+
+export async function openAndroidQuickPanel(
+  panel: "wifi" | "bluetooth" | "data" | "display" | "sound" | "battery" | "location" | "airplane" | "nfc"
+): Promise<{ ok: boolean; message?: string }> {
+  const plugin = getNativePlugin();
+  if (!plugin?.openAndroidQuickPanel) {
+    return {
+      ok: false,
+      message: "System hardware panel Android APK par direct open hota hai.",
+    };
+  }
+  try {
+    return await plugin.openAndroidQuickPanel({ panel });
+  } catch (e: any) {
+    return { ok: false, message: e?.message || "System panel open nahi ho saka." };
+  }
+}
+
+export async function getInstalledLauncherAppsAndroid(): Promise<Array<{ name: string; packageName: string }>> {
+  const plugin = getNativePlugin();
+  if (!plugin?.getInstalledLauncherApps) return [];
+  try {
+    const res = await plugin.getInstalledLauncherApps();
+    return res?.apps || [];
+  } catch {
+    return [];
+  }
+}
+
+

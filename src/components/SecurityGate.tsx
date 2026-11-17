@@ -25,6 +25,12 @@ import {
   checkBiometricCapabilities,
 } from "../services/biometricAuth";
 import { DashboardCustomization, LanguageCode } from "../types";
+import { defaultOneUiConfig } from "../services/storage";
+import { FACE_ANIM_PRESETS } from "../data/oneUi9Catalog";
+import { triggerDynamicBarUnlockEffectAndroid } from "../services/nativeAndroidBridge";
+import { LiveWallpaperCanvas } from "./LiveWallpaperCanvas";
+import { OneUiClockPreview } from "./OneUiClockPreview";
+import { FingerprintAnimView } from "./FingerprintAnimView";
 
 interface SecurityGateProps {
   onAuthenticated: (commanderName?: string) => void;
@@ -72,6 +78,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
   const motionEnabled = customization?.lockScreenMotionEnabled !== false;
   const colorShiftEnabled = customization?.lockScreenColorShift !== false;
   const designStyle = customization?.lockScreenDesignStyle || "orbital";
+  const oneUiCfg = customization?.oneUiConfig || defaultOneUiConfig;
   const bgImageSrc = customization?.customBgUrl?.trim() || LOCK_BG_IMAGE;
   const brandTitle = customization?.brandTitle?.trim() || "WASU'S JARVIS";
   const brandWords = brandTitle.split(/\s+/);
@@ -111,11 +118,12 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
     };
   }, []);
 
-  const finalizeUnlock = (userToGreet: string) => {
+  const finalizeUnlock = (userToGreet: string, method = "Passkey") => {
     if (unlockingRef.current) return;
     unlockingRef.current = true;
     stopFaceCamera();
     setIsFaceCamOpen(false);
+    triggerDynamicBarUnlockEffectAndroid(method).catch(() => {});
 
     setPasskeyStatus("success");
     setLockFeedback("Identity Confirmed — Unlocking Wasu's Jarvis");
@@ -157,7 +165,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
         const res = await verifyDeviceBiometric("fingerprint");
         if (res.ok) {
           setBioMessage(res.message);
-          finalizeUnlock(username.trim() || "Wasi");
+          finalizeUnlock(username.trim() || "Wasi", "Fingerprint");
           return;
         }
         soundEffects.playAlert();
@@ -170,7 +178,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
         const enrolled = await enrollDeviceBiometric("fingerprint", "Wasi");
         if (enrolled.ok) {
           setBioMessage(enrolled.message);
-          finalizeUnlock(username.trim() || "Wasi");
+          finalizeUnlock(username.trim() || "Wasi", "Fingerprint");
           return;
         }
         soundEffects.playAlert();
@@ -187,7 +195,7 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
           return;
         }
         setBioMessage(res.message);
-        finalizeUnlock(username.trim() || "Wasi");
+        finalizeUnlock(username.trim() || "Wasi", "Fingerprint");
       } else {
         soundEffects.playAlert();
         setBioMessage(res.message);
@@ -207,24 +215,12 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
     setErrorMsg("");
     setBioBusy("face");
 
+    // Always use live Front-Camera Optical Face Verification for Face Scan button
+    // so Android BiometricPrompt never hijacks Face Scan into Fingerprint prompt.
     try {
-      const caps = await checkBiometricCapabilities();
-      // 1) Inside Android APK, run native Android OS Face/BiometricPrompt directly
-      if (caps.nativeApkSupported) {
-        setBioMessage("Look at your phone camera / Biometric Face sensor...");
-        const res = await verifyDeviceBiometric("face");
-        if (res.ok) {
-          setBioMessage(res.message);
-          finalizeUnlock(username.trim() || "Wasi");
-          return;
-        }
-        // Fallback to live front-camera scan overlay if Android face BiometricPrompt is unavailable on hardware
-      }
-
-      // 2) Open live Front Camera Optical Face Verification Reticle
       setIsFaceCamOpen(true);
       setFaceScanProgress(12);
-      setBioMessage("Align face inside neon biometric frame...");
+      setBioMessage("Align face inside front-camera frame...");
 
       if (navigator.mediaDevices?.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -236,26 +232,25 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
           faceVideoRef.current.srcObject = stream;
           await faceVideoRef.current.play().catch(() => {});
         }
+      } else {
+        throw new Error("Front camera not available");
       }
 
-      // Progressive biometric verification sweep
-      const stepTimers: number[] = [];
       [38, 68, 92, 100].forEach((pct, i) => {
-        const id = window.setTimeout(async () => {
+        window.setTimeout(async () => {
           setFaceScanProgress(pct);
           if (pct === 100) {
             await enrollDeviceBiometric("face", "Wasi").catch(() => {});
             setBioMessage("Face ID Verified — Welcome Commander Wasi");
-            finalizeUnlock(username.trim() || "Wasi");
+            finalizeUnlock(username.trim() || "Wasi", "Face");
           }
-        }, 480 * (i + 1));
-        stepTimers.push(id);
+        }, 420 * (i + 1));
       });
     } catch {
       stopFaceCamera();
       setIsFaceCamOpen(false);
       soundEffects.playAlert();
-      setBioMessage("Allow Front Camera permission on phone for Face Scan unlock.");
+      setBioMessage("Front Camera permission allow karein Face Scan unlock ke liye.");
     } finally {
       setBioBusy(null);
     }
@@ -340,16 +335,27 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
       id="lock"
       className="fixed inset-0 z-50 flex flex-col items-center justify-start lg:justify-center bg-[#020510] text-slate-100 px-3.5 py-4 sm:p-8 font-rajdhani overflow-y-auto"
     >
-      {/* Full-Bleed Animated Motion Background Matching the Main Portrait */}
+      {/* Full-Bleed Animated Live Wallpaper + Portrait Match */}
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
-        <img
-          src={bgImageSrc}
-          alt=""
-          referrerPolicy="no-referrer"
-          className={`w-full h-full object-cover object-[50%_20%] opacity-42 ${
-            motionEnabled ? "q-lock-bg-motion" : ""
-          }`}
-        />
+        {oneUiCfg.liveWallpaperEnabledInApp ? (
+          <div className="absolute inset-0 opacity-75">
+            <LiveWallpaperCanvas
+              styleId={oneUiCfg.liveWallpaperId}
+              accentHex={oneUiCfg.accentColorHex}
+              galleryImageUrl={oneUiCfg.galleryWallpaperDataUrl}
+              interactive={false}
+            />
+          </div>
+        ) : (
+          <img
+            src={bgImageSrc}
+            alt=""
+            referrerPolicy="no-referrer"
+            className={`w-full h-full object-cover object-[50%_20%] opacity-42 ${
+              motionEnabled ? "q-lock-bg-motion" : ""
+            }`}
+          />
+        )}
 
         {/* Dynamic Prismatic Color-Shifting Gradient Layer */}
         <div
@@ -411,19 +417,44 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
               </button>
             </div>
 
-            <div className="relative w-56 h-56 rounded-full overflow-hidden border-[3px] border-cyan-400 shadow-[0_0_32px_rgba(0,240,255,0.45)] bg-slate-950">
-              <video
-                ref={faceVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover scale-x-[-1]"
-              />
-              <div className="pointer-events-none absolute inset-0 rounded-full border-4 border-dashed border-emerald-400/60 animate-spin" style={{ animationDuration: "8s" }} />
-              <div
-                className="pointer-events-none absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent q-laser-beam"
-              />
-            </div>
+            {(() => {
+              const facePreset =
+                FACE_ANIM_PRESETS.find((f) => f.id === oneUiCfg.faceAnimId) || FACE_ANIM_PRESETS[0];
+              return (
+                <div
+                  className="relative w-56 h-56 rounded-full overflow-hidden border-[3px] bg-slate-950"
+                  style={{
+                    borderColor: facePreset.color,
+                    boxShadow: `0 0 32px ${facePreset.color}70`,
+                  }}
+                >
+                  <video
+                    ref={faceVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover scale-x-[-1]"
+                  />
+                  {oneUiCfg.customBiometricImageDataUrl && (
+                    <img
+                      src={oneUiCfg.customBiometricImageDataUrl}
+                      alt=""
+                      className="pointer-events-none absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-screen"
+                    />
+                  )}
+                  <div
+                    className="pointer-events-none absolute inset-0 rounded-full border-4 border-dashed animate-spin"
+                    style={{ animationDuration: "6s", borderColor: `${facePreset.color}aa` }}
+                  />
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 h-1 q-laser-beam"
+                    style={{
+                      background: `linear-gradient(90deg, transparent, ${facePreset.color}, transparent)`,
+                    }}
+                  />
+                </div>
+              );
+            })()}
 
             <div className="w-full space-y-1.5 text-center">
               <div className="text-xs font-mono text-emerald-300">
@@ -566,17 +597,36 @@ export const SecurityGate: React.FC<SecurityGateProps> = ({
               </div>
             </div>
 
-            <div className="text-center space-y-1">
-              <div className="font-orbitron font-bold text-sm sm:text-base tracking-[0.12em] text-slate-100 flex items-center justify-center gap-2">
-                <Lock className="w-4 h-4 text-[#00f0ff]" />
-                <span>{brandTitle} VAULT</span>
-              </div>
-              <div className="font-mono text-xs text-cyan-200/80">
-                {passkeyStatus === "success"
-                  ? "Biometric / Passkey Verified"
-                  : scannerLockedFlash
-                  ? "Security Mismatch — Access Blocked"
-                  : "Phone Fingerprint, Face ID, or Passkey required"}
+            <div className="py-1">
+              <OneUiClockPreview
+                styleId={oneUiCfg.clockStyleId}
+                colorHex={oneUiCfg.clockColorHex}
+                accentHex={oneUiCfg.accentColorHex}
+                batteryPercent={phoneTelemetry?.batteryPercent ?? null}
+                compact
+              />
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <FingerprintAnimView
+                animId={oneUiCfg.fingerprintAnimId}
+                active={bioBusy === "fingerprint"}
+                size="sm"
+                customImageUrl={oneUiCfg.customBiometricImageDataUrl}
+                onClick={handleFingerprintScan}
+              />
+              <div className="text-center space-y-1">
+                <div className="font-orbitron font-bold text-sm sm:text-base tracking-[0.12em] text-slate-100 flex items-center justify-center gap-2">
+                  <Lock className="w-4 h-4 text-[#00f0ff]" />
+                  <span>{brandTitle} VAULT</span>
+                </div>
+                <div className="font-mono text-xs text-cyan-200/80">
+                  {passkeyStatus === "success"
+                    ? "Biometric / Passkey Verified"
+                    : scannerLockedFlash
+                    ? "Security Mismatch — Access Blocked"
+                    : "Tap Fingerprint animation above, Face Scan, or Passkey"}
+                </div>
               </div>
             </div>
           </div>

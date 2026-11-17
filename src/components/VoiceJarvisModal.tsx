@@ -27,7 +27,8 @@ import {
   getCharacterDisplayName,
   isIdentityVideoCommand,
 } from "../data/jarvisCatalog";
-import { readPhoneHardwareTelemetry } from "../services/systemTelemetry";
+import { readPhoneHardwareTelemetry, resolveApiUrl } from "../services/systemTelemetry";
+import { tryExecuteLocalPhoneCommand } from "../services/localApkCommands";
 import {
   isNativeAndroidApk,
   getNativePhoneNotifications,
@@ -170,7 +171,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
         setIsProcessing(true);
         setMicNotice("Awaaz process ho rahi hai...");
         try {
-          const res = await fetch("/api/jarvis/voice-audio", {
+          const res = await fetch(resolveApiUrl("/api/jarvis/voice-audio"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -201,6 +202,35 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
           }
 
           const heardText = (data.transcript || "").trim();
+          if (heardText) {
+            const localFromAudio = await tryExecuteLocalPhoneCommand(heardText);
+            if (localFromAudio.handled) {
+              const localReply = localFromAudio.reply || "Hukum poora kar diya gaya hai.";
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: Date.now().toString(),
+                  sender: "user" as const,
+                  text: `🎤 ${heardText}`,
+                  timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                },
+                {
+                  id: (Date.now() + 1).toString(),
+                  sender: "jarvis" as const,
+                  text: localReply,
+                  language,
+                  actionExecuted: localFromAudio.actionExecuted,
+                  timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                },
+              ]);
+              speakWithPersonality(localReply, language);
+              if (localFromAudio.triggerAction) {
+                onExecuteAction(localFromAudio.triggerAction, localFromAudio.triggerPayload);
+              }
+              return;
+            }
+          }
+
           const replyText = (data.reply || "Ji Commander, hukam farmaein.").trim();
 
           setMessages((prev) => [
@@ -352,7 +382,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
     ]);
     setIsProcessing(true);
     try {
-      const res = await fetch("/api/jarvis/analyze-screen", {
+      const res = await fetch(resolveApiUrl("/api/jarvis/analyze-screen"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64: snapshot, question, language }),
@@ -567,6 +597,28 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
         return;
       }
 
+      // 0B-3. Direct Local Phone Commands: Open Any Installed App, Call Contact/Number, WhatsApp Reply/Message, SMS
+      const localCmd = await tryExecuteLocalPhoneCommand(text);
+      if (localCmd.handled) {
+        const reply = localCmd.reply || "Hukum poora kar diya gaya hai.";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            sender: "jarvis",
+            text: reply,
+            actionExecuted: localCmd.actionExecuted,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+        soundEffects.playBeepConfirm();
+        speakWithPersonality(reply);
+        if (localCmd.triggerAction) {
+          onExecuteAction(localCmd.triggerAction, localCmd.triggerPayload);
+        }
+        return;
+      }
+
       // 0C. Reply command for Native Android Notifications ("reply to Ali I am coming" / "Ali ko reply karo ...")
       const replyMatch =
         text.match(/reply\s+(?:to\s+)?([^\s:]+)\s+(?:that\s+)?(.+)/i) ||
@@ -753,7 +805,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
       const ytMatch = text.match(YOUTUBE_REGEX);
       if (ytMatch) {
         const ytUrl = ytMatch[1];
-        const res = await fetch("/api/jarvis/analyze-youtube", {
+        const res = await fetch(resolveApiUrl("/api/jarvis/analyze-youtube"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -781,7 +833,7 @@ export const VoiceJarvisModal: React.FC<VoiceJarvisModalProps> = ({
       }
 
       // 5. Standard Fast-Talk Trilingual Chat
-      const response = await fetch("/api/jarvis/chat", {
+      const response = await fetch(resolveApiUrl("/api/jarvis/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

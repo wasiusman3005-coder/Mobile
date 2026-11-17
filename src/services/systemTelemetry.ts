@@ -83,6 +83,8 @@ export interface MobileConnectInfo {
 }
 
 const REMOTE_PC_URL_KEY = "q_nexus_remote_pc_url";
+export const DEFAULT_CLOUD_API_URL =
+  "https://ais-pre-k67uumt7pwtt42jjnc7omx-987831856092.asia-southeast1.run.app";
 
 export function getRemotePcUrl(): string {
   try {
@@ -103,12 +105,21 @@ export function setRemotePcUrl(url: string): void {
   } catch {}
 }
 
-function resolveSystemEndpoint(path: string): string {
+export function resolveApiUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
   const remote = getRemotePcUrl();
   if (remote) {
-    return `${remote}${path}`;
+    return `${remote}${cleanPath}`;
   }
-  return path;
+  if (isNativeAndroidApk()) {
+    return `${DEFAULT_CLOUD_API_URL}${cleanPath}`;
+  }
+  return cleanPath;
+}
+
+function resolveSystemEndpoint(path: string): string {
+  return resolveApiUrl(path);
 }
 
 let cachedGpuRenderer: string | null = null;

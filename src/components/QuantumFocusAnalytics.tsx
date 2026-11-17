@@ -3,6 +3,7 @@ import { Target, Play, Pause, RotateCcw, ShieldCheck, Flame, BarChart3, FileText
 import { soundEffects } from "../services/soundEffects";
 import { speechService } from "../services/speechService";
 import { storageService } from "../services/storage";
+import { resolveApiUrl } from "../services/systemTelemetry";
 import { LanguageCode, VoiceGender } from "../types";
 
 interface FocusLogEntry {
@@ -108,7 +109,7 @@ export const QuantumFocusAnalytics: React.FC<QuantumFocusAnalyticsProps> = ({
     const realFocusMins = focusLogs.length * focusDuration;
 
     try {
-      const res = await fetch("/api/jarvis/daily-briefing", {
+      const res = await fetch(resolveApiUrl("/api/jarvis/daily-briefing"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

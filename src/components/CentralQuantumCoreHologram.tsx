@@ -4,14 +4,15 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
   Trash2,
-  Send,
   Pencil,
   Check,
   X,
   AudioWaveform,
 } from "lucide-react";
 import { soundEffects } from "../services/soundEffects";
+import { storageService } from "../services/storage";
 import { LanguageCode, VoiceGender, JarvisInterfaceThemeId } from "../types";
+import { ColorfulWaveVisualizer } from "./ColorfulWaveVisualizer";
 
 export interface QuantumCoreDesign {
   id: string;
@@ -123,10 +124,7 @@ export const CentralQuantumCoreHologram: React.FC<CentralQuantumCoreHologramProp
   onColorChange,
   audioLevel = 0,
   liveTranscript = "",
-  recordingSeconds = 0,
-  waWaveBars = [],
   onCancelRecording,
-  onSendRecording,
   onStartManualRecording,
   wakeReady = true,
   onPrimeWakeMic,
@@ -674,12 +672,6 @@ export const CentralQuantumCoreHologram: React.FC<CentralQuantumCoreHologramProp
     };
   }, []);
 
-  const formatWaTimer = (sec: number) => {
-    const mins = Math.floor(sec / 60);
-    const rem = sec % 60;
-    return `${mins}:${rem < 10 ? "0" : ""}${rem}`;
-  };
-
   const handleSaveName = () => {
     const cleaned = nameDraft.trim();
     if (cleaned && onRenameAssistant) {
@@ -690,31 +682,6 @@ export const CentralQuantumCoreHologram: React.FC<CentralQuantumCoreHologramProp
   };
 
   const activeSpectrum = QUANTUM_SPECTRUMS[spectrumIndex % QUANTUM_SPECTRUMS.length];
-  const barCount = 34;
-
-  // Build Signal Wave bar heights cleanly for LISTENING, PROCESSING, and SPEAKING below the Main 3D Logo
-  const signalBars: number[] = (() => {
-    if (cockpitPhase === "recording") {
-      return waWaveBars.length > 0 ? waWaveBars : Array(barCount).fill(22);
-    }
-    if (cockpitPhase === "processing") {
-      return Array.from({ length: barCount }, (_, i) => {
-        const s = Math.sin(waveTick * 0.42 + i * 0.45) * 0.5 + 0.5;
-        const s2 = Math.cos(waveTick * 0.25 - i * 0.3) * 0.5 + 0.5;
-        return Math.round(18 + (s * 0.65 + s2 * 0.35) * 80);
-      });
-    }
-    if (cockpitPhase === "speaking") {
-      return Array.from({ length: barCount }, (_, i) => {
-        const centerFactor = 1 - Math.abs(i - barCount / 2) / (barCount / 2);
-        const harmonic =
-          Math.abs(Math.sin(waveTick * 0.55 + i * 0.52)) * 0.65 +
-          Math.abs(Math.cos(waveTick * 0.31 - i * 0.28)) * 0.35;
-        return Math.round(16 + (harmonic * 0.72 + centerFactor * 0.28 + audioLevel * 0.25) * 82);
-      });
-    }
-    return [];
-  })();
 
   return (
     <div className="relative flex flex-col items-center justify-center w-full select-none">
@@ -847,17 +814,7 @@ export const CentralQuantumCoreHologram: React.FC<CentralQuantumCoreHologramProp
         {/* LIVE SIGNAL WAVE UNDER MAIN 3D LOGO DURING LISTENING / PROCESSING / SPEAKING */}
         {cockpitPhase !== "galaxy" ? (
           <div className="w-full flex flex-col items-center gap-2 animate-fadeIn">
-            {/* Explicit Phase Status Badge */}
-            <div className="flex items-center gap-2 font-orbitron font-bold text-xs tracking-[0.22em] uppercase">
-              <span
-                className={`w-2.5 h-2.5 rounded-full animate-ping ${
-                  cockpitPhase === "recording"
-                    ? "bg-emerald-400"
-                    : cockpitPhase === "processing"
-                    ? "bg-purple-400"
-                    : "bg-cyan-400"
-                }`}
-              />
+            <div className="flex items-center gap-2 font-orbitron font-bold text-xs tracking-[0.18em] uppercase">
               <span
                 className={
                   cockpitPhase === "recording"
@@ -868,21 +825,15 @@ export const CentralQuantumCoreHologram: React.FC<CentralQuantumCoreHologramProp
                 }
               >
                 {cockpitPhase === "recording"
-                  ? "LISTENING"
+                  ? "SUN RAHI HOON, BOLEIN AAP"
                   : cockpitPhase === "processing"
                   ? "PROCESSING"
                   : "SPEAKING"}
               </span>
-              {cockpitPhase === "recording" && (
-                <span className="font-mono text-xs text-slate-300 tabular-nums ml-1">
-                  {formatWaTimer(recordingSeconds)}
-                </span>
-              )}
             </div>
 
-            {/* Signal Waveform Strip Directly Below Main Logo */}
             <div
-              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-full bg-[#09121e]/90 border shadow-2xl ${
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[#09121e]/90 border shadow-2xl ${
                 cockpitPhase === "recording"
                   ? "border-emerald-500/50 shadow-[0_0_32px_rgba(16,185,129,0.28)]"
                   : cockpitPhase === "processing"
@@ -890,49 +841,31 @@ export const CentralQuantumCoreHologram: React.FC<CentralQuantumCoreHologramProp
                   : "border-cyan-400/50 shadow-[0_0_32px_rgba(0,240,255,0.28)]"
               }`}
             >
-              <div className="flex-1 flex items-center justify-center gap-[3px] h-9 overflow-hidden">
-                {signalBars.map((heightPct, idx) => (
-                  <div
-                    key={idx}
-                    className="w-[3px] rounded-full transition-all duration-75 shrink-0"
-                    style={{
-                      height: `${Math.max(5, Math.round((heightPct / 100) * 32))}px`,
-                      backgroundColor:
-                        cockpitPhase === "recording"
-                          ? heightPct > 36
-                            ? "#25d366"
-                            : "#64748b"
-                          : cockpitPhase === "processing"
-                          ? idx % 2 === 0
-                            ? "#c084fc"
-                            : "#f59e0b"
-                          : idx % 2 === 0
-                          ? "#00f0ff"
-                          : "#10b981",
-                    }}
-                  />
-                ))}
+              <div className="flex-1 min-w-0">
+                <ColorfulWaveVisualizer
+                  styleId={storageService.getCustomization().oneUiConfig?.waveVisualizerStyle || "rainbow_prism"}
+                  colorThemeId={storageService.getCustomization().oneUiConfig?.waveColorTheme || "aurora_cyan"}
+                  audioLevel={audioLevel}
+                  phase={
+                    cockpitPhase === "recording"
+                      ? "listening"
+                      : cockpitPhase === "processing"
+                      ? "processing"
+                      : "speaking"
+                  }
+                  height={36}
+                />
               </div>
 
               {cockpitPhase === "recording" && (
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={onCancelRecording}
-                    className="p-2 rounded-full bg-rose-950/90 hover:bg-rose-900 border border-rose-500/40 text-rose-300 transition cursor-pointer"
-                    title="Cancel"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onSendRecording}
-                    className="p-2 rounded-full bg-[#00a884] hover:bg-[#06cf9c] text-slate-950 transition cursor-pointer"
-                    title="Send"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={onCancelRecording}
+                  className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-rose-950/90 hover:bg-rose-900 border border-rose-500/40 text-rose-300 transition cursor-pointer shrink-0"
+                  title="Cancel"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               )}
             </div>
 

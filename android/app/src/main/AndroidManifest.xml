@@ -26,7 +26,22 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+            <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+            <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
+        <uses-permission android:name="android.permission.CALL_PHONE" />
+        <uses-permission android:name="android.permission.READ_CONTACTS" />
+        <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+        <uses-permission android:name="android.permission.SET_WALLPAPER" />
+        <uses-permission android:name="android.permission.SET_WALLPAPER_HINTS" />
+        <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+        <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+        <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+        <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <application
         android:networkSecurityConfig="@xml/network_security_config"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -38,13 +53,12 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+        <activity android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
-            android:launchMode="singleTask"
-            android:exported="true">
+            
+            android:exported="true" android:launchMode="singleTask" android:showWhenLocked="true" android:turnScreenOn="true">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -86,6 +100,45 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="com.qnexus.jarvis.ACTION_RESTART_WAKE_SERVICE" />
+            </intent-filter>
+        </receiver>
+            <activity-alias
+            android:name=".OneUiStudioAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:label="One UI 9 Studio"
+            android:icon="@mipmap/ic_oneui_studio"
+            android:roundIcon="@mipmap/ic_oneui_studio">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+            <service
+            android:name=".JarvisLiveWallpaperService"
+            android:label="Wasu's Jarvis One UI 9 Live Wallpaper"
+            android:permission="android.permission.BIND_WALLPAPER"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/jarvis_wallpaper" />
+        </service>
+        <service
+            android:name=".OneUiOverlayService"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name=".ChargingBroadcastReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
             </intent-filter>
         </receiver>
     </application>

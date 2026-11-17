@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useRef } from "react";
-import { X, Sparkles, CheckSquare, Heart, Bell, MessageSquare, Radio, Trash2, Send, AudioWaveform } from "lucide-react";
+import { X, Sparkles, CheckSquare, Heart, Bell, MessageSquare, Radio, Trash2, AudioWaveform } from "lucide-react";
 import { speechService } from "../services/speechService";
 import { soundEffects } from "../services/soundEffects";
 import { storageService } from "../services/storage";
+import { ColorfulWaveVisualizer } from "./ColorfulWaveVisualizer";
 import {
   PERSONALITY_MODES,
   getCharacterDisplayName,
   isIdentityVideoCommand,
 } from "../data/jarvisCatalog";
-import { readPhoneHardwareTelemetry } from "../services/systemTelemetry";
+import { readPhoneHardwareTelemetry, resolveApiUrl } from "../services/systemTelemetry";
+import { tryExecuteLocalPhoneCommand } from "../services/localApkCommands";
 import {
   isNativeAndroidApk,
   getNativePhoneNotifications,
@@ -60,8 +62,6 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [phaseTick, setPhaseTick] = useState(0);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [waWaveBars, setWaWaveBars] = useState<number[]>(() => Array(34).fill(18));
   const [liveTranscript, setLiveTranscript] = useState("");
   const [replyText, setReplyText] = useState("");
   const [actionBadge, setActionBadge] = useState<string | null>(null);
@@ -121,31 +121,6 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
       unsubLevel();
     };
   }, [isOpen]);
-
-  // WhatsApp-style ticking timer & scrolling voice waveform bars while recording
-  useEffect(() => {
-    if (!isOpen || !isListening) {
-      if (!isListening) setRecordingSeconds(0);
-      return;
-    }
-    setRecordingSeconds(0);
-    setWaWaveBars(Array(34).fill(18));
-
-    const secTimer = setInterval(() => {
-      setRecordingSeconds((s) => s + 1);
-    }, 1000);
-
-    const waveTimer = setInterval(() => {
-      const lvl = audioLevelRef.current;
-      const heightPct = Math.min(100, Math.max(16, Math.round(16 + lvl * 84 + Math.random() * 8)));
-      setWaWaveBars((prev) => [...prev.slice(1), heightPct]);
-    }, 85);
-
-    return () => {
-      clearInterval(secTimer);
-      clearInterval(waveTimer);
-    };
-  }, [isOpen, isListening]);
 
   // Process spoken or quick-chip commands with full awareness of Tasks, Health, Calls/Notifications, Phone Info & AI Chat
   const processSpokenCommand = async (rawText: string) => {
@@ -238,6 +213,20 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
         soundEffects.playBeepConfirm();
         speakReply(msg);
         onExecuteAction("HEALTH_ALERT", { message: "Health Check Complete" });
+        return;
+      }
+
+      // 2B. Direct Phone Commands: Open App, Call Contact/Number, WhatsApp Message/Reply, SMS
+      const localCmd = await tryExecuteLocalPhoneCommand(text);
+      if (localCmd.handled) {
+        const msg = localCmd.reply || "Hukum poora kar diya gaya hai.";
+        setReplyText(msg);
+        setActionBadge(localCmd.actionExecuted || "PHONE_ACTION");
+        soundEffects.playBeepConfirm();
+        speakReply(msg);
+        if (localCmd.triggerAction) {
+          onExecuteAction(localCmd.triggerAction, localCmd.triggerPayload);
+        }
         return;
       }
 
@@ -352,7 +341,7 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
         return;
       }
       // 6. General Gemini AI Chat response
-      const res = await fetch("/api/jarvis/chat", {
+      const res = await fetch(resolveApiUrl("/api/jarvis/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -427,7 +416,7 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
         setIsProcessing(true);
         setErrorMsg(null);
         try {
-          const res = await fetch("/api/jarvis/voice-audio", {
+          const res = await fetch(resolveApiUrl("/api/jarvis/voice-audio"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -451,8 +440,22 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
             return;
           }
           const heard = (data.transcript || "").trim();
+          if (heard) {
+            setLiveTranscript(heard);
+            const localFromAudio = await tryExecuteLocalPhoneCommand(heard);
+            if (localFromAudio.handled) {
+              const localMsg = localFromAudio.reply || "Hukum poora kar diya gaya hai.";
+              setReplyText(localMsg);
+              setActionBadge(localFromAudio.actionExecuted || "PHONE_ACTION");
+              soundEffects.playBeepConfirm();
+              speakReply(localMsg);
+              if (localFromAudio.triggerAction) {
+                onExecuteAction(localFromAudio.triggerAction, localFromAudio.triggerPayload);
+              }
+              return;
+            }
+          }
           const msg = (data.reply || "Ji Commander, hukam farmaein.").trim();
-          if (heard) setLiveTranscript(heard);
           setReplyText(msg);
           if (data.action && data.action !== "NONE") {
             setActionBadge(data.action);
@@ -567,11 +570,7 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
     ? "#34d399"
     : "#06b6d4";
 
-  const formatWaTimer = (sec: number) => {
-    const mins = Math.floor(sec / 60);
-    const rem = sec % 60;
-    return `${mins}:${rem < 10 ? "0" : ""}${rem}`;
-  };
+  const oneUiWaveCfg = storageService.getCustomization().oneUiConfig;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-fadeIn font-rajdhani">
@@ -631,43 +630,25 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
 
         {/* WhatsApp-Style Live Voice Recording Phase Bar (Appears Immediately on Wake!) */}
         {isListening ? (
-          <div className="rounded-2xl bg-[#0b141a] border border-emerald-500/60 shadow-[0_0_35px_rgba(0,168,132,0.3)] p-3.5 sm:p-4 space-y-3">
+          <div className="rounded-2xl bg-[#0b141a] border border-emerald-500/60 shadow-[0_0_35px_rgba(0,168,132,0.3)] p-3.5 sm:p-4 space-y-2.5">
             <div className="flex items-center justify-between text-[11px] font-mono">
-              <span className="flex items-center gap-2 text-emerald-300 font-bold">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-85" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
-                </span>
-                <span>{activeCharName} SUN {activeGender === "male" ? "RAHA HAI" : "RAHI HAI"} • VOICE NOTE</span>
+              <span className="text-emerald-300 font-bold">
+                {activeCharName} — Sun {activeGender === "male" ? "raha hoon" : "rahi hoon"}, bolein aap
               </span>
-              <span className="text-slate-400">Auto-send on silence ya Green ➤ dabayein</span>
+              <span className="text-slate-400">Chup karne par khud execute hoga</span>
             </div>
 
-            {/* Exact WhatsApp Recording Bar Layout: [Red Dot + Timer] [Scrolling Waveform] [Cancel Trash] [Green Send] */}
-            <div className="flex items-center gap-2.5 sm:gap-3 px-3 py-2.5 rounded-full bg-[#202c33] border border-slate-700/80 shadow-inner">
-              {/* Red Dot + Timer */}
-              <div className="flex items-center gap-2 shrink-0 pl-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                <span className="font-mono font-bold text-sm text-slate-100 tabular-nums min-w-[38px]">
-                  {formatWaTimer(recordingSeconds)}
-                </span>
+            <div className="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl bg-[#13202b] border border-cyan-500/40 shadow-inner">
+              <div className="flex-1 min-w-0">
+                <ColorfulWaveVisualizer
+                  styleId={oneUiWaveCfg?.waveVisualizerStyle || "rainbow_prism"}
+                  colorThemeId={oneUiWaveCfg?.waveColorTheme || "aurora_cyan"}
+                  audioLevel={audioLevel}
+                  phase="listening"
+                  height={40}
+                />
               </div>
 
-              {/* Scrolling Real-Time WhatsApp Voice Bars */}
-              <div className="flex-1 flex items-center justify-end gap-[3px] h-9 overflow-hidden px-1">
-                {waWaveBars.map((heightPct, idx) => (
-                  <div
-                    key={idx}
-                    className="w-[3px] rounded-full transition-all duration-75 shrink-0"
-                    style={{
-                      height: `${Math.max(5, Math.round((heightPct / 100) * 32))}px`,
-                      backgroundColor: heightPct > 40 ? "#25d366" : "#8696a0",
-                    }}
-                  />
-                ))}
-              </div>
-
-              {/* WhatsApp Trash / Cancel Recording Button */}
               <button
                 type="button"
                 onClick={() => {
@@ -675,25 +656,12 @@ export const HiJarvisWaveOverlay: React.FC<HiJarvisWaveOverlayProps> = ({
                   speechService.cancelListening();
                   setIsListening(false);
                   setLiveTranscript("");
-                  setErrorMsg("Recording cancel kar di gayi. Dobara 'Hi Jarvis' bolein.");
+                  setErrorMsg("Recording cancel kar di gayi. Dobara 'Jarvis' bolein.");
                 }}
-                className="p-2.5 rounded-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 transition cursor-pointer shrink-0"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 transition cursor-pointer shrink-0"
                 title="Cancel Voice Recording"
               >
                 <Trash2 className="w-4 h-4" />
-              </button>
-
-              {/* WhatsApp Emerald Green Send Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  soundEffects.playBeepConfirm();
-                  speechService.stopListening();
-                }}
-                className="p-2.5 rounded-full bg-[#00a884] hover:bg-[#06cf9c] text-slate-950 shadow-lg shadow-emerald-500/35 transition cursor-pointer shrink-0"
-                title="Send Voice Command Now"
-              >
-                <Send className="w-4 h-4" />
               </button>
             </div>
           </div>
